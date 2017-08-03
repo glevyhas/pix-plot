@@ -1,6 +1,5 @@
 .DS_Store
-data/128-thumbs
-data/results
-data/selected_images
-data/nearest_neighbors
-
+data/
+data.tar.gz
+*.pem
+*.swp
