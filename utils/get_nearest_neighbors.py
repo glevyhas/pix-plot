@@ -43,15 +43,15 @@ for i in file_index_to_file_name.keys():
 
     similarity = 1 - spatial.distance.cosine(master_vector, neighbor_file_vector)
     rounded_similarity = int((similarity * 10000)) / 10000.0
-	
+
     if(neighbor_file_name != file_index_to_file_name[i]):
-		named_nearest_neighbors.append({
-			'filename': neighbor_file_name,
-			'similarity': rounded_similarity
-		})
+      named_nearest_neighbors.append({
+        'filename': neighbor_file_name,
+        'similarity': rounded_similarity
+    })
 		
     else:
-		print('(Excluding self-similarity)')
+      print('(Excluding self-similarity)')
 
   with open(data_dir + 'nearest_neighbors/' + master_file_name + '.json', 'w') as out:
     json.dump(named_nearest_neighbors, out)
