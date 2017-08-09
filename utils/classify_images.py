@@ -205,9 +205,9 @@ def run_inference_on_images(image_list, output_dir):
           feature_set = sess.run(feature_tensor,
                           {'DecodeJpeg/contents:0': image_data})
           feature_vector = np.squeeze(feature_set)        
-          outfile_name = os.path.basename(image) + ".npz"
+          outfile_name = os.path.basename(image) + ".npy"
           out_path = os.path.join(output_dir, outfile_name)
-          np.savetxt(out_path, feature_vector, delimiter=',')
+          np.save(out_path, feature_vector)
 
           # Creates node ID --> English string lookup.
           node_lookup = NodeLookup()
