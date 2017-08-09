@@ -31,6 +31,7 @@ if not os.path.exists(data_dir + 'nearest_neighbors'):
   os.makedirs(data_dir + 'nearest_neighbors')
 
 for i in file_index_to_file_name.keys():
+  print('Determining nearest neighbors to ' + file_index_to_file_name[i])
   master_file_name = file_index_to_file_name[i]
   master_vector = file_index_to_file_vector[i]
 
@@ -43,10 +44,15 @@ for i in file_index_to_file_name.keys():
     similarity = 1 - spatial.distance.cosine(master_vector, neighbor_file_vector)
     rounded_similarity = int((similarity * 10000)) / 10000.0
 
-    named_nearest_neighbors.append({
-      'filename': neighbor_file_name,
-      'similarity': rounded_similarity
+    if(neighbor_file_name != file_index_to_file_name[i]):
+      named_nearest_neighbors.append({
+        'filename': neighbor_file_name,
+        'similarity': rounded_similarity
     })
+		
+    else:
+      print('(Excluding self-similarity)')
 
   with open(data_dir + 'nearest_neighbors/' + master_file_name + '.json', 'w') as out:
     json.dump(named_nearest_neighbors, out)
+    
