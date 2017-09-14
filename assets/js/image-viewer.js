@@ -5,6 +5,7 @@
       /**
       * Image config
       *
+      * aws: path to aws bucket with assets
       * imageSize: h,w of each image in px
       * imageScale: multiplier used to project the image positional
       *   coordinates identified in `imagePositionsFile` to the
@@ -12,23 +13,24 @@
       * maxImages: total number of images to load
       * imagePositionsFile: file that maps each image to its
       *   coordinates in the space
-      * imageToCoords: mapping from imageIdx to that images
+      * imageToCoords: mapping from imageIdx to that image's
       *   coordinates in the space {x: xpos, y: ypos}
       * imageIdxToOffsets: maps each imageIdx to 4 vec3's that
       *   represent the image's offset within its appropriate
       *   image atlas file
       **/
 
-  var imageSize = 20,
+  var dataPath = 'https://s3-us-west-2.amazonaws.com/lab-apps/meserve-kunhardt/tsne-map/smaller-app-assets/',
+      imageSize = 20,
       imageScale = 200,
       maxImages = 10000,
-      imagePositionsFile = 'https://s3-us-west-2.amazonaws.com/lab-apps/meserve-kunhardt/tsne-map/app-assets/selected_image_tsne_projections.json',
+      imagePositionsFile = dataPath + 'selected_image_tsne_projections.json',
       imageToCoords = {},
       imageIdxToOffsets = {},
 
       /**
-      * Atlas config: each atlas contains 59x59 images,
-      * where each images is 128x128 px
+      * Atlas config: each atlas contains nxn images,
+      * where each image is 128x128 px
       *
       * atlasCount: total number of atlasses to load
       * atlasPrefix: path to the atlas file
@@ -40,7 +42,8 @@
       *   loaded
       * atlasCellSize: total number of pixels in the x,y dimensions
       *   of each image in the atlas
-      * atlasHW: [h,w] of the atlas size in px
+      * atlasHW: [h,w] of the atlas size in px (including whitespace on right
+      *   and bottom to make image height and width each a power of two)
       * atlasContentHW: [h,w] of the atlas content in px (as opposed to the
       *   remainder of the atlasHW, which is used to pad the atlas so the x,y
       *   dimensions are each a power of two)
@@ -51,13 +54,16 @@
       **/
 
       atlasCount = 1,
-      atlasFile = 'https://s3-us-west-2.amazonaws.com/lab-apps/meserve-kunhardt/tsne-map/app-assets/image-atlas-pot.jpg',
+      atlasFile = dataPath + 'image-atlas-pot.jpg',
       atlasRowAndCols = 100,
       cellsPerAtlas = atlasRowAndCols**2,
       loadedAtlasCount = 0,
       atlasCellSize = 128,
       atlasHW = [16384, 16384],
-      atlasContentHW = [12800, 12600],
+      atlasContentHW = [
+        atlasRowAndCols*atlasCellSize,
+        (atlasRowAndCols*atlasCellSize - (2*atlasRowAndCols))
+      ],
       atlasCoverage = [
         atlasContentHW[0]/atlasHW[0],
         atlasContentHW[1]/atlasHW[1]
@@ -86,8 +92,6 @@
   * Add DOM event listeners
   **/
 
-  window.addEventListener('resize', onWindowResize, false);
-
   button.addEventListener('click', function() {
     window.setTimeout(function() {
       welcome.style.display = 'none';
@@ -99,14 +103,12 @@
   * Initialize
   **/
 
-  window.tsne.init = function() {
-    get(imagePositionsFile, function(coordData) {
-      imageToCoords = JSON.parse(coordData);
-      init();
-    });
-  };
+  get(imagePositionsFile, function(coordData) {
+    imageToCoords = JSON.parse(coordData);
+    init();
+  });
 
-  window.tsne.init();
+  window.addEventListener('resize', onWindowResize, false);
 
   function get(url, success, err) {
     var xmlhttp = new XMLHttpRequest();
@@ -180,26 +182,24 @@
   function loadTexture() {
     THREE.FileLoader.prototype.crossOrigin = '';
     var loader = new AjaxTextureLoader();
-
-    var texture = loader.load(
-      atlasFile,
-      addImages,
-      handleProgress
-    );
+    var texture = loader.load( atlasFile, addImages, handleProgress );
   }
 
   function addImages(texture) {
     texture.flipY = false;
 
-    var images = Object.keys(imageToCoords),
-        geometry = new THREE.Geometry();
-
-    // clear out the extant vertices
-    geometry.vertices = [];
-    geometry.faceVertexUvs[0] = [];
+    var images = Object.keys(imageToCoords);
+    var geometry = getGeometry();
 
     // identify one sub image in the atlas images for each image file
     for (var i=0; i<maxImages; i++) {
+
+      if (i > 0 && i % 1000 === 0) {
+        var obj = getObject(geometry, texture);
+        scene.add(obj);
+
+        var geometry = getGeometry();
+      }
 
       /**
       * Compute the locational vertices to position this image
@@ -313,13 +313,26 @@
         imageIdxToOffsets[i][3]
       ]);
     }
+  }
 
-    /**
-    * Create one material per image atlas
-    **/
+  /**
+  * Get a geometry for the scene
+  **/
 
-    var obj = new THREE.Object3D();
+  function getGeometry() {
+    var geometry = new THREE.Geometry();
 
+    // clear out the extant vertices
+    geometry.vertices = [];
+    geometry.faceVertexUvs[0] = [];
+    return geometry;
+  }
+
+  /**
+  * Create one material per image atlas
+  **/
+
+  function getObject(geometry, texture) {
     var uniforms = {
       time: {
         type: 'f',
@@ -356,10 +369,11 @@
     mesh.doubleSided = true;
     mesh.position.x = 100;
     mesh.position.z = 100;
+
+    var obj = new THREE.Object3D();
     obj.add(mesh);
 
-    // add the built-up object to the scene
-    scene.add(obj);
+    return obj;
   }
 
   function animate() {
