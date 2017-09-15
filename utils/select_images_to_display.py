@@ -1,4 +1,4 @@
-import json, glob, os, random, shutil
+import json, glob, os, random, shutil, random
 
 selected = {}
 total_images = 10000
@@ -12,7 +12,9 @@ match_waiting_room = set()
 for c, i in enumerate(glob.glob(data_dir + '128-thumbs/*.jpg')):
   img_to_idx[i] = c
 
-for i in glob.glob(data_dir + 'nearest_neighbors/*.json'):
+json_files = glob.glob(data_dir + 'nearest_neighbors/*.json')
+random.shuffle(json_files)
+for i in json_files:
   if len(selected.keys()) == total_images:
     continue
 

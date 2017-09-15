@@ -5,30 +5,30 @@
       /**
       * Image config
       *
+      * aws: path to aws bucket with assets
       * imageSize: h,w of each image in px
       * imageScale: multiplier used to project the image positional
       *   coordinates identified in `imagePositionsFile` to the
       *   three.js space
-      * maxImages: total number of images to load
       * imagePositionsFile: file that maps each image to its
       *   coordinates in the space
-      * imageToCoords: mapping from imageIdx to that images
+      * imageToCoords: mapping from imageIdx to that image's
       *   coordinates in the space {x: xpos, y: ypos}
       * imageIdxToOffsets: maps each imageIdx to 4 vec3's that
       *   represent the image's offset within its appropriate
       *   image atlas file
       **/
 
-  var imageSize = 20,
+  var dataPath = 'https://s3-us-west-2.amazonaws.com/lab-apps/meserve-kunhardt/tsne-map/smaller-app-assets/',
+      dataPath = 'data/',
+      imageSize = 20,
       imageScale = 200,
-      maxImages = 10000,
-      imagePositionsFile = 'https://s3-us-west-2.amazonaws.com/lab-apps/meserve-kunhardt/tsne-map/app-assets/selected_image_tsne_projections.json',
+      imagePositionsFile = dataPath + 'json/selected_image_tsne_projections.json',
       imageToCoords = {},
       imageIdxToOffsets = {},
 
       /**
-      * Atlas config: each atlas contains 59x59 images,
-      * where each images is 128x128 px
+      * Atlas config: each atlas contains nxn images
       *
       * atlasCount: total number of atlasses to load
       * atlasPrefix: path to the atlas file
@@ -40,7 +40,8 @@
       *   loaded
       * atlasCellSize: total number of pixels in the x,y dimensions
       *   of each image in the atlas
-      * atlasHW: [h,w] of the atlas size in px
+      * atlasHW: [h,w] of the atlas size in px (including whitespace on right
+      *   and bottom to make image height and width each a power of two)
       * atlasContentHW: [h,w] of the atlas content in px (as opposed to the
       *   remainder of the atlasHW, which is used to pad the atlas so the x,y
       *   dimensions are each a power of two)
@@ -48,20 +49,25 @@
       *   actual atlas content (as opposed to the padding that occupies
       *   the remainder of the atlas to keep the x,y dimensions each a
       *   power of two)
+      * imagesPerAtlas: number of images that are contained in each atlas
       **/
 
-      atlasCount = 1,
-      atlasFile = 'https://s3-us-west-2.amazonaws.com/lab-apps/meserve-kunhardt/tsne-map/app-assets/image-atlas-pot.jpg',
-      atlasRowAndCols = 100,
+      atlasCount = 10,
+      atlasPrefix = dataPath + 'textures/64/image-atlas-',
+      atlasRowAndCols = 32,
       cellsPerAtlas = atlasRowAndCols**2,
       loadedAtlasCount = 0,
-      atlasCellSize = 128,
-      atlasHW = [16384, 16384],
-      atlasContentHW = [12800, 12600],
+      atlasCellSize = 64,
+      atlasHW = [2048, 2048],
+      atlasContentHW = [
+        atlasRowAndCols*atlasCellSize,
+        atlasRowAndCols*atlasCellSize
+      ],
       atlasCoverage = [
         atlasContentHW[0]/atlasHW[0],
         atlasContentHW[1]/atlasHW[1]
       ],
+      imagesPerAtlas = (atlasHW[0]/atlasCellSize)**2,
 
       /**
       * View config
@@ -74,9 +80,7 @@
       scene,
       stats,
       controls,
-      texture,
-      particles,
-      combinedMesh,
+      textures = {}, // idx to texture
       welcome = document.querySelector('.welcome'),
       bar = document.querySelector('.progress-bar-inner'),
       container = document.querySelector('.progress-bar'),
@@ -85,8 +89,6 @@
   /**
   * Add DOM event listeners
   **/
-
-  window.addEventListener('resize', onWindowResize, false);
 
   button.addEventListener('click', function() {
     window.setTimeout(function() {
@@ -99,14 +101,12 @@
   * Initialize
   **/
 
-  window.tsne.init = function() {
-    get(imagePositionsFile, function(coordData) {
-      imageToCoords = JSON.parse(coordData);
-      init();
-    });
-  };
+  get(imagePositionsFile, function(coordData) {
+    imageToCoords = JSON.parse(coordData);
+    init();
+  });
 
-  window.tsne.init();
+  window.addEventListener('resize', onWindowResize, false);
 
   function get(url, success, err) {
     var xmlhttp = new XMLHttpRequest();
@@ -146,7 +146,7 @@
     addLight();
     addStats();
     addControls();
-    loadTexture();
+    loadTextures();
     animate();
   }
 
@@ -177,29 +177,39 @@
     controls.panSpeed = 0.8;
   }
 
-  function loadTexture() {
+  function loadTextures() {
     THREE.FileLoader.prototype.crossOrigin = '';
     var loader = new AjaxTextureLoader();
-
-    var texture = loader.load(
-      atlasFile,
-      addImages,
-      handleProgress
-    );
+    for (var i=0; i<atlasCount; i++) {
+      var atlasFile = atlasPrefix + i + '.jpg';
+      // Pass the texture idx and texture to the handleTexture callback
+      loader.load( atlasFile, handleTexture.bind(null, i));
+    }
   }
 
-  function addImages(texture) {
+  function handleTexture(textureIdx, texture) {
+    // Pop this texture into place
+    textures[textureIdx] = texture;
+    loadedAtlasCount += 1;
+    updateLoadProgress();
+    addImages(textureIdx);
+  }
+
+  function addImages(textureIdx) {
+    var texture = textures[textureIdx];
     texture.flipY = false;
 
-    var images = Object.keys(imageToCoords),
-        geometry = new THREE.Geometry();
-
-    // clear out the extant vertices
-    geometry.vertices = [];
-    geometry.faceVertexUvs[0] = [];
+    var images = Object.keys(imageToCoords);
+    var geometry = getGeometry();
 
     // identify one sub image in the atlas images for each image file
-    for (var i=0; i<maxImages; i++) {
+    for (var i=0; i<imagesPerAtlas; i++) {
+      if (i > 0 && i % 1000 === 0) {
+        renderObject(geometry, textureIdx);
+
+        // Initialize a new empty geometry
+        var geometry = getGeometry();
+      }
 
       /**
       * Compute the locational vertices to position this image
@@ -208,10 +218,17 @@
       * Each vertex is given in x,y,z order
       **/
 
-      var coords = imageToCoords[images[i]];
+      // Adjust image idx by current texture position
+      var imageIdx = ((textureIdx*imagesPerAtlas) + i);
+
+      // Retrieve the coordinates for this image
+      var coords = imageToCoords[ images[ imageIdx ] ];
+
+      if (!coords) break;
+
       coords.x *= imageScale;
       coords.y *= imageScale;
-      coords.z = Math.random() * 20;
+      coords.z = Math.random() * 60;
 
       geometry.vertices.push(
         new THREE.Vector3(
@@ -314,51 +331,44 @@
       ]);
     }
 
-    /**
-    * Create one material per image atlas
-    **/
+    // Add the last object to the scene
+    renderObject(geometry, textureIdx);
+  }
 
-    var obj = new THREE.Object3D();
+  /**
+  * Get a geometry for the scene
+  **/
 
-    var uniforms = {
-      time: {
-        type: 'f',
-        value: 1.0
-      },
-      size: {
-        type: 'v2',
-        value: new THREE.Vector2(WIDTH, HEIGHT)
-      },
-      map: {
-        type: 't',
-        value: texture
-      },
-      effectAmount: {
-        type: 'f',
-        value: 0.0
-      }
-    };
+  function getGeometry() {
+    var geometry = new THREE.Geometry();
 
-    // create some custom shaders for these objects!
-    var shaderMaterial = new THREE.ShaderMaterial({
-      uniforms: uniforms,
-      vertexShader: document.querySelector('#vertex').textContent,
-      fragmentShader: document.querySelector('#fragment').textContent
+    // clear out the extant vertices
+    geometry.vertices = [];
+    geometry.faceVertexUvs[0] = [];
+    return geometry;
+  }
+
+  /**
+  * Create one material per image atlas
+  **/
+
+  function renderObject(geometry, textureIdx) {
+    var material = new THREE.MeshBasicMaterial({
+      map: textures[textureIdx],
+      overdraw: 0.5
     });
-    shaderMaterial.transparent = false;
-    shaderMaterial.depthTest = false;
 
     // build some meshes for the object
-    var mesh = new THREE.Mesh(
+    mesh = new THREE.Mesh(
       geometry,
-      shaderMaterial
+      material
     );
-    mesh.doubleSided = true;
+    mesh.doubleSided = false;
     mesh.position.x = 100;
     mesh.position.z = 100;
-    obj.add(mesh);
 
-    // add the built-up object to the scene
+    var obj = new THREE.Object3D();
+    obj.add(mesh);
     scene.add(obj);
   }
 
@@ -380,11 +390,8 @@
     controls.handleResize();
   }
 
-  function handleProgress(xhr) {
-    var percentComplete = xhr.loaded / xhr.total * 100;
-    var completeNumerator = (loadedAtlasCount * 100) + percentComplete;
-    var completeDenominator = atlasCount*100;
-    var totalPercent = (completeNumerator-5) / completeDenominator;
+  function updateLoadProgress() {
+    var totalPercent = ((loadedAtlasCount*100)-5) / (atlasCount*100);
     updateProgressBar(totalPercent);
   }
 
@@ -392,7 +399,7 @@
     bar.style.width = (percentDone * container.clientWidth) + 'px';
     if (percentDone >= .95 && percentDone < 1) {
       window.setTimeout(updateProgressBar.bind(null, percentDone+0.01), 1000);
-    } else if (percentDone === 1) {
+    } else if (percentDone >= 1) {
       button.setAttribute('class', 'button');
     }
   }
