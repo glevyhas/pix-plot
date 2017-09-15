@@ -224,8 +224,6 @@
       // Retrieve the coordinates for this image
       var coords = imageToCoords[ images[ imageIdx ] ];
 
-      console.log(textureIdx, imageIdx, imagesPerAtlas, coords);
-
       if (!coords) break;
 
       coords.x *= imageScale;
