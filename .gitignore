@@ -3,3 +3,5 @@ data/
 data.tar.gz
 *.pem
 *.swp
+utils/image_vectors/
+utils/texture-list.txt
