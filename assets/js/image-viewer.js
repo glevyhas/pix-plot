@@ -81,6 +81,8 @@
       stats,
       controls,
       texture,
+      mesh,
+      material,
       particles,
       combinedMesh,
       welcome = document.querySelector('.welcome'),
@@ -211,7 +213,7 @@
       var coords = imageToCoords[images[i]];
       coords.x *= imageScale;
       coords.y *= imageScale;
-      coords.z = Math.random() * 20;
+      coords.z = Math.random() * 60;
 
       geometry.vertices.push(
         new THREE.Vector3(
@@ -333,40 +335,18 @@
   **/
 
   function getObject(geometry, texture) {
-    var uniforms = {
-      time: {
-        type: 'f',
-        value: 1.0
-      },
-      size: {
-        type: 'v2',
-        value: new THREE.Vector2(WIDTH, HEIGHT)
-      },
-      map: {
-        type: 't',
-        value: texture
-      },
-      effectAmount: {
-        type: 'f',
-        value: 0.0
-      }
-    };
 
-    // create some custom shaders for these objects!
-    var shaderMaterial = new THREE.ShaderMaterial({
-      uniforms: uniforms,
-      vertexShader: document.querySelector('#vertex').textContent,
-      fragmentShader: document.querySelector('#fragment').textContent
+    var material = new THREE.MeshBasicMaterial({
+      map: texture,
+      overdraw: 0.5
     });
-    shaderMaterial.transparent = false;
-    shaderMaterial.depthTest = false;
 
     // build some meshes for the object
-    var mesh = new THREE.Mesh(
+    mesh = new THREE.Mesh(
       geometry,
-      shaderMaterial
+      material
     );
-    mesh.doubleSided = true;
+    mesh.doubleSided = false;
     mesh.position.x = 100;
     mesh.position.z = 100;
 
