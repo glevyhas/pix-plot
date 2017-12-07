@@ -3,12 +3,13 @@
  * @author Mark Lundin   / http://mark-lundin.com
  * @author Simone Manini / http://daron1337.github.io
  * @author Luca Antiga   / http://lantiga.github.io
+ * @modified by Cello / http://milletforall.com
  */
 
 THREE.TrackballControls = function ( object, domElement ) {
 
   var _this = this;
-  var STATE = { NONE: - 1, ROTATE: 0, ZOOM: 1, PAN: 2, TOUCH_ROTATE: 3, TOUCH_ZOOM_PAN: 4 };
+  var STATE = { NONE: - 1, ROTATE: 2, ZOOM: 1, PAN: 0, TOUCH_ROTATE: 3, TOUCH_ZOOM_PAN: 4 };
 
   this.object = object;
   this.domElement = ( domElement !== undefined ) ? domElement : document;
@@ -21,7 +22,7 @@ THREE.TrackballControls = function ( object, domElement ) {
 
   this.rotateSpeed = 1.0;
   this.zoomSpeed = 1.2;
-  this.panSpeed = 0.3;
+  this.panSpeed = 0.7;
 
   this.noRotate = false;
   this.noZoom = false;

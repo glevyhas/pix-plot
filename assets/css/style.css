@@ -1,0 +1,122 @@
+* {
+  margin: 0;
+  padding: 0;
+  color: #fff;
+  font-family: 'Open Sans';
+}
+
+body,
+html,
+canvas {
+  background: #000;
+  overflow: hidden;
+}
+
+h2 {
+  font-weight: 400;
+  font-size: 1em;
+  line-height: 1.05em;
+  text-align: left;
+  margin: 10px 0;
+}
+
+/***
+* Header
+***/
+
+.header {
+  height: 60px;
+  width: 100%;
+  position: fixed;
+  top: 0px;
+  z-index: 1;
+  overflow: hidden;
+  box-shadow: 2px 1px 5px #000;
+}
+
+.header,
+.logo {
+  background: #333;
+}
+
+.logo {
+  width: 40px;
+  padding: 10px 10px 10px 14px;
+  height: 40px;
+}
+
+.app-name,
+.tagline {
+  display: inline-block;
+  height: 100%;
+  vertical-align: top;
+  padding: 18px 34px;
+  box-sizing: border-box;
+  font-weight: 300;
+}
+
+.app-name {
+  background: #444;
+  color: #fff;
+  font-size: 1.3em;
+  letter-spacing: 0.1em;
+}
+
+.tagline {
+  color: #999;
+  font-size: 1em;
+  padding-top: 20px;
+  font-weight: 400;
+  letter-spacing: .025em;
+}
+
+@media(max-width: 335px) {
+  .header .logo {
+    display: none;
+  }
+
+  .header .app-name {
+    width: 100%;
+    text-align: center;
+    padding: 18px 0;
+  }
+}
+
+/**
+* Nav
+**/
+
+nav {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 193px;
+  min-height: 100%;
+  max-height: 100%;
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 72px 10px 0 10px;
+  background: rgba(17,17,17,0.9);
+  box-shadow: 1px 0px 2px rgba(0, 0, 0, 0.7);
+  transition: transform .5s;
+}
+
+nav.hidden {
+  transform: translateX(-210px);
+}
+
+.hotspot {
+  padding: 6px 2px;
+  cursor: pointer;
+  display: inline-block;
+  text-align: center;
+  width: 80px;
+  text-transform: uppercase;
+  font-size: 13px;
+}
+
+.hotspot .background-image {
+  padding-bottom: 110%;
+  background-position: 50% 11%;
+  margin: 0 5%;
+}
