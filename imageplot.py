@@ -3,6 +3,7 @@ from collections import defaultdict
 from sklearn.manifold import TSNE
 from six.moves import urllib
 from os.path import join
+from PIL import Image
 import glob, json, os, re, sys, tarfile, psutil, umap, subprocess
 import tensorflow as tf
 import numpy as np
@@ -189,11 +190,17 @@ class Imageplot:
       img = self.get_filename(self.vector_files[c])
       if img in self.errored_images:
         continue
-      self.image_positions.append({
-        'x': self.limit_float( i[0] ),
-        'y': self.limit_float( i[1] ),
-        'img': os.path.basename(img).split('.')[0]
-      })
+      thumb_path = join(self.output_dir, 'thumbs', '32px', img)
+      with Image.open(thumb_path) as image:
+        width, height = image.size
+      # Add the image name, x offset, y offset
+      self.image_positions.append([
+        os.path.basename(img).split('.')[0],
+        int(i[0] * 100),
+        int(i[1] * 100),
+        width,
+        height
+      ])
     out_path = join(self.output_dir, 'tsne_image_positions.json')
     with open(out_path, 'w') as out:
       json.dump(self.image_positions, out)
@@ -219,7 +226,7 @@ class Imageplot:
     thumb_dir = join(self.output_dir, 'thumbs', str(thumb_size) + 'px')
     with open(join(self.output_dir, 'tsne_image_positions.json')) as f:
       for i in json.load(f):
-        thumbs.append( join(thumb_dir, i['img'] + '.jpg') )
+        thumbs.append( join(thumb_dir, i[0] + '.jpg') )
     return thumbs
 
 

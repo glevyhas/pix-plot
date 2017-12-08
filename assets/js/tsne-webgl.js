@@ -135,25 +135,28 @@ fileLoader.load(url, function(data) {
 function setImageData(json) {
   var map = {}
   json.forEach(function(img, idx) {
+    var img = parseImage(img);
     // Store a sorted list of the imageData keys
-    imageDataKeys.push(img.img);
+    imageDataKeys.push(img.name);
     // Store data mapping the image to its atlas position
     var imageIndexInAtlas = idx % (atlas.rows * atlas.cols);
-    // Store the relative width of an image in an atlas
-    var w = image.width / atlas.width;
-    var h = image.height / atlas.height;
+    // Store the relative width and height of each 32px cell in an atlas
+    var cellWidth = image.width / atlas.width;
+    var cellHeight = image.height / atlas.height;
     // Store the row in which this image occurs in its atlas
     var row = Math.floor(imageIndexInAtlas / atlas.rows);
     // Compute the atlas index among all atlas files
     var atlasIdx = Math.floor(idx / (atlas.rows * atlas.cols));
-    // identify the images per atlas
+    // Identify the images per atlas
     var imagesPerAtlas = atlas.rows * atlas.cols;
     // Push the image data to the global data store
-    imageData[img.img] = {
+    imageData[img.name] = {
       idx: idx,
+      width: img.width,
+      height: img.height,
       pos: {
-        x: img.x * 1500,
-        y: img.y * 1200,
+        x: img.x * 15,
+        y: img.y * 12,
         z: 2000 + (idx/100),
       },
       atlas: {
@@ -162,10 +165,10 @@ function setImageData(json) {
         col: imageIndexInAtlas % atlas.cols,
       },
       uv: {
-        w: w,
-        h: h,
-        x: (imageIndexInAtlas % atlas.cols) * w,
-        y: 1 - (row * h) - h,
+        w: img.width / atlas.width,
+        h: img.height / atlas.height,
+        x: ((imageIndexInAtlas % atlas.cols) * cellWidth) + (img.xOffset / atlas.width),
+        y: (1 - (row * cellHeight) - cellHeight) + (img.yOffset / atlas.height),
         face: (idx % imagesPerMesh) * 2,
       },
       material: {
@@ -174,6 +177,29 @@ function setImageData(json) {
     }
   })
   return map;
+}
+
+/**
+* Identify the following attributes for the image:
+*   name: the image's name without extension
+*   x: the image's X dimension position in chart coordinates
+*   y: the image's Y dimension position in chart coordinates
+*   width: the width of the image within its 32px cell
+*   height: the height of the image within its 32px cell
+*   xOffset: the image's left offset from its cell boundaries
+*   yOffest: the image's top offset from its cell boundaries
+**/
+
+function parseImage(img) {
+  return {
+    name: img[0],
+    x: img[1],
+    y: img[2],
+    width: img[3],
+    height: img[4],
+    xOffset: (image.width - img[3])/2,
+    yOffset: (image.height - img[4])/2
+  }
 }
 
 /**
@@ -257,18 +283,18 @@ function updateVertices(geometry, img) {
       img.pos.z
     ),
     new THREE.Vector3(
-      img.pos.x + image.shownWidth,
+      img.pos.x + (img.width * 2),
       img.pos.y,
       img.pos.z
     ),
     new THREE.Vector3(
-      img.pos.x + image.shownWidth,
-      img.pos.y + image.shownHeight,
+      img.pos.x + (img.width * 2),
+      img.pos.y + (img.height * 2),
       img.pos.z
     ),
     new THREE.Vector3(
       img.pos.x,
-      img.pos.y + image.shownHeight,
+      img.pos.y + (img.height * 2),
       img.pos.z
     )
   );
