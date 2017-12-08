@@ -211,13 +211,11 @@ class Imageplot:
     Create image atlas files in each required size
     '''
     atlas_group_imgs = []
-    atlas_sizes = self.sizes[:-1]
-    for thumb_size in atlas_sizes:
+    for thumb_size in self.sizes:
       # identify the images for this atlas group
       atlas_thumbs = self.get_atlas_thumbs(thumb_size)
-      print('thumb len', len(atlas_thumbs))
       self.write_atlas_files(thumb_size, atlas_thumbs)
-    # assert all image atlases have the same number of images
+    # assert all image atlas files have the same number of images
     assert all(i == atlas_group_imgs[0] for i in atlas_group_imgs)
 
 
