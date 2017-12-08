@@ -211,7 +211,7 @@ class Imageplot:
     Create image atlas files in each required size
     '''
     atlas_group_imgs = []
-    for thumb_size in self.sizes:
+    for thumb_size in self.sizes[1:-1]:
       # identify the images for this atlas group
       atlas_thumbs = self.get_atlas_thumbs(thumb_size)
       self.write_atlas_files(thumb_size, atlas_thumbs)
