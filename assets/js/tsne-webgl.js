@@ -32,8 +32,8 @@ var largeAtlasCount = atlasCount * 4;
 var meshes = [];
 
 // Many graphics cards only support 2**16 vertices per mesh,
-// and each image requires 6 vertices using a non-indexed geometry
-var imagesPerMesh = 4096;
+// and each image requires 4 distinct vertices
+var imagesPerMesh = 2**14;
 
 /**
 * Scene
@@ -112,7 +112,24 @@ fileLoader.load(url, function(data) {
 
 
 /**
-* Generate all data for each image
+* Generate all data for each image. Specifically, set:
+*   idx: the image index position in the list of all images
+*   pos:
+*     x: the x position of the image in the chart space
+*     y: the y position of the image in the chart space
+*     z: the z position of the image in the chart space
+*   atlas:
+*     idx: the index position of the image in its atlas
+*     row: the row in which the image occurs in its atlas
+*     col: the col in which the image occurs in its atlas
+*   uv:
+*     w: the relative width of the image within its atlas {0:1}
+*     h: the relative height of the image within its atlas {0:1}
+*     x: the relative left offset of the image within its atlas {0:1}
+*     y: the relative top offset of the image within its atlas {0:1}
+*     face: the face in which these uv coords should be stored in the mesh
+*   material:
+*     idx: the index position of this picture's material within the image's mesh
 **/
 
 function setImageData(json) {
@@ -129,15 +146,15 @@ function setImageData(json) {
     var row = Math.floor(imageIndexInAtlas / atlas.rows);
     // Compute the atlas index among all atlas files
     var atlasIdx = Math.floor(idx / (atlas.rows * atlas.cols));
-    // Compute the atlas files per mesh
-    var atlassesPerMesh = imagesPerMesh / (atlas.rows * atlas.cols);
+    // identify the images per atlas
+    var imagesPerAtlas = atlas.rows * atlas.cols;
     // Push the image data to the global data store
     imageData[img.img] = {
       idx: idx,
       pos: {
         x: img.x * 1500,
         y: img.y * 1200,
-        z: -200 + (idx/100),
+        z: 2000 + (idx/100),
       },
       atlas: {
         idx: atlasIdx,
@@ -152,7 +169,7 @@ function setImageData(json) {
         face: (idx % imagesPerMesh) * 2,
       },
       material: {
-        idx: 0
+        idx: Math.floor( (idx % imagesPerMesh) / imagesPerAtlas )
       }
     }
   })
@@ -168,9 +185,8 @@ var textureLoader = new AjaxTextureLoader();
 
 function loadAtlasFiles() {
   for (var i=0; i<atlasCount; i++) {
-    var url = dataUrl + 'atlas_files/32px/atlas-' + i + '.jpg';
-    textureLoader.load(url, handleTexture.bind(null, i),
-      onProgress.bind(null, i))
+    textureLoader.load(dataUrl + 'atlas_files/32px/atlas-' + i + '.jpg',
+      handleTexture.bind(null, i), onProgress.bind(null, i))
   }
 }
 
@@ -223,7 +239,6 @@ function buildGeometry() {
     }
     var startMaterial = imageData[ meshImages[0] ].atlas.idx;
     var endMaterial = imageData[ meshImages[j-1] ].atlas.idx;
-    console.log(startMaterial, endMaterial)
     buildMesh(geometry, materials['32'].slice(startMaterial, endMaterial + 1));
   }
   //loadLargeAtlasFiles();
@@ -286,7 +301,7 @@ function updateFaces(geometry) {
 * Specify the face vertext uvs for each face of the image
 **/
 
-function updateFaceVertexUvs(geometry, img) {  
+function updateFaceVertexUvs(geometry, img) {
   var uv = img.uv;
   // Use .set() if the given faceVertex is already defined; see:
   // https://github.com/mrdoob/three.js/issues/7179
