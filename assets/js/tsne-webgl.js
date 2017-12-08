@@ -598,6 +598,8 @@ function updateImageGeometry(imageIndex) {
 **/
 
 var controls = new THREE.TrackballControls(camera, renderer.domElement);
+controls.zoomSpeed = 0.4;
+controls.panSpeed = 0.4;
 
 /**
 * Add Raycaster
