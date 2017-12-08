@@ -138,6 +138,10 @@ function setImageData(json) {
 /**
 * Generate all data for each image. Specifically, set:
 *   idx: the image index position in the list of all images
+*   width: the image's width within a 32px cell
+*   height: the image's height within a 32px cell
+*   xOffset: the image's left offset within a 32px cell
+*   yOffset: the image's top offset within a 32px cell
 *   pos:
 *     x: the x position of the image in the chart space
 *     y: the y position of the image in the chart space
@@ -153,7 +157,9 @@ function setImageData(json) {
 *     y: the relative top offset of the image within its atlas {0:1}
 *     face: the face in which these uv coords should be stored in the mesh
 *   material:
-*     idx: the index position of this picture's material within the image's mesh
+*     idx: the index position of this image's material within the image's mesh
+*   mesh:
+*     idx: the index position of this image's mesh among all meshes
 **/
 
 function getImageData(img, idx) {
@@ -165,15 +171,20 @@ function getImageData(img, idx) {
   var uv = getImageUvData(img, idx, atlas);
   // Get the index position of the material within this image's mesh
   var material = getImageMaterialData(idx);
+  // Get the index position of this image's mesh among all meshes
+  var mesh = getImageMeshData(idx);
   // Return the image data to the parent function
   return {
     idx: idx,
     width: img.width,
     height: img.height,
+    xOffset: img.xOffset,
+    yOffset: img.yOffset,
     atlas: atlas,
     pos: position,
     uv: uv,
     material: material,
+    mesh: mesh,
   }
 }
 
@@ -266,6 +277,17 @@ function getImageMaterialData(idx) {
 }
 
 /**
+* Identify the following mesh attributes for an image:
+*   idx: the index position of the image's mesh among all meshes
+**/
+
+function getImageMeshData(idx) {
+  return {
+    idx: Math.floor(idx / imagesPerMesh)
+  }
+}
+
+/**
 * Load Atlas Textures
 **/
 
@@ -330,7 +352,7 @@ function buildGeometry() {
     var endMaterial = imageData[ meshImages[j-1] ].atlas.index;
     buildMesh(geometry, materials['32'].slice(startMaterial, endMaterial + 1));
   }
-  //loadLargeAtlasFiles();
+  loadLargeAtlasFiles();
 }
 
 /**
@@ -470,39 +492,64 @@ function handleLargeTexture(atlasIndex, texture) {
 }
 
 function updateImages(atlasIndex) {
+  // Identify the number of images within a larger atlas file
+  var imagesPerAtlas = sizes.atlas.cols * sizes.atlas.rows;
+  // Identify the number of larger atlas files per mesh
+  var atlasFilesPerMesh = imagesPerMesh / imagesPerAtlas;
+  // Identify the mesh to which this atlas should be added
+  var meshIndex = Math.floor( atlasIndex / atlasFilesPerMesh );
+  // Identify the index position for the new atlas file
+  var materialIndex = meshes[meshIndex].material.length;
+  // Add the new atlas to its mesh
+  meshes[meshIndex].material.push( materials['64'][atlasIndex] )
+  // Request an update for this material
+  meshes[meshIndex].material[materialIndex].needsUpdate = true;
+  // Grab the geometry to which we added the new atlas
+  var geometry = meshes[meshIndex].geometry;
   // Retrieve an object that describes the images in the new atlas
-  var atlasImages = getAtlasImages(atlasIndex)
-
-  /*
-  // Update the material for the mesh
-  meshes[atlasIndex].material = [ materials['64'][atlasIndex] ];
-  meshes[atlasIndex].material.needsUpdate = true;
-  // Update the vertexUvs of each image in the new atlas
-  var geometry = meshes[atlasIndex].geometry;
-  for (var i=0; i<imagesPerMesh; i++) {
-    geometry = updateFaceVertexUvs(geometry, i)
-  }
-  meshes[atlasIndex].geometry = geometry;
-  meshes[atlasIndex].geometry.uvsNeedUpdate = true;
-  meshes[atlasIndex].geometry.verticesNeedUpdate = true;
-  */
+  getAtlasImages(atlasIndex, materialIndex).forEach(function(img) {
+    // Update the faceVertexUvs for each image to be updated
+    geometry = updateFaceVertexUvs(geometry, img);
+  })
+  meshes[meshIndex].geometry = geometry;
+  meshes[meshIndex].geometry.uvsNeedUpdate = true;
+  meshes[meshIndex].geometry.groupsNeedUpdate = true;
+  meshes[meshIndex].geometry.verticesNeedUpdate = true;
 }
 
 /**
 * Find all images in a larger image atlas and update their properties
 **/
 
-function getAtlasImages(atlasIdx) {
+function getAtlasImages(atlasIdx, materialIdx) {
   // Compute the number of images in each larger atlas
   var imgsPerAtlas = sizes.atlas.rows * sizes.atlas.cols;
   // Find the index positions of the first and last images in this atlas
   var startImage = atlasIdx * imgsPerAtlas;
   var endImage = (atlasIdx + 1) * imgsPerAtlas;
   // Return a list of images in this atlas after updating the attributes of each
-  var images = imageDataKeys.slice(startImage, endImage).reduce(function(arr, d) {
-    arr.push( getImageData(imageData[d], imageData[d].idx) );
-    return arr;
-  }, [])
+  var images = [];
+  imageDataKeys.slice(startImage, endImage).forEach(function(d) {
+    // Fetch this image from the global image store & copy to avoid mutations
+    var img = Object.assign({}, imageData[d]);
+    // Update the height, width, and x,y offsets for the image
+    img.width *= 2;
+    img.height *= 2;
+    img.xOffset *= 2;
+    img.yOffset *= 2;
+    // Get atlas information for this image
+    var atlas = getImageAtlasData(img.idx);
+    // Get image uv position for this image
+    var uv = getImageUvData(img, img.idx, atlas);
+    // Get the index position of the material within this image's mesh
+    var material = {idx: materialIdx}
+    // Update the image's data attributes
+    img.atlas = atlas;
+    img.uv = uv;
+    img.material = material;
+    images.push(img);
+    imageData[ imageDataKeys[img.idx] ] = img;
+  })
   return images;
 }
 
@@ -606,7 +653,7 @@ function flyTo(x, y, z) {
   var target = {
     x: x,
     y: y,
-    z: z+1000
+    z: z + 800
   }
   // Save the initial camera quaternion so it can be used
   // as a starting point for the slerp
