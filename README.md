@@ -1,6 +1,6 @@
-# TSNE Image Browser
+# Imageplot
 
-This repository hosts source code that visualizes tens of thousands of images in a two dimensional projection in which similar images are clustered together. The image analysis leverages Tensorflow's Inception bindings, and the visualization layer leverages a custom WebGL viewer.
+This repository hosts source code that can be used to visualize tens of thousands of images in a two-dimensional projection within which similar images are clustered together. The image analysis leverages Tensorflow's Inception bindings, and the visualization layer leverages a custom WebGL viewer.
 
 ![App preview](./assets/images/preview.png?raw=true)
 
@@ -8,7 +8,7 @@ This repository hosts source code that visualizes tens of thousands of images in
 
 To install the Python dependencies, you can run (ideally in a virtual environment):
 ```bash
-pip install -r assets/requirements.txt --user
+pip install -r assets/requirements.txt
 ```
 
 Image resizing utilities require ImageMagick compiled with jpg support:
