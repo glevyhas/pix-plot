@@ -1,10 +1,14 @@
 from __future__ import division
 from collections import defaultdict
+from sklearn.cluster import KMeans
+from sklearn.metrics import pairwise_distances_argmin_min
 from sklearn.manifold import TSNE
 from six.moves import urllib
 from os.path import join
 from PIL import Image
-import glob, json, os, re, sys, tarfile, psutil, umap, subprocess
+from umap import UMAP
+from math import ceil
+import glob, json, os, re, sys, tarfile, psutil, subprocess
 import tensorflow as tf
 import numpy as np
 
@@ -12,23 +16,26 @@ import numpy as np
 FLAGS = tf.app.flags.FLAGS
 FLAGS.model_dir = '/tmp/imagenet'
 
-class Imageplot:
+class PixPlot:
   def __init__(self, image_dir, output_dir):
     self.image_files = glob.glob(image_dir)
     self.output_dir = output_dir
     self.sizes = [16, 32, 64, 128]
+    self.n_clusters = 20
     self.errored_images = set()
     self.vector_files = []
+    self.image_vectors = []
     self.method = 'umap'
-    self.image_positions = []
     self.rewrite_image_thumbs = False
     self.rewrite_image_vectors = False
     self.rewrite_atlas_files = True
     self.create_output_dirs()
     self.create_image_thumbs()
     self.create_image_vectors()
-    self.create_2d_projection()
+    self.load_image_vectors()
+    self.write_json()
     self.create_atlas_files()
+
 
   def create_output_dirs(self):
     '''
@@ -140,25 +147,22 @@ class Imageplot:
       _ = tf.import_graph_def(graph_def, name='')
 
 
-  def create_2d_projection(self):
+  def get_2d_image_positions(self):
     '''
     Create a 2d embedding of the image vectors
     '''
-    image_vectors = self.load_image_vectors()
-    model = self.build_model(image_vectors)
-    self.write_image_positions(model)
+    model = self.build_model(self.image_vectors)
+    return self.get_image_positions(model)
 
 
   def load_image_vectors(self):
     '''
     Return all image vectors
     '''
-    vectors = []
     self.vector_files = glob.glob( join(self.output_dir, 'image_vectors', '*') )
     for c, i in enumerate(self.vector_files):
-      vectors.append(np.load(i))
+      self.image_vectors.append(np.load(i))
       print(' * loaded', c+1, 'of', len(self.vector_files), 'image vectors')
-    return vectors
 
 
   def build_model(self, image_vectors):
@@ -171,7 +175,7 @@ class Imageplot:
       return model.fit_transform( np.array(image_vectors) )
 
     elif self.method == 'umap':
-      model = umap.UMAP(n_neighbors=25, min_dist=0.00001, metric='correlation')
+      model = UMAP(n_neighbors=25, min_dist=0.00001, metric='correlation')
       return model.fit_transform( np.array(image_vectors) )
 
 
@@ -182,10 +186,11 @@ class Imageplot:
     return int(f*10000)/10000
 
 
-  def write_image_positions(self, fit_model):
+  def get_image_positions(self, fit_model):
     '''
     Write a JSON file that indicates the 2d position of each image
     '''
+    image_positions = []
     for c, i in enumerate(fit_model):
       img = self.get_filename(self.vector_files[c])
       if img in self.errored_images:
@@ -194,16 +199,57 @@ class Imageplot:
       with Image.open(thumb_path) as image:
         width, height = image.size
       # Add the image name, x offset, y offset
-      self.image_positions.append([
+      image_positions.append([
         os.path.basename(img).split('.')[0],
         int(i[0] * 100),
         int(i[1] * 100),
         width,
         height
       ])
-    out_path = join(self.output_dir, 'tsne_image_positions.json')
+    return image_positions
+
+
+  def get_centroids(self):
+    '''
+    Use KMeans clustering to find n centroid images
+    that represent the center of an image cluster
+    '''
+    model = KMeans(n_clusters=self.n_clusters)
+    X = np.array(self.image_vectors)
+    fit_model = model.fit(X)
+    centroids = fit_model.cluster_centers_
+    # find the points closest to the cluster centroids
+    closest, _ = pairwise_distances_argmin_min(centroids, X)
+    centroid_paths = [self.vector_files[i] for i in closest]
+    centroid_json = []
+    for c, i in enumerate(centroid_paths):
+      centroid_json.append({
+        'img': self.get_filename(i),
+        'label': 'Cluster ' + str(c+1)
+      })
+    return centroid_json
+
+
+  def write_json(self):
+    '''
+    Write a JSON file with image positions, the number of atlas files
+    in each size, and the centroids of the k means clusters
+    '''
+    out_path = join(self.output_dir, 'plot_data.json')
     with open(out_path, 'w') as out:
-      json.dump(self.image_positions, out)
+      json.dump({
+        'centroids': self.get_centroids(),
+        'positions': self.get_2d_image_positions(),
+        'atlas_counts': self.get_atlas_counts(),
+      }, out)
+
+
+  def get_atlas_counts(self):
+    file_count = len(self.vector_files)
+    return {
+      '32px': ceil( file_count / (64**2) ),
+      '64px': ceil( file_count / (32**2) )
+    }
 
 
   def create_atlas_files(self):
@@ -214,6 +260,7 @@ class Imageplot:
     for thumb_size in self.sizes[1:-1]:
       # identify the images for this atlas group
       atlas_thumbs = self.get_atlas_thumbs(thumb_size)
+      atlas_group_imgs.append(len(atlas_thumbs))
       self.write_atlas_files(thumb_size, atlas_thumbs)
     # assert all image atlas files have the same number of images
     assert all(i == atlas_group_imgs[0] for i in atlas_group_imgs)
@@ -222,8 +269,8 @@ class Imageplot:
   def get_atlas_thumbs(self, thumb_size):
     thumbs = []
     thumb_dir = join(self.output_dir, 'thumbs', str(thumb_size) + 'px')
-    with open(join(self.output_dir, 'tsne_image_positions.json')) as f:
-      for i in json.load(f):
+    with open(join(self.output_dir, 'plot_data.json')) as f:
+      for i in json.load(f)['positions']:
         thumbs.append( join(thumb_dir, i[0] + '.jpg') )
     return thumbs
 
@@ -242,6 +289,8 @@ class Imageplot:
 
     # subdivide the image thumbs into groups
     atlas_image_groups = self.subdivide(image_thumbs, atlas_cols**2)
+    
+    # generate a directory for images at this size if it doesn't exist
     for idx, atlas_images in enumerate(atlas_image_groups):
       print(' * creating atlas', idx, 'at size', thumb_size)
       out_path = join(out_dir, 'atlas-' + str(idx) + '.jpg')
@@ -264,6 +313,9 @@ class Imageplot:
       cmd += out_path
       os.system(cmd)
 
+    # delete the last images to montage file
+    os.remove(tmp_file_path)
+
 
   def subdivide(self, l, n):
     '''
@@ -275,4 +327,4 @@ class Imageplot:
 
 
 if __name__ == '__main__':
-  Imageplot(image_dir=sys.argv[1], output_dir='output')
+  PixPlot(image_dir=sys.argv[1], output_dir='output')

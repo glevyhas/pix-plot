@@ -1,6 +1,6 @@
-# Imageplot
+# PixPlot
 
-This repository hosts source code that can be used to visualize tens of thousands of images in a two-dimensional projection within which similar images are clustered together. The image analysis leverages Tensorflow's Inception bindings, and the visualization layer leverages a custom WebGL viewer.
+This repository contains code that can be used to visualize tens of thousands of images in a two-dimensional projection within which similar images are clustered together. The image analysis uses Tensorflow's Inception bindings, and the visualization layer uses a custom WebGL viewer.
 
 ![App preview](./assets/images/preview.png?raw=true)
 
@@ -8,7 +8,7 @@ This repository hosts source code that can be used to visualize tens of thousand
 
 To install the Python dependencies, you can run (ideally in a virtual environment):
 ```bash
-pip install -r assets/requirements.txt
+pip install -r utils/requirements.txt
 ```
 
 Image resizing utilities require ImageMagick compiled with jpg support:
@@ -23,13 +23,18 @@ The html viewer requires a WebGL-enabled browser.
 If you have a WebGL-enabled browser and a directory full of images to process, you can prepare the data for the viewer by installing the dependencies above then running:
 
 ```bash
-python imageplot.py "path/to/images/*.jpg"
+git clone https://github.com/YaleDHLab/pix-plot && cd pix-plot
+python utils/process_images.py "path/to/images/*.jpg"
 ```
 
 To see the results of this process, you can start a web server by running:
 
 ```bash
-python server.py
+# for python 3.x
+python -m http.server 5000
+
+# for python 2.x
+python -m SimpleHTTPServer 5000
 ```
 
 The visualization will then be available on port 5000.

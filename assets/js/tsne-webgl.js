@@ -23,6 +23,9 @@ var sizes = {
   }
 }
 
+// Count of 32px and 64px atlas files to fetch
+var atlasCounts = {'32px': null, '64px': null}
+
 // Create a store for the load progress. Data structure:
 // {atlas0: percentLoaded, atlas1: percentLoaded}
 var loadProgress = {};
@@ -33,16 +36,24 @@ var materials = {
   64: []
 }
 
-// Count of 32px and 64px atlas files to fetch
-var atlasCount = 7;
-var largeAtlasCount = atlasCount * 4;
+// Many graphics cards only support 2**16 vertices per mesh,
+// and each image requires 4 distinct vertices
+var imagesPerMesh = 2**14;
 
 // Create a store for meshes
 var meshes = [];
 
-// Many graphics cards only support 2**16 vertices per mesh,
-// and each image requires 4 distinct vertices
-var imagesPerMesh = 2**14;
+// Object that tracks mouse position
+var raycaster = new THREE.Raycaster();
+
+// Store of current mouse coordinates
+var mouse = new THREE.Vector2();
+
+// Store of previous mouse coordinates
+var lastMouse = new THREE.Vector2();
+
+// Store of the currently selected image
+var selected = null;
 
 /**
 * Scene
@@ -52,43 +63,32 @@ var scene = new THREE.Scene();
 scene.background = new THREE.Color( 0x111111 );
 
 /**
-* Camera
+* Camera args:
+*   [0] field of view: identifies the portion of the scene
+*     visible at any time (in degrees)
+*   [1] aspect ratio: identifies the aspect ratio of the
+*     scene in width/height
+*   [2] near clipping plane: objects closer than the near
+*     clipping plane are culled from the scene
+*   [3] far clipping plane: objects farther than the far
+*     clipping plane are culled from the scene
 **/
 
-// Specify the portion of the scene visiable at any time (in degrees)
-var fieldOfView = 75;
-
-// Specify the camera's aspect ratio
 var aspectRatio = window.innerWidth / window.innerHeight;
+var camera = new THREE.PerspectiveCamera(75, aspectRatio, 100, 50000)
 
-/*
-Specify the near and far clipping planes. Only objects
-between those planes will be rendered in the scene
-(these values help control the number of items rendered
-at any given time); see https://threejs.org/docs/#api/math/Frustum
-*/
-var nearPlane = 100;
-var farPlane = 50000;
-
-// Use the values specified above to create a camera
-var camera = new THREE.PerspectiveCamera(
-  fieldOfView, aspectRatio, nearPlane, farPlane
-);
-
-// Finally, set the camera's position {x, y, z}
-camera.position.set(0, -1000, 12000);
+// Set the camera's position {x, y, z}
+camera.position.set( 0, -1000, 12000 );
 
 /**
-* Lights
+* Light args:
+*   [0]: Hexadecimal color of the light
+*   [1]: Numeric value of the light's strength/intensity
+*   [2]: The distance from the light where the intensity is 0
 **/
 
-// Add a point light with #fff color, .7 intensity, and 0 distance
 var light = new THREE.PointLight( 0xffffff, 1, 0 );
-
-// Specify the light's position
-light.position.set( 1, 1, 100 );
-
-// Add the light to the scene
+light.position.set(1, 1, 100);
 scene.add( light )
 
 /**
@@ -113,11 +113,26 @@ document.body.appendChild( renderer.domElement );
 
 // Load the image position JSON file
 var fileLoader = new THREE.FileLoader();
-var url = dataUrl + 'tsne_image_positions.json';
-fileLoader.load(url, function(data) {
-  setImageData( JSON.parse(data) );
-  maybeBuildGeometries()
-})
+
+function loadData() {
+  fileLoader.load(dataUrl + 'plot_data.json', function(data) {
+    var data = JSON.parse( data );
+
+    // Identify the total number of atlas files to fetch and begin requests
+    atlasCounts['32px'] = data['atlas_counts']['32px'];
+    atlasCounts['64px'] = data['atlas_counts']['64px'];
+    loadAtlasFiles()
+
+    // Process the image positions
+    setImageData( data.positions );
+
+    // Render the hotspots
+    renderHotspots( data.centroids )
+
+    // Create the geometries if all data has loaded
+    maybeBuildGeometries()
+  })
+}
 
 /**
 * Pluck out the image data for each image in the incoming JSON then call
@@ -133,6 +148,29 @@ function setImageData(json) {
     // Update the global data store with this image's data
     imageData[img.name] = getImageData(img, idx);
   })
+}
+
+/**
+* Identify the following attributes for an image:
+*   name: the image's name without extension
+*   x: the image's unscaled X dimension position in chart coordinates
+*   y: the image's unscaled Y dimension position in chart coordinates
+*   width: the width of the image within its cell in the current atlas size
+*   height: the height of the image within its cell in the current atlas size
+*   xOffset: the image's left offset from its cell boundaries
+*   yOffest: the image's top offset from its cell boundaries
+**/
+
+function parseImage(img) {
+  return {
+    name: img[0],
+    x: img[1],
+    y: img[2],
+    width: img[3],
+    height: img[4],
+    xOffset: (sizes.image.width - img[3])/2,
+    yOffset: (sizes.image.height - img[4])/2
+  }
 }
 
 /**
@@ -185,29 +223,6 @@ function getImageData(img, idx) {
     uv: uv,
     material: material,
     mesh: mesh,
-  }
-}
-
-/**
-* Identify the following attributes for the image:
-*   name: the image's name without extension
-*   x: the image's unscaled X dimension position in chart coordinates
-*   y: the image's unscaled Y dimension position in chart coordinates
-*   width: the width of the image within its cell in the current atlas size
-*   height: the height of the image within its cell in the current atlas size
-*   xOffset: the image's left offset from its cell boundaries
-*   yOffest: the image's top offset from its cell boundaries
-**/
-
-function parseImage(img) {
-  return {
-    name: img[0],
-    x: img[1],
-    y: img[2],
-    width: img[3],
-    height: img[4],
-    xOffset: (sizes.image.width - img[3])/2,
-    yOffset: (sizes.image.height - img[4])/2
   }
 }
 
@@ -295,7 +310,7 @@ function getImageMeshData(idx) {
 var textureLoader = new AjaxTextureLoader();
 
 function loadAtlasFiles() {
-  for (var i=0; i<atlasCount; i++) {
+  for (var i=0; i<atlasCounts['32px']; i++) {
     textureLoader.load(dataUrl + 'atlas_files/32px/atlas-' + i + '.jpg',
       handleTexture.bind(null, i), onProgress.bind(null, i))
   }
@@ -309,7 +324,7 @@ function onProgress(atlasIndex, xhr) {
   }, 0);
   // Update or hide the loader
   var loader = document.querySelector('#loader');
-  var progress = sum / atlasCount;
+  var progress = sum / atlasCounts['32px'];
   progress < 1
     ? loader.innerHTML = parseInt(progress * 100) + '%'
     : loader.style.display = 'none';
@@ -326,7 +341,9 @@ function handleTexture(textureIndex, texture) {
 // If the textures and the mapping from image index
 // to image position are loaded, create the geometries
 function maybeBuildGeometries(textureIndex) {
-  if (Object.keys(materials['32']).length === atlasCount && imageData) {
+  var atlasCount = atlasCounts['32px'];
+  var loadedAtlasCount = Object.keys(materials['32']).length;
+  if (atlasCount == loadedAtlasCount && imageData) {
     buildGeometry();
   }
 }
@@ -479,7 +496,7 @@ function loadLargeAtlasFiles() {
     cols: 2048 / 64,
     rows: 2048 / 64
   }
-  for (var i=0; i<largeAtlasCount; i++) {
+  for (var i=0; i<atlasCounts['64px']; i++) {
     var url = dataUrl + 'atlas_files/64px/atlas-' + i + '.jpg';
     textureLoader.load(url, handleLargeTexture.bind(null, i))
   }
@@ -602,22 +619,14 @@ controls.zoomSpeed = 0.4;
 controls.panSpeed = 0.4;
 
 /**
-* Add Raycaster
+* Raycaster Events
 **/
-
-var raycaster = new THREE.Raycaster();
-var mouse = new THREE.Vector2();
-var lastMouse = new THREE.Vector2();
-var selected = null;
 
 function onMousemove(event) {
   // Calculate mouse position in normalized device coordinates
   // (-1 to +1) for the x and y axes
   mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
   mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
-  if (event.clientX < 100) {
-    document.querySelector('nav').className = 'visible';
-  }
 }
 
 // Capture the mousedown point so on mouseup we can determine
@@ -638,7 +647,7 @@ function onMouseup(event) {
   // Identify the selected item's mesh index
   var meshIndex = selected.object.userData.meshIndex;
   // rows * cols images per mesh, 2 faces per image
-  var imageIndex = (meshIndex * (sizes.atlas.rows * sizes.atlas.cols)) + Math.floor(faceIndex / 2);
+  var imageIndex = (meshIndex * imagesPerMesh) + Math.floor(faceIndex / 2);
   // Store the image name in the url hash for reference
   window.location.hash = imageDataKeys[imageIndex];
   flyTo(
@@ -655,7 +664,7 @@ function flyTo(x, y, z) {
   var target = {
     x: x,
     y: y,
-    z: z + 800
+    z: z + 700
   }
   // Save the initial camera quaternion so it can be used
   // as a starting point for the slerp
@@ -677,7 +686,7 @@ function flyTo(x, y, z) {
       THREE.Quaternion.slerp(startQuaternion, dummyCamera.quaternion, camera.quaternion, timestamp);
     })
     .onComplete(function() {
-      controls.target = new THREE.Vector3(x, y, z)
+      controls.target = new THREE.Vector3(x, y, z);
     }).start();
 }
 
@@ -687,14 +696,26 @@ canvas.addEventListener('mousedown', onMousedown, false)
 canvas.addEventListener('mouseup', onMouseup, false)
 
 /**
-* Add Click Listener to Images in Nav
+* Add nav hotspots and click listeners
 **/
 
-var nav = document.querySelector('nav');
-var navImages = nav.querySelectorAll('.hotspot');
-for (var i=0; i<navImages.length; i++) {
-  navImages[i].addEventListener('click', onNavImageClick)
+function renderHotspots(hotspotData) {
+  // Render the hotspots
+  var template = document.querySelector('#template').innerHTML;
+  var compiled = _.template(template);
+  var target = document.querySelector('#hotspots');
+  target.innerHTML = compiled({hotspots: hotspotData});
+
+  // Add click listeners to each hotspot
+  var navImages = document.querySelectorAll('.hotspot');
+  for (var i=0; i<navImages.length; i++) {
+    navImages[i].addEventListener('click', onNavImageClick)
+  }
 }
+
+/**
+* Callback handler for nav image clicks
+**/
 
 function onNavImageClick(event) {
   // Determine the mesh in which the clicked image occurs
@@ -704,14 +725,13 @@ function onNavImageClick(event) {
   var file = img.split('/')[ img.split('/').length - 1 ];
   var name = file.substring(0, file.lastIndexOf('.'));
   var coords = imageData[name].pos;
-  document.querySelector('nav').className = 'hidden';
   setTimeout(function() {
     flyTo(coords.x, coords.y, coords.z);
   }, 500)
 }
 
 /**
-* Handle window resizes
+* Window resize event listener
 **/
 
 window.addEventListener('resize', function() {
@@ -725,19 +745,21 @@ window.addEventListener('resize', function() {
 * Render!
 **/
 
-// The main animation function that re-renders the scene each animation frame
+// Main animation loop: re-renders the scene each animation frame
 function animate() {
-requestAnimationFrame( animate );
+  requestAnimationFrame(animate);
   TWEEN.update();
-  raycaster.setFromCamera( mouse, camera );
-  renderer.render( scene, camera );
+  raycaster.setFromCamera(mouse, camera);
+  renderer.render(scene, camera);
   controls.update();
 }
-animate();
 
 /**
 * Main
 **/
 
 // Initialize the requests that bootstrap the application
-loadAtlasFiles()
+loadData()
+
+// Start the animation loop
+animate()
