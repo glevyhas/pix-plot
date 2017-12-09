@@ -1,7 +1,5 @@
-.DS_Store
 data/
-data.tar.gz
+output/
+.DS_Store
 *.pem
 *.swp
-utils/image_vectors/
-utils/texture-list.txt
