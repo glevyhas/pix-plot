@@ -1,74 +1,35 @@
 <!DOCTYPE html>
-<html lang='en'>
+<html>
   <head>
-    <meta charset='utf-8'>
-    <meta http-equiv='x-ua-compatible' content='ie=edge'>
-    <meta name='author' content='Douglas Duhaime'>
-    <title>TSNE WebGL</title>
-    <link rel='icon' href='/assets/images/favicon.ico' type='image/x-icon'>
-    <link href='https://fonts.googleapis.com/css?family=Open+Sans' rel='stylesheet'>
+    <link href='https://fonts.googleapis.com/css?family=Open+Sans:300,400,600' rel='stylesheet'>
     <link rel='stylesheet' type='text/css' href='/assets/css/style.css'>
+    <title>Visualizing Image Fields</title>
+    <meta name='author' content='Douglas Duhaime'>
   </head>
-  <body>    
-    <noscript>This site works best with JavaScript enabled.</noscript>
+  <body>
     <header class='header'>
-      <img class='logo' src='/assets/images/owl.svg' alt='DHLab logo' />
-      <div class='app-name'>NEURAL NETWORKS</div>
-      <div class='tagline'>Image Fields in the Meserve-Kunhardt Collection</div>
+      <img class='logo' src='/assets/images/dhlab-logo.svg' alt='DHLab logo' />
+      <div class='app-name'>PixPlot</div>
+      <div class='tagline'>Image fields in the Meserve-Kunhardt Collection</div>
     </header>
     <div id='loader'>0%</div>
     <nav>
-      <h2>Click an image below to explore a topic:</h2>
-      <div class='hotspot'>
-        <div class='background-image' style='background-image: url(/output/thumbs/128px/MES15557.jpg)'></div>
-        <div>Boxers</div>
-      </div>
-      <div class='hotspot'>
-        <div class='background-image' style='background-image: url(/output/thumbs/128px/MES13276.jpg)'></div>
-        <div>Buildings</div>
-      </div>
-      <div class='hotspot'>
-        <div class='background-image' style='background-image: url(/output/thumbs/128px/MES17700.jpg)'></div>
-        <div>Buttons</div>
-      </div>
-      <div class='hotspot'>
-        <div class='background-image' style='background-image: url(/output/thumbs/128px/MES20315.jpg)'></div>
-        <div>Chairs</div>
-      </div>
-      <div class='hotspot'>
-        <div class='background-image' style='background-image: url(/output/thumbs/128px/MES22594.jpg)'></div>
-        <div>Gowns</div>
-      </div>
-      <div class='hotspot'>
-        <div class='background-image' style='background-image: url(/output/thumbs/128px/MES20334.jpg)'></div>
-        <div>Groups</div>
-      </div>
-      <div class='hotspot'>
-        <div class='background-image' style='background-image: url(/output/thumbs/128px/MES15328.jpg)'></div>
-        <div>Landscapes</div>
-      </div>
-      <div class='hotspot'>
-        <div class='background-image' style='background-image: url(/output/thumbs/128px/MES22336.jpg)'></div>
-        <div>Madams</div>
-      </div>
-      <div class='hotspot'>
-        <div class='background-image' style='background-image: url(/output/thumbs/128px/MES15626.jpg)'></div>
-        <div>Miniatures</div>
-      </div>
-      <div class='hotspot'>
-        <div class='background-image' style='background-image: url(/output/thumbs/128px/MES22681.jpg)'></div>
-        <div>Performers</div>
-      </div>
-      <div class='hotspot'>
-        <div class='background-image' style='background-image: url(/output/thumbs/128px/MES21013.jpg)'></div>
-        <div>Suits</div>
-      </div>
-      <div class='hotspot'>
-        <div class='background-image' style='background-image: url(/output/thumbs/128px/MES16558.jpg)'></div>
-        <div>Swords</div>
+      <div class='nav-inner'>
+        <h2>Hotspots</h2>
+        <div id='hotspots'></div>
+        <script type='text/html' id='template'>
+          <% _.forEach(hotspots, function(hotspot) { %>
+            <div class='hotspot'>
+              <div class='background-image'
+                style='background-image: url(/output/thumbs/128px/<%= hotspot.img %>)'></div>
+              <div><%= hotspot.label %></div>
+            </div>
+          <% }); %>
+        </script>
       </div>
     </nav>
     <script type='text/javascript' src='https://cdnjs.cloudflare.com/ajax/libs/three.js/88/three.min.js'></script>
+    <script type='text/javascript' src='https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.4/lodash.min.js'></script>
     <script type='text/javascript' src='/assets/js/object-assign-polyfill.js'></script>
     <script type='text/javascript' src='/assets/js/tween.js'></script>
     <script type='text/javascript' src='/assets/js/trackball-controls.js'></script>
