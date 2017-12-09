@@ -1,149 +1,40 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>TSNE Images</title>
-    <meta charset='UTF-8'>
+    <link href='https://fonts.googleapis.com/css?family=Open+Sans:300,400,600' rel='stylesheet'>
+    <link rel='stylesheet' type='text/css' href='/assets/css/style.css'>
+    <title>Visualizing Image Fields</title>
     <meta name='author' content='Douglas Duhaime'>
-    <link href='https://fonts.googleapis.com/css?family=Ubuntu' rel='stylesheet'>
-    <style>
-    html, body {
-      width: 100%;
-      height: 100%;
-      margin: 0;
-      padding: 0;
-      font-family: Ubuntu;
-      background: #000;
-    }
-
-    .welcome {
-      position: fixed;
-      top: 0;
-      right: 0;
-      bottom: 0;
-      left: 0;
-      background: rgba(0,0,0,1);
-      text-align: center;
-      color: #fff;
-      opacity: 1;
-      z-index: 1;
-      transition: opacity 2s;
-    }
-
-    .welcome-content {
-      padding: 20px;
-      box-sizing: border-box;
-      max-width: 400px;
-      display: inline-block;
-      margin-top: 200px;
-      margin-top: 21vh;
-    }
-
-    @media(min-height: 800px) {
-      .welcome-content {
-        margin-top: 300px;
-        margin-top: 28vh;
-      }
-    }
-
-    .welcome-content h1 {
-      text-align: center;
-      margin: 0;
-    }
-
-    .welcome-content h2 {
-      font-size: 1.1em;
-      margin: 5px 0 15px;
-      color: #aaa;
-    }
-
-    .welcome-content p {
-      text-align: justify;
-      margin: 0;
-    }
-
-    /**
-    * Progress bar
-    **/
-
-    .progress-bar {
-      height: 20px;
-      background: #6c6c6c;
-      margin-top: 15px;
-      position: fixed;
-      bottom: 0;
-      margin: 0;
-      left: 0;
-      width: 100%;
-      right: 0;
-    }
-
-    .progress-bar-inner {
-      height: 20px;
-      position: absolute;
-      z-index: 1;
-      left: 0;
-      top: 0;
-      bottom: 0;
-    }
-
-    button {
-      border: none;
-      padding: 10px 30px;
-      margin-top: 20px;
-      color: #fff;
-      font-size: 1em;
-      border-radius: 3px;
-      cursor: pointer;
-      transition: opacity 0.5s;
-    }
-
-    .progress-bar-inner,
-    button {
-      background: #2FAC9B;
-    }
-
-    button.disabled {
-      pointer-events: none;
-      opacity: 0.3;
-    }
-
-    a {
-      position: fixed;
-      color: #fff;
-      bottom: 10px;
-      right: 10px;
-      text-decoration: none;
-    }
-
-    a img {
-      width: 43px;
-    }
-    </style>
   </head>
   <body>
-    <div class='welcome'>
-      <div class='welcome-content'>
-        <div class='welcome-text'>
-          <h1>Neural Networks</h1>
-        </div>
-        <h2>Graphing Pictorial Tropes in the <br/>Meserve-Kunhardt Collection</h2>
-        <p>This site visualizes tens of thousands of images from the nineteenth-century Meserve-Kunhardt collection, recently acquired by Yale University. Each image was processed with a neural network image recognition algorithm and projected into a two-dimensional manifold with TSNE, such that similar images appear proximate to one another.</p>
-        <button class='button disabled'>ENTER</button>
-        <div class='progress-bar'>
-          <div class='progress-bar-inner'></div>
-        </div>
+    <header class='header'>
+      <img class='logo' src='/assets/images/dhlab-logo.svg' alt='DHLab logo' />
+      <div class='app-name'>PixPlot</div>
+      <div class='tagline'>Image fields in the Meserve-Kunhardt Collection</div>
+    </header>
+    <div id='loader'>0%</div>
+    <nav>
+      <div class='nav-inner'>
+        <h2>Hotspots</h2>
+        <div id='hotspots'></div>
+        <script type='text/html' id='template'>
+          <% _.forEach(hotspots, function(hotspot) { %>
+            <div class='hotspot'>
+              <div class='background-image'
+                style='background-image: url(/output/thumbs/128px/<%= hotspot.img %>)'></div>
+              <div><%= hotspot.label %></div>
+            </div>
+          <% }); %>
+        </script>
       </div>
-    </div>
-    <div id='target'></div>
-    <a href='http://web.library.yale.edu/dhlab'>
-      <img src='assets/images/dh-mark.png'>
-    </a>
+    </nav>
+    <script type='text/javascript' src='https://cdnjs.cloudflare.com/ajax/libs/three.js/88/three.min.js'></script>
+    <script type='text/javascript' src='https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.4/lodash.min.js'></script>
+    <script type='text/javascript' src='/assets/js/object-assign-polyfill.js'></script>
+    <script type='text/javascript' src='/assets/js/tween.js'></script>
+    <script type='text/javascript' src='/assets/js/trackball-controls.js'></script>
+    <script type='text/javascript' src='/assets/js/texture-loader.js'></script>
+    <script type='text/javascript' src='/assets/js/tsne-webgl.js'></script>
+    <script type='text/javascript' src='/assets/js/ga.js'></script>
   </body>
-  <script src='assets/vendor/js/three-r86.min.js'></script>
-  <script src='assets/vendor/js/stats.js'></script>
-  <script src='assets/vendor/js/detector.js'></script>
-  <script src='assets/vendor/js/trackball-controls.js'></script>
-  <script src='assets/js/AjaxTextureLoader.js'></script>
-  <script src='assets/js/worker-manager.js'></script>
-  <script src='assets/js/image-viewer.js'></script>
 </html>
