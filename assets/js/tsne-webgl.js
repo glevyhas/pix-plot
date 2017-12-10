@@ -7,7 +7,7 @@ var imageData = {};
 var imageDataKeys = [];
 
 // Identify data endpoint
-var dataUrl = 'http://localhost:5000/output/';
+var dataUrl = 'https://s3-us-west-2.amazonaws.com/lab-apps/pix-plot/';
 
 // Create global stores for image and atlas sizes
 var sizes = {
