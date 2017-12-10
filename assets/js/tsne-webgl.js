@@ -24,17 +24,14 @@ var sizes = {
 }
 
 // Count of 32px and 64px atlas files to fetch
-var atlasCounts = {'32px': null, '64px': null}
+var atlasCounts = { '32px': 7, '64px': 27 }
 
 // Create a store for the load progress. Data structure:
 // {atlas0: percentLoaded, atlas1: percentLoaded}
 var loadProgress = {};
 
 // Create a store for the 32px and 64px atlas materials
-var materials = {
-  32: [],
-  64: []
-}
+var materials = { 32: [], 64: [] }
 
 // Many graphics cards only support 2**16 vertices per mesh,
 // and each image requires 4 distinct vertices
@@ -55,15 +52,24 @@ var lastMouse = new THREE.Vector2();
 // Store of the currently selected image
 var selected = null;
 
+// Store of the total initial load progress {0:1}
+var progress = 0;
+
+// Texture loader for XHR requests
+var textureLoader = new AjaxTextureLoader();
+
 /**
-* Scene
+* Generate  scene object with a background color
 **/
 
-var scene = new THREE.Scene();
-scene.background = new THREE.Color( 0x111111 );
+function getScene() {
+  var scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x111111);
+  return scene;
+}
 
 /**
-* Camera args:
+* Generate the camera to be used in the scene. Camera args:
 *   [0] field of view: identifies the portion of the scene
 *     visible at any time (in degrees)
 *   [1] aspect ratio: identifies the aspect ratio of the
@@ -74,70 +80,103 @@ scene.background = new THREE.Color( 0x111111 );
 *     clipping plane are culled from the scene
 **/
 
-var aspectRatio = window.innerWidth / window.innerHeight;
-var camera = new THREE.PerspectiveCamera(75, aspectRatio, 100, 50000)
-
-// Set the camera's position {x, y, z}
-camera.position.set( 0, -1000, 12000 );
+function getCamera() {
+  var aspectRatio = window.innerWidth / window.innerHeight;
+  var camera = new THREE.PerspectiveCamera(75, aspectRatio, 100, 50000);
+  camera.position.set(0, -1000, 12000);
+  return camera;
+}
 
 /**
-* Light args:
+* Generate the light to be used in the scene. Light args:
 *   [0]: Hexadecimal color of the light
 *   [1]: Numeric value of the light's strength/intensity
 *   [2]: The distance from the light where the intensity is 0
+* @param {obj} scene: the current scene object
 **/
 
-var light = new THREE.PointLight( 0xffffff, 1, 0 );
-light.position.set(1, 1, 100);
-scene.add( light )
+function getLight(scene) {
+  var light = new THREE.PointLight(0xffffff, 1, 0);
+  light.position.set(1, 1, 100);
+  scene.add(light);
+  return light;
+}
 
 /**
-* Renderer
+* Generate the renderer to be used in the scene
 **/
 
-// Create the canvas with a renderer
-var renderer = new THREE.WebGLRenderer({ antialias: true });
-
-// Add support for retina displays
-renderer.setPixelRatio( window.devicePixelRatio );
-
-// Specify the size of the canvas
-renderer.setSize( window.innerWidth, window.innerHeight );
-
-// Add the canvas to the DOM
-document.body.appendChild( renderer.domElement );
+function getRenderer() {
+  // Create the canvas with a renderer
+  var renderer = new THREE.WebGLRenderer({antialias: true});
+  // Add support for retina displays
+  renderer.setPixelRatio(window.devicePixelRatio);
+  // Specify the size of the canvas
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  // Add the canvas to the DOM
+  document.body.appendChild(renderer.domElement);
+  return renderer;
+}
 
 /**
-* Load Image Position Data
+* Generate the controls to be used in the scene
+* @param {obj} camera: the three.js camera for the scene
+* @param {obj} renderer: the three.js renderer for the scene
 **/
 
-// Load the image position JSON file
-var fileLoader = new THREE.FileLoader();
+function getControls(camera, renderer) {
+  var controls = new THREE.TrackballControls(camera, renderer.domElement);
+  controls.zoomSpeed = 0.4;
+  controls.panSpeed = 0.4;
+  return controls;
+}
+
+/**
+* Make an XHR get reqeust for data
+*
+* @param {str} url: the url of the data to fetch
+* @param {func} handleSuccess: onSuccess callback function
+**/
+
+function get(url, handleSuccess) {
+  var xmlhttp = new XMLHttpRequest();
+  xmlhttp.onreadystatechange = function() {
+    if (xmlhttp.readyState == XMLHttpRequest.DONE) {
+      if (xmlhttp.status === 200) {
+        if (handleSuccess) handleSuccess(xmlhttp.responseText)
+      } else {
+        if (handleErr) handleErr(xmlhttp)
+      }
+    };
+  };
+  xmlhttp.open('GET', url, true);
+  xmlhttp.send();
+};
+
+/**
+* Load image positional data, and once it arrives parse
+* the image data, render the hotspots and conditionally
+* build the 32px geometries
+**/
 
 function loadData() {
-  fileLoader.load(dataUrl + 'plot_data.json', function(data) {
-    var data = JSON.parse( data );
-
-    // Identify the total number of atlas files to fetch and begin requests
-    atlasCounts['32px'] = data['atlas_counts']['32px'];
-    atlasCounts['64px'] = data['atlas_counts']['64px'];
-    loadAtlasFiles()
-
+  get(dataUrl + 'plot_data.json', function(data) {
+    var data = JSON.parse(data);
     // Process the image positions
-    setImageData( data.positions );
-
+    setImageData(data.positions);
     // Render the hotspots
-    renderHotspots( data.centroids )
-
+    renderHotspots(data.centroids);
     // Create the geometries if all data has loaded
-    maybeBuildGeometries()
+    startIfReady();
   })
 }
 
 /**
-* Pluck out the image data for each image in the incoming JSON then call
-* helper functions to build the global data structures that store each
-* image's data
+* Add positional data for each image in `json` to
+* `imageData` and `imageDataKeys`
+*
+* @param {arr} json: a list of objects, each of which
+* describes positional information for an image
 **/
 
 function setImageData(json) {
@@ -159,6 +198,10 @@ function setImageData(json) {
 *   height: the height of the image within its cell in the current atlas size
 *   xOffset: the image's left offset from its cell boundaries
 *   yOffest: the image's top offset from its cell boundaries
+*
+* @param {obj} img: an image object returned from parseImage()
+* @returns: {obj} an object detailing the positional information
+*   of an image expressed within `imageData`
 **/
 
 function parseImage(img) {
@@ -198,6 +241,12 @@ function parseImage(img) {
 *     idx: the index position of this image's material within the image's mesh
 *   mesh:
 *     idx: the index position of this image's mesh among all meshes
+*
+* @param {obj} img: an image object returned from parseImage()
+* @param {int} idx: the index position of an image among
+*   all images
+* @returns: {obj} an object detailing all positional information of
+*   an image
 **/
 
 function getImageData(img, idx) {
@@ -231,6 +280,12 @@ function getImageData(img, idx) {
 *   x: the image's scaled X position within the chart space
 *   y: the image's scaled Y position within the chart space
 *   z: the image's scaled Z position within the chart space
+*
+* @param {obj} img: an image object with `x`, `y` properties
+* @param {int} idx: the index position of an image among
+*   all images
+* @returns: {obj} an object detailing the x,y,z position
+*   of the image expressed in chart coordinates
 **/
 
 function getImagePositionData(img, idx) {
@@ -246,14 +301,17 @@ function getImagePositionData(img, idx) {
 *   index: the index position of the atlas in which the image appears
 *   row: the row within the atlas where the image appears
 *   col: the col within the atlas where the image appears
+*
+* @param {int} idx: the index position of an image among all images
+* @returns {obj}: an object identifying the image's atlas data
 **/
 
-function getImageAtlasData(imageIndex) {
-  var imageIndexInAtlas = imageIndex % (sizes.atlas.rows * sizes.atlas.cols);
+function getImageAtlasData(idx) {
+  var indexInAtlas = idx % (sizes.atlas.rows * sizes.atlas.cols);
   return {
-    index: Math.floor(imageIndex / (sizes.atlas.rows * sizes.atlas.cols)),
-    row: Math.floor(imageIndexInAtlas / sizes.atlas.rows),
-    col: imageIndexInAtlas % sizes.atlas.cols,
+    index: Math.floor(idx / (sizes.atlas.rows * sizes.atlas.cols)),
+    row: Math.floor(indexInAtlas / sizes.atlas.rows),
+    col: indexInAtlas % sizes.atlas.cols,
   }
 }
 
@@ -264,6 +322,12 @@ function getImageAtlasData(imageIndex) {
 *   x: the left offset of this image within its atlas {0:1}
 *   y: the top offset of this image within its atlas {0:1}
 *   face: the index position of this image's face within its mesh
+*
+* @param {obj} img: an image object with `width`, `height`,
+*   `xOffset`, `yOffset` properties
+* @param {int} idx: the index position of an image among
+*   all images
+* @returns {obj} an object detailing the image's uv parameters
 **/
 
 function getImageUvData(img, idx, atlas) {
@@ -283,6 +347,11 @@ function getImageUvData(img, idx, atlas) {
 * Identify the following material attributes for an image:
 *   idx: the index position of the image's material within the list of materials
 *     assigned to the image's mesh
+*
+* @param {int} idx: the index position of an image among
+*   all images
+* @returns {obj} an object detailing the image's material index within
+*   the image's mesh
 **/
 
 function getImageMaterialData(idx) {
@@ -294,6 +363,10 @@ function getImageMaterialData(idx) {
 /**
 * Identify the following mesh attributes for an image:
 *   idx: the index position of the image's mesh among all meshes
+*
+* @param {int} idx: the index position of an image among
+*   all images
+* @returns {obj} an object detailing the image's mesh index
 **/
 
 function getImageMeshData(idx) {
@@ -303,18 +376,24 @@ function getImageMeshData(idx) {
 }
 
 /**
-* Load Atlas Textures
+* Load the 32px texture files
 **/
-
-// Create a texture loader so we can load our image files
-var textureLoader = new AjaxTextureLoader();
 
 function loadAtlasFiles() {
   for (var i=0; i<atlasCounts['32px']; i++) {
-    textureLoader.load(dataUrl + 'atlas_files/32px/atlas-' + i + '.jpg',
-      handleTexture.bind(null, i), onProgress.bind(null, i))
+    var url = dataUrl + 'atlas_files/32px/atlas-' + i + '.jpg';
+    textureLoader.load(url, handleTexture.bind(null, i),
+      onProgress.bind(null, i))
   }
 }
+
+/**
+* XHR progress callback that updates the load progress meter
+*
+* @param {int} atlasIndex: the index of a 32px texture that
+*   received the progress event
+* @param {obj} xhr: an XHR object from the texture's loader
+**/
 
 function onProgress(atlasIndex, xhr) {
   loadProgress[atlasIndex] = xhr.loaded / xhr.total;
@@ -322,38 +401,57 @@ function onProgress(atlasIndex, xhr) {
   var sum = Object.keys(loadProgress).reduce(function (sum, key) {
     return sum + loadProgress[key];
   }, 0);
-  // Update or hide the loader
-  var loader = document.querySelector('#loader');
-  var progress = sum / atlasCounts['32px'];
-  progress < 1
-    ? loader.innerHTML = parseInt(progress * 100) + '%'
-    : loader.style.display = 'none';
+  // Update the progress marker
+  var loader = document.querySelector('#progress');
+  progress = sum / atlasCounts['32px'];
+  loader.innerHTML = parseInt(progress * 100) + '%';
+  if (progress === 1) startIfReady()
 }
 
-// Create a material from the new texture and call
-// the geometry builder if all textures have loaded 
+/**
+* Create a material from a new texture and check if the
+* geometry is ready to be rendered
+*
+* @param {int} textureIndex: the index of a 32px texture
+*   among all 32px textures
+* @param {obj} texture: a three.js Texture
+**/
+
 function handleTexture(textureIndex, texture) {
   var material = new THREE.MeshBasicMaterial({ map: texture });
   materials['32'][textureIndex] = material;
-  maybeBuildGeometries(textureIndex);
+  startIfReady();
 }
 
-// If the textures and the mapping from image index
-// to image position are loaded, create the geometries
-function maybeBuildGeometries(textureIndex) {
+/**
+* Create 32px geometries if textures and img data loaded
+**/
+
+function startIfReady() {
   var atlasCount = atlasCounts['32px'];
   var loadedAtlasCount = Object.keys(materials['32']).length;
-  if (atlasCount == loadedAtlasCount && imageData) {
-    buildGeometry();
+  if (loadedAtlasCount === atlasCount &&
+      Object.keys(imageData).length > 0 &&
+      progress === 1) {
+    // Use setTimeout to wait for the next available loop
+    var button = document.querySelector('#enter');
+    button.style.opacity = 1;
+    button.addEventListener('click', function() {
+      removeLoader()
+      setTimeout(buildGeometry, 1100)
+    })
   }
 }
 
 /**
-* Build Image Geometry
+* For each of the 32px textures, find the images in that
+* texture, add that image's vertices, faces, and uv positions
+* to the current geometry, and if we hit the maximum vertices
+* per geometry, add the geometry to the scene and continue.
+* Once all geometries are loaded, remove the load scene, animate
+* the picture plot, and start loading large atlas files
 **/
 
-// Iterate over the textures in the current texture set
-// and for each, add a new mesh to the scene
 function buildGeometry() {
   var meshCount = Math.ceil( imageDataKeys.length / imagesPerMesh );
   for (var i=0; i<meshCount; i++) {
@@ -369,12 +467,21 @@ function buildGeometry() {
     var endMaterial = imageData[ meshImages[j-1] ].atlas.index;
     buildMesh(geometry, materials['32'].slice(startMaterial, endMaterial + 1));
   }
+  requestAnimationFrame(animate);
+  removeLoaderScene();
   loadLargeAtlasFiles();
 }
 
 /**
-* Add one vertex for each corner of the image, using the 
-* following order: lower left, lower right, upper right, upper left
+* Add one vertex to a geometry for each corner of
+* the input image, using the following order:
+* lower left, lower right, upper right, upper left
+*
+* @param {obj} geometry: A three.js geometry
+* @param {obj} img: An object whose `pos` property contains
+*   attributes used to set the image's vertex positions
+* @returns {obj} geometry: The input geometry updated to
+*   contain the new image's vertices
 **/
 
 function updateVertices(geometry, img) {
@@ -404,7 +511,13 @@ function updateVertices(geometry, img) {
 }
 
 /**
-* Add two new faces to the geometry per subimage
+* Add two new faces to a geometry to contain the material
+* content of an image
+*
+* @param {obj} geometry: A three.js geometry that contains
+*   vertices that describe the position of an image
+* @returns {obj} geometry: The input geometry updated to
+*   contain the new image's faces
 **/
 
 function updateFaces(geometry) {
@@ -426,7 +539,15 @@ function updateFaces(geometry) {
 }
 
 /**
-* Specify the face vertext uvs for each face of the image
+* Identify the regions of the current image's material
+* that should be bound to the image's faces in its mesh
+*
+* @param {obj} geometry: A three.js geometry that contains
+*   vertices and faces that describe the position of an image
+* @param {obj} img: An object whose `uv` property contains
+*   attributes used to set the uv coordinates
+* @returns {obj} geometry: The input geometry updated to
+*   contain the new image's uv attributes
 **/
 
 function updateFaceVertexUvs(geometry, img) {
@@ -465,6 +586,9 @@ function updateFaceVertexUvs(geometry, img) {
 
 /**
 * Add a new mesh to the scene
+*
+* @param {obj} geometry: a three.js Geometry
+* @param {arr} materials: a list of three.js Material objects
 **/
 
 function buildMesh(geometry, materials) {
@@ -481,11 +605,11 @@ function buildMesh(geometry, materials) {
 }
 
 /**
-* Functions to load large atlas files
+* Set the size config variables to the larger atlas size
+* and initialize the chain of requests for larger atlas files
 **/
 
 function loadLargeAtlasFiles() {
-  // Update the global sizes object
   sizes.image = {
     width: 64,
     height: 64
@@ -502,11 +626,28 @@ function loadLargeAtlasFiles() {
   }
 }
 
+/**
+* Add a newly arrived texture to the large materials object
+* then update all images in that texture
+*
+* @param {int} atlasIndex: The index position of an atlas
+*   file among all larger atlas files
+* @param {obj} texture: A three.js Texture object
+**/
+
 function handleLargeTexture(atlasIndex, texture) {
   var material = new THREE.MeshBasicMaterial({ map: texture });
   materials['64'][atlasIndex] = material;
   updateImages(atlasIndex)
 }
+
+/**
+* Find all images from a larger atlas file in the scene and
+* update their uv properties to display higher-res texture
+*
+* @param {int} atlasIdx: a loaded atlas file's index position
+*   among all larger atlas files
+**/
 
 function updateImages(atlasIndex) {
   // Identify the number of images within a larger atlas file
@@ -535,7 +676,12 @@ function updateImages(atlasIndex) {
 }
 
 /**
-* Find all images in a larger image atlas and update their properties
+* Update properties of all images in a larger image atlas
+*
+* @param {int} atlasIdx: a loaded atlas file's index position
+*   among all larger atlas files
+* @param {int} materialIdx: a loaded material's index position
+*   among all materials in a given mesh
 **/
 
 function getAtlasImages(atlasIdx, materialIdx) {
@@ -571,69 +717,82 @@ function getAtlasImages(atlasIdx, materialIdx) {
 }
 
 /**
-* Functions to load individual image files (unused)
+* Transition from loading scene to plot scene
 **/
 
-function loadImage(imageIndex) {
-  if (!imagePositions[imageIndex]) return;
-  var image = imagePositions[imageIndex].img;
-  var url = dataUrl + '/64-thumbs/' + image + '.jpg';
-  textureLoader.load(url, handleImage.bind(null, imageIndex))
-}
-
-function handleImage(imageIndex, image) {
-  var material = new THREE.MeshBasicMaterial({ map: image });
-  materials.image[imageIndex] = material;
-  updateImageGeometry(imageIndex);
-  loadImage(imageIndex+1);
-}
-
-function updateImageGeometry(imageIndex) {
-  var atlasIndex = Math.floor(imageIndex / (sizes.atlas.rows * sizes.atlas.cols));
-  var offsetIndex = Math.floor(imageIndex % (sizes.atlas.rows * sizes.atlas.cols));
-  var faceIndex = offsetIndex * 2;
-  // Update the material for this image
-  meshes[atlasIndex].material[offsetIndex] = materials.image[imageIndex];
-  meshes[atlasIndex].material[offsetIndex].needsUpdate = true;
-  meshes[atlasIndex].material.needsUpdate = true;
-  // Update the faceVertexUvs for the faces of this image
-  meshes[atlasIndex].geometry.faceVertexUvs[0][faceIndex][0].set(0, 0)
-  meshes[atlasIndex].geometry.faceVertexUvs[0][faceIndex][1].set(1, 0)
-  meshes[atlasIndex].geometry.faceVertexUvs[0][faceIndex][2].set(1, 1)
-  meshes[atlasIndex].geometry.faceVertexUvs[0][faceIndex + 1][0].set(0, 0)
-  meshes[atlasIndex].geometry.faceVertexUvs[0][faceIndex + 1][1].set(1, 1)
-  meshes[atlasIndex].geometry.faceVertexUvs[0][faceIndex + 1][2].set(0, 1)
-  meshes[atlasIndex].geometry.faces[faceIndex].materialIndex = offsetIndex;
-  meshes[atlasIndex].geometry.faces[faceIndex + 1].materialIndex = offsetIndex;
-  meshes[atlasIndex].geometry.uvsNeedUpdate = true;
-  meshes[atlasIndex].geometry.groupsNeedUpdate = true;
-  meshes[atlasIndex].geometry.verticesNeedUpdate = true;
+function removeLoader() {
+  var blocks = document.querySelectorAll('.block');
+  for (var i=0; i<blocks.length; i++) {
+    setTimeout(slideBlock.bind(null, blocks[i]), i*100);
+  }
+  document.querySelector('#progress').style.opacity = 0;
 }
 
 /**
-* Add Controls
+* Animate an elem out of the scene
+* @param {Element} elem - a DOM element
 **/
 
-var controls = new THREE.TrackballControls(camera, renderer.domElement);
-controls.zoomSpeed = 0.4;
-controls.panSpeed = 0.4;
+function slideBlock(elem) {
+  elem.style.animation = 'exit 300s';
+  setTimeout(removeElem.bind(null, elem), 1000)
+}
 
 /**
-* Raycaster Events
+* Remove an element from the DOM
+* @param {Element} elem - a DOM element
+**/
+
+function removeElem(elem) {
+  elem.parentNode.removeChild(elem)
+}
+
+/**
+* Animate the loader scene out of frame
+**/
+
+function removeLoaderScene() {
+  var loaderScene = document.querySelector('.loader-scene');
+  loaderScene.style.transform = 'translateY(-500vh)';
+}
+
+/**
+* Bind canvas event listeners
+**/
+
+function addCanvasEventListeners() {
+  var canvas = document.querySelector('canvas');
+  canvas.addEventListener('mousemove', onMousemove, false)
+  canvas.addEventListener('mousedown', onMousedown, false)
+  canvas.addEventListener('mouseup', onMouseup, false)
+}
+
+/**
+* Set the current mouse coordinates {-1:1}
+* @param {Event} event - triggered on canvas mouse move
 **/
 
 function onMousemove(event) {
-  // Calculate mouse position in normalized device coordinates
-  // (-1 to +1) for the x and y axes
   mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
   mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
 }
 
-// Capture the mousedown point so on mouseup we can determine
-// whether user clicked or is dragging
+/**
+* Store the previous mouse position so that when the next
+* click event registers we can tell whether the user
+* is clicking or dragging.
+* @param {Event} event - triggered on canvas mousedown
+**/
+
 function onMousedown(event) {
   lastMouse.copy( mouse );
 }
+
+/**
+* Callback for mouseup events on the window. If the user
+* clicked an image, zoom to that image.
+* @param {Event} event - triggered on canvas mouseup
+**/
 
 function onMouseup(event) {
   // Determine which image is selected (if any)
@@ -657,27 +816,25 @@ function onMouseup(event) {
   );
 }
 
-// Move the camera to focus on the designated x, y, z location
+/**
+* Fly to a spot and focus the camera on that spot
+* @param {int} x - x coordinate on which to focus
+* @param {int} y - y coordinate on which to focus
+* @param {int} z - z coordinate on which to focus
+**/
+
 function flyTo(x, y, z) {
-  // x, y, z are the coordinates on which we'll focus the camera;
-  // Specify the *location* to which we'll move the camera
-  var target = {
-    x: x,
-    y: y,
-    z: z + 700
-  }
-  // Save the initial camera quaternion so it can be used
-  // as a starting point for the slerp
+  // Specify the location to which we'll move the camera
+  var target = { x: x, y: y, z: z + 700 }
+  // Use initial camera quaternion as the slerp starting point
   var startQuaternion = camera.quaternion.clone();
-  // Apply the tracking controls to a cloned dummy camera
-  // so that the final quaternion can be computed
+  // Use dummy camera focused on target as the slerp ending point
   var dummyCamera = camera.clone();
   dummyCamera.position.set(target.x, target.y, target.z);
   var dummyControls = new THREE.TrackballControls(dummyCamera);
   dummyControls.target.set(x, y, z);
   dummyControls.update();
-  // Initialize the tween to animate from the current camera quaternion
-  // to the final camera quaternion
+  // Animate between the start and end quaternions
   new TWEEN.Tween(camera.position)
     .to(target, 1000)
     .onUpdate(function(timestamp) {
@@ -690,23 +847,18 @@ function flyTo(x, y, z) {
     }).start();
 }
 
-var canvas = document.querySelector('canvas');
-canvas.addEventListener('mousemove', onMousemove, false)
-canvas.addEventListener('mousedown', onMousedown, false)
-canvas.addEventListener('mouseup', onMouseup, false)
-
 /**
-* Add nav hotspots and click listeners
+* Create nav hotspots and bind their click listeners
+* @param {arr} hotspotData - a list of objects that contain
+*   `img` and `label` attributes
 **/
 
 function renderHotspots(hotspotData) {
-  // Render the hotspots
+  // Render hotspots
   var template = document.querySelector('#template').innerHTML;
-  var compiled = _.template(template);
-  var target = document.querySelector('#hotspots');
-  target.innerHTML = compiled({hotspots: hotspotData});
-
-  // Add click listeners to each hotspot
+  var compiled = _.template(template)({hotspots: hotspotData});
+  document.querySelector('#hotspots').innerHTML = compiled;
+  // Bind click listeners
   var navImages = document.querySelectorAll('.hotspot');
   for (var i=0; i<navImages.length; i++) {
     navImages[i].addEventListener('click', onNavImageClick)
@@ -714,12 +866,10 @@ function renderHotspots(hotspotData) {
 }
 
 /**
-* Callback handler for nav image clicks
+* Find the vertices of a clicked image and fly to them
 **/
 
 function onNavImageClick(event) {
-  // Determine the mesh in which the clicked image occurs
-  // Find the vertices of this image and zoom to them
   var attr = event.target.style.backgroundImage;
   var img = attr.substring(5, attr.length-2);
   var file = img.split('/')[ img.split('/').length - 1 ];
@@ -731,21 +881,22 @@ function onNavImageClick(event) {
 }
 
 /**
-* Window resize event listener
+* On window clicks, resize the canvas & update controls
 **/
 
-window.addEventListener('resize', function() {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize( window.innerWidth, window.innerHeight );
-  controls.handleResize();
-});
+function addWindowEventListeners() {
+  window.addEventListener('resize', function() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize( window.innerWidth, window.innerHeight );
+    controls.handleResize();
+  });
+}
 
 /**
-* Render!
+* Create the animation loop that re-renders the scene each frame
 **/
 
-// Main animation loop: re-renders the scene each animation frame
 function animate() {
   requestAnimationFrame(animate);
   TWEEN.update();
@@ -758,8 +909,12 @@ function animate() {
 * Main
 **/
 
-// Initialize the requests that bootstrap the application
+var scene = getScene();
+var camera = getCamera();
+var light = getLight(scene);
+var renderer = getRenderer();
+var controls = getControls(camera, renderer);
+addCanvasEventListeners()
+addWindowEventListeners()
 loadData()
-
-// Start the animation loop
-animate()
+loadAtlasFiles()

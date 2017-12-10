@@ -2,17 +2,36 @@
 <html>
   <head>
     <link href='https://fonts.googleapis.com/css?family=Open+Sans:300,400,600' rel='stylesheet'>
-    <link rel='stylesheet' type='text/css' href='/assets/css/style.css'>
+    <link rel='stylesheet' type='text/css' href='assets/css/style.css'>
     <title>Visualizing Image Fields</title>
     <meta name='author' content='Douglas Duhaime'>
   </head>
   <body>
     <header class='header'>
-      <img class='logo' src='/assets/images/dhlab-logo.svg' alt='DHLab logo' />
+      <img class='logo' src='assets/images/dhlab-logo.svg' alt='DHLab logo' />
       <div class='app-name'>PixPlot</div>
-      <div class='tagline'>Image fields in the Meserve-Kunhardt Collection</div>
+      <div class='tagline'>Image fields in a Local Collection</div>
     </header>
-    <div id='loader'>0%</div>
+    <div class='loader-scene'>
+      <p class='welcome'>This page visualizes a large image collection within an interactive WebGL scene. Each image was processed with an <a href='https://www.cs.unc.edu/~wliu/papers/GoogLeNet.pdf' target='_blank'>Inception</a> Convolutional Neural Network, trained on <a href='http://image-net.org/challenges/LSVRC/2012/' target='_blank'>ImageNet 2012</a>, and projected into a two-dimensional manifold with the <a href='https://github.com/lmcinnes/umap' target='_blank'>UMAP</a> algorithm such that similar images appear proximate to one another.</p>
+      <div class='loader-container'>
+        <div class='loader-icon'>
+          <div class='blocks'>
+            <div class='block'></div>
+            <div class='block'></div>
+            <div class='block'></div>
+            <div class='block'></div>
+            <div class='block'></div>
+            <div class='block'></div>
+            <div class='block'></div>
+            <div class='block'></div>
+            <div class='block'></div>
+          </div>
+        </div>
+        <div id='progress'>0%</div>
+      </div>
+      <button id='enter'>Enter</button>
+    </div>
     <nav>
       <div class='nav-inner'>
         <h2>Hotspots</h2>
@@ -21,7 +40,7 @@
           <% _.forEach(hotspots, function(hotspot) { %>
             <div class='hotspot'>
               <div class='background-image'
-                style='background-image: url(/output/thumbs/128px/<%= hotspot.img %>)'></div>
+                style='background-image: url(output/thumbs/128px/<%= hotspot.img %>)'></div>
               <div><%= hotspot.label %></div>
             </div>
           <% }); %>
@@ -30,11 +49,11 @@
     </nav>
     <script type='text/javascript' src='https://cdnjs.cloudflare.com/ajax/libs/three.js/88/three.min.js'></script>
     <script type='text/javascript' src='https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.4/lodash.min.js'></script>
-    <script type='text/javascript' src='/assets/js/object-assign-polyfill.js'></script>
-    <script type='text/javascript' src='/assets/js/tween.js'></script>
-    <script type='text/javascript' src='/assets/js/trackball-controls.js'></script>
-    <script type='text/javascript' src='/assets/js/texture-loader.js'></script>
-    <script type='text/javascript' src='/assets/js/tsne-webgl.js'></script>
-    <script type='text/javascript' src='/assets/js/ga.js'></script>
+    <script type='text/javascript' src='assets/js/object-assign-polyfill.js'></script>
+    <script type='text/javascript' src='assets/js/tween.js'></script>
+    <script type='text/javascript' src='assets/js/trackball-controls.js'></script>
+    <script type='text/javascript' src='assets/js/texture-loader.js'></script>
+    <script type='text/javascript' src='assets/js/tsne-webgl.js'></script>
+    <script type='text/javascript' src='assets/js/ga.js'></script>
   </body>
 </html>
