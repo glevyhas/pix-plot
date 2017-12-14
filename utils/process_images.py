@@ -3,6 +3,7 @@ from collections import defaultdict
 from sklearn.cluster import KMeans
 from sklearn.metrics import pairwise_distances_argmin_min
 from sklearn.manifold import TSNE
+from multiprocessing import Pool
 from six.moves import urllib
 from os.path import join
 from PIL import Image
@@ -15,6 +16,24 @@ import numpy as np
 # tensorflow config
 FLAGS = tf.app.flags.FLAGS
 FLAGS.model_dir = '/tmp/imagenet'
+
+def resize_thumb(args):
+  '''
+  Create a command line request to resize an image
+  '''
+  size, img_path, idx, n_imgs, out_path = args
+  print(' * creating thumb', idx+1, 'of', n_imgs, 'at size', size)
+  cmd =  'convert ' + img_path + ' '
+  cmd += '-background none '
+  cmd += '-gravity center '
+  cmd += '-resize "' + str(size) + 'X' + str(size) + '>" '
+  cmd += out_path
+  try:
+    response = subprocess.check_output(cmd, shell=True)
+    return None
+  except subprocess.CalledProcessError as exc:
+    return img_path
+
 
 class PixPlot:
   def __init__(self, image_dir, output_dir):
@@ -61,24 +80,21 @@ class PixPlot:
     '''
     Create output thumbs in 32px, 64px, and 128px
     '''
+    resize_args = []
     n_thumbs = len(self.image_files)
     for i in self.sizes:
       print(' * creating', str(i), 'px thumbs')
       for c, j in enumerate(self.image_files):
-        print(' * creating thumb', c+1, 'of', n_thumbs, 'at size', i)
         out_dir = join(self.output_dir, 'thumbs', str(i) + 'px')
         out_path = join( out_dir, self.get_filename(j) + '.jpg' )
         if os.path.exists(out_path) and not self.rewrite_image_thumbs:
           continue
-        cmd =  'convert ' + j + ' '
-        cmd += '-background none '
-        cmd += '-gravity center '
-        cmd += '-resize "' + str(i) + 'X' + str(i) + '>" '
-        cmd += out_path
-        try:
-          response = subprocess.check_output(cmd, shell=True)
-        except subprocess.CalledProcessError as exc:
-          self.errored_images.add( self.get_filename(j) )
+        resize_args.append([i, j, c, n_thumbs, out_path])
+
+    pool = Pool()
+    for result in pool.imap(resize_thumb, resize_args):
+      if result:
+        self.errored_images.add( self.get_filename(result) )
 
 
   def create_image_vectors(self):
