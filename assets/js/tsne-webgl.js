@@ -24,7 +24,7 @@ var sizes = {
 }
 
 // Count of 32px and 64px atlas files to fetch
-var atlasCounts = { '32px': 7, '64px': 27 }
+var atlasCounts = { '32px': null, '64px': null }
 
 // Create a store for the load progress. Data structure:
 // {atlas0: percentLoaded, atlas1: percentLoaded}
@@ -162,6 +162,10 @@ function get(url, handleSuccess) {
 function loadData() {
   get(dataUrl + 'plot_data.json', function(data) {
     var data = JSON.parse(data);
+    // Set the atlas counts
+    atlasCounts = data.atlas_counts;
+    // Load the atlas files
+    loadAtlasFiles()
     // Process the image positions
     setImageData(data.positions);
     // Render the hotspots
@@ -917,4 +921,3 @@ var controls = getControls(camera, renderer);
 addCanvasEventListeners()
 addWindowEventListeners()
 loadData()
-loadAtlasFiles()
