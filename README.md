@@ -39,6 +39,14 @@ python -m SimpleHTTPServer 5000
 
 The visualization will then be available on port 5000.
 
+## Curating Automatic Hotspots
+By default, PixPlot uses [*k*-means clustering](https://en.wikipedia.org/wiki/K-means_clustering) to find twenty hotspots in the visualization.  You can adjust the number of discovered hotspots by changing the `n_clusters` value in `utils/process_images.py` and re-running the script.
+
+After processing, you can curate the discovered hotspots by editing the resulting `output/plot_data.json` file. (This file can be unwieldy in large datasets -- you may wish to disable syntax highlighting and automatic wordwrap in your text editor.) The hotspots will be listed at the very end of the JSON data, each containing a lable (by default 'Cluster *N*') and the name of an image that represents the centroid of the discovered hotspot. 
+
+You can add, remove or re-order these, change the labels to make them more meaningful, and/or adjust the image that symbolizes each hotspot in the left-hand **Hotspots** menu.  *Hint: to get the name of an image that you feel better reflects the cluster, click on it in the visualization and it will appear suffixed to the URL.*
+
+
 ## Demonstrations
 
 | Collection | # Images | Collection Info | Image Source |
