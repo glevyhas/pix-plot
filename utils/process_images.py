@@ -23,11 +23,11 @@ def resize_thumb(args):
   '''
   size, img_path, idx, n_imgs, out_path = args
   print(' * creating thumb', idx+1, 'of', n_imgs, 'at size', size)
-  cmd =  'convert ' + img_path + ' '
+  cmd =  'convert "' + img_path + '" '
   cmd += '-background none '
   cmd += '-gravity center '
   cmd += '-resize "' + str(size) + 'X' + str(size) + '>" '
-  cmd += out_path
+  cmd += '"' + out_path + '"'
   try:
     response = subprocess.check_output(cmd, shell=True)
     return None
@@ -316,7 +316,7 @@ class PixPlot:
       # write a file containing a list of images for the current montage
       tmp_file_path = join(self.output_dir, 'images_to_montage.txt')
       with open(tmp_file_path, 'w') as out:
-        out.write('\n'.join(atlas_images))
+        out.write('\n'.join(map('"{0}"'.format, atlas_images)))
 
       # build the imagemagick command to montage the images
       cmd =  'montage @' + tmp_file_path + ' '
@@ -326,7 +326,7 @@ class PixPlot:
       cmd += '-tile ' + str(atlas_cols) + 'x' + str(atlas_cols) + ' '
       cmd += '-quality 85 '
       cmd += '-sampling-factor 4:2:0 '
-      cmd += out_path
+      cmd += '"' + out_path + '"'
       os.system(cmd)
 
     # delete the last images to montage file
