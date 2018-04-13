@@ -240,7 +240,7 @@ class PixPlot:
         width, height = image.size
       # Add the image name, x offset, y offset
       image_positions.append([
-        os.path.basename(img).split('.')[0],
+        os.path.splitext(os.path.basename(img))[0],
         int(i[0] * 100),
         int(i[1] * 100),
         width,
