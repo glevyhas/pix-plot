@@ -48,6 +48,7 @@ class PixPlot:
     self.rewrite_image_thumbs = False
     self.rewrite_image_vectors = False
     self.rewrite_atlas_files = True
+    self.validate_inputs()
     self.create_output_dirs()
     self.create_image_thumbs()
     self.create_image_vectors()
@@ -55,6 +56,29 @@ class PixPlot:
     self.write_json()
     self.create_atlas_files()
 
+  def validate_inputs(self):
+    '''
+    Make sure the inputs are valid, and warn users if they're not
+    '''
+    # ensure the user provided enough input images
+    if len(self.image_files) < self.n_clusters:
+      print('Please provide >= ' + str(self.n_clusters) + ' images')
+      sys.exit()
+
+    # test whether each input image can be processed
+    invalid_files = []
+    for i in self.image_files:
+      try:
+        cmd = 'identify ' + i
+        response = subprocess.check_output(cmd, shell=True)
+      except:
+        invalid_files.append(i)
+    if invalid_files:
+      message = '\n\nThe following files could not be processed:'
+      message += '\n  ! ' + '\n  ! '.join(invalid_files) + '\n'
+      message += 'Please remove these files and reprocess your images.'
+      print(message)
+      sys.exit()
 
   def create_output_dirs(self):
     '''
@@ -148,9 +172,9 @@ class PixPlot:
         percent = float(count * block_size) / float(total_size) * 100.0
         sys.stdout.write('\r>> Downloading %s %.1f%%' % (filename, percent))
         sys.stdout.flush()
-      filepath, _ = urllib.request.urlretrieve(inception_path, filepath, progress) 
+      filepath, _ = urllib.request.urlretrieve(inception_path, filepath, progress)
     tarfile.open(filepath, 'r:gz').extractall(dest_directory)
- 
+
 
   def create_tf_graph(self):
     '''
@@ -216,7 +240,7 @@ class PixPlot:
         width, height = image.size
       # Add the image name, x offset, y offset
       image_positions.append([
-        os.path.basename(img).split('.')[0],
+        os.path.splitext(os.path.basename(img))[0],
         int(i[0] * 100),
         int(i[1] * 100),
         width,
@@ -299,13 +323,13 @@ class PixPlot:
     # build a directory for the atlas files
     out_dir = join(self.output_dir, 'atlas_files', str(thumb_size) + 'px')
     self.ensure_dir_exists(out_dir)
-    
+
     # specify number of columns in a 2048 x 2048px texture
     atlas_cols = 2048/thumb_size
 
     # subdivide the image thumbs into groups
     atlas_image_groups = self.subdivide(image_thumbs, atlas_cols**2)
-    
+
     # generate a directory for images at this size if it doesn't exist
     for idx, atlas_images in enumerate(atlas_image_groups):
       print(' * creating atlas', idx, 'at size', thumb_size)
