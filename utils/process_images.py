@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 from __future__ import division
 from collections import defaultdict
 from sklearn.cluster import KMeans
@@ -12,6 +14,7 @@ from math import ceil
 import glob, json, os, re, sys, tarfile, psutil, subprocess
 import tensorflow as tf
 import numpy as np
+import argparse
 
 # tensorflow config
 FLAGS = tf.app.flags.FLAGS
@@ -36,11 +39,11 @@ def resize_thumb(args):
 
 
 class PixPlot:
-  def __init__(self, image_dir, output_dir):
-    self.image_files = glob.glob(image_dir)
+  def __init__(self, image_files, output_dir, clusters):
+    self.image_files = image_files
     self.output_dir = output_dir
     self.sizes = [16, 32, 64, 128]
-    self.n_clusters = 20
+    self.n_clusters = clusters
     self.errored_images = set()
     self.vector_files = []
     self.image_vectors = []
@@ -55,14 +58,16 @@ class PixPlot:
     self.load_image_vectors()
     self.write_json()
     self.create_atlas_files()
+    print('Finished generating PixPlot structure for ' + str(len(self.image_files)) + ' images')
 
   def validate_inputs(self):
     '''
     Make sure the inputs are valid, and warn users if they're not
     '''
+    print(' * Validating input files')
     # ensure the user provided enough input images
     if len(self.image_files) < self.n_clusters:
-      print('Please provide >= ' + str(self.n_clusters) + ' images')
+      print('Please provide >= ' + str(self.n_clusters) + ' images: Only ' + str(len(self.image_files)) + ' was provided')
       sys.exit()
 
     # test whether each input image can be processed
@@ -104,6 +109,7 @@ class PixPlot:
     '''
     Create output thumbs in 32px, 64px, and 128px
     '''
+    print(' * Creating image thumbs')
     resize_args = []
     n_thumbs = len(self.image_files)
     for i in self.sizes:
@@ -128,6 +134,7 @@ class PixPlot:
     self.download_inception()
     self.create_tf_graph()
 
+    print(' * Creating image vectors')
     with tf.Session() as sess:
       for image_index, image in enumerate(self.image_files):
         try:
@@ -162,6 +169,7 @@ class PixPlot:
     '''
     Download the inception model to FLAGS.model_dir
     '''
+    print(' * Verifying inception model availability')
     inception_path = 'http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz'
     dest_directory = FLAGS.model_dir
     self.ensure_dir_exists(dest_directory)
@@ -180,6 +188,7 @@ class PixPlot:
     '''
     Create a graph from the saved graph_def.pb
     '''
+    print(' * Creating tf graph')
     graph_path = join(FLAGS.model_dir, 'classify_image_graph_def.pb')
     with tf.gfile.FastGFile(graph_path, 'rb') as f:
       graph_def = tf.GraphDef()
@@ -191,6 +200,7 @@ class PixPlot:
     '''
     Create a 2d embedding of the image vectors
     '''
+    print(' * Calculating 2D image positions')
     model = self.build_model(self.image_vectors)
     return self.get_image_positions(model)
 
@@ -199,6 +209,7 @@ class PixPlot:
     '''
     Return all image vectors
     '''
+    print(' * Loading image vectors')
     self.vector_files = glob.glob( join(self.output_dir, 'image_vectors', '*') )
     for c, i in enumerate(self.vector_files):
       self.image_vectors.append(np.load(i))
@@ -209,6 +220,7 @@ class PixPlot:
     '''
     Build a 2d projection of the `image_vectors`
     '''
+    print(' * Building 2D projection')
     if self.method == 'tsne':
       model = TSNE(n_components=2, random_state=0)
       np.set_printoptions(suppress=True)
@@ -230,6 +242,7 @@ class PixPlot:
     '''
     Write a JSON file that indicates the 2d position of each image
     '''
+    print(' * Writing JSON file')
     image_positions = []
     for c, i in enumerate(fit_model):
       img = self.get_filename(self.vector_files[c])
@@ -254,6 +267,7 @@ class PixPlot:
     Use KMeans clustering to find n centroid images
     that represent the center of an image cluster
     '''
+    print(' * Calculating ' + str(self.n_clusters) + ' clusters')
     model = KMeans(n_clusters=self.n_clusters)
     X = np.array(self.image_vectors)
     fit_model = model.fit(X)
@@ -275,6 +289,7 @@ class PixPlot:
     Write a JSON file with image positions, the number of atlas files
     in each size, and the centroids of the k means clusters
     '''
+    print(' * Writing main JSON plot data file')
     out_path = join(self.output_dir, 'plot_data.json')
     with open(out_path, 'w') as out:
       json.dump({
@@ -296,6 +311,7 @@ class PixPlot:
     '''
     Create image atlas files in each required size
     '''
+    print(' * Creating atlas files')
     atlas_group_imgs = []
     for thumb_size in self.sizes[1:-1]:
       # identify the images for this atlas group
@@ -367,4 +383,21 @@ class PixPlot:
 
 
 if __name__ == '__main__':
-  PixPlot(image_dir=sys.argv[1], output_dir='output')
+  parser = argparse.ArgumentParser(description='Visualize images by clustering on similarity.')
+  parser.add_argument('images', metavar='I', type=str, nargs='+',
+                   help='images to visualize')
+  parser.add_argument('--clusters', '-c', dest='clusters', type=int, nargs='?',
+                   default=20,
+                   help='clusters to calculate (default: 20)')
+  parser.add_argument('--output_folder', '-o', dest='output_folder', type=str, nargs='?',
+                   default='output',
+                   help='output folder for the generated data (default: "output")')
+
+  args = parser.parse_args()
+  if len(args.images) == 1:
+    # We guess that the single arguments is a quoted pattern and glob for backwards compatibility 
+    args.images = glob.glob(args.images[0])
+
+print(' * building PixPlot structures with ' + str(args.clusters) + ' clusters for ' + str(len(args.images)) +
+      ' images to folder ' + args.output_folder)
+PixPlot(image_files=args.images, output_dir=args.output_folder, clusters=args.clusters)
