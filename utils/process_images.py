@@ -69,7 +69,7 @@ class PixPlot:
     invalid_files = []
     for i in self.image_files:
       try:
-        cmd = 'identify ' + i
+        cmd = 'identify "' + i + '"'
         response = subprocess.check_output(cmd, shell=True)
       except:
         invalid_files.append(i)
