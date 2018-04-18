@@ -15,6 +15,7 @@ import glob, json, os, re, sys, tarfile, psutil, subprocess
 import tensorflow as tf
 import numpy as np
 import argparse
+import codecs
 
 # tensorflow config
 FLAGS = tf.app.flags.FLAGS
@@ -60,6 +61,7 @@ class PixPlot:
     self.create_atlas_files()
     print('Finished generating PixPlot structure for ' + str(len(self.image_files)) + ' images')
 
+
   def validate_inputs(self, validate_files):
     '''
     Make sure the inputs are valid, and warn users if they're not
@@ -88,6 +90,7 @@ class PixPlot:
       message += 'Please remove these files and reprocess your images.'
       print(message)
       sys.exit()
+
 
   def create_output_dirs(self):
     '''
@@ -359,8 +362,8 @@ class PixPlot:
 
       # write a file containing a list of images for the current montage
       tmp_file_path = join(self.output_dir, 'images_to_montage.txt')
-      with open(tmp_file_path, 'w') as out:
-        out.write('\n'.join(map('"{0}"'.format, atlas_images)))
+      with codecs.open(tmp_file_path, 'w', encoding='utf-8') as out:
+        out.write('\n'.join(map('"{0}"'.decode('utf-8').format, atlas_images)))
 
       # build the imagemagick command to montage the images
       cmd =  'montage @' + tmp_file_path + ' '
