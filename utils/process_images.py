@@ -15,6 +15,7 @@ import glob, json, os, re, sys, tarfile, psutil, subprocess
 import tensorflow as tf
 import numpy as np
 import argparse
+import codecs
 
 # tensorflow config
 FLAGS = tf.app.flags.FLAGS
@@ -58,7 +59,8 @@ class PixPlot:
     self.load_image_vectors()
     self.write_json()
     self.create_atlas_files()
-    print('Finished generating PixPlot structure for ' + str(len(self.image_files)) + ' images')
+    print('Processed output for' + str(len(self.image_files)) + ' images')
+
 
   def validate_inputs(self, validate_files):
     '''
@@ -88,6 +90,7 @@ class PixPlot:
       message += 'Please remove these files and reprocess your images.'
       print(message)
       sys.exit()
+
 
   def create_output_dirs(self):
     '''
@@ -359,8 +362,8 @@ class PixPlot:
 
       # write a file containing a list of images for the current montage
       tmp_file_path = join(self.output_dir, 'images_to_montage.txt')
-      with open(tmp_file_path, 'w') as out:
-        out.write('\n'.join(map('"{0}"'.format, atlas_images)))
+      with codecs.open(tmp_file_path, 'w', encoding='utf-8') as out:
+        out.write('\n'.join(map('"{0}"'.decode('utf-8').format, atlas_images)))
 
       # build the imagemagick command to montage the images
       cmd =  'montage @' + tmp_file_path + ' '
@@ -387,27 +390,29 @@ class PixPlot:
 
 
 if __name__ == '__main__':
-  parser = argparse.ArgumentParser(description='Visualize images by clustering on similarity.')
+  parser = argparse.ArgumentParser(description='Cluster similar images.')
   parser.add_argument('images', metavar='I', type=str, nargs='+',
-                   help='images to visualize')
+    help='images to visualize')
   parser.add_argument('--clusters', '-c', dest='clusters', type=int, nargs='?',
-                   default=20,
-                   help='clusters to calculate (default: 20)')
-  parser.add_argument('--skip_validation', '-s', dest='validate_files', action='store_const',
-                      const=False, default=True,
-                      help='skip image file validation (advisable if all images are known to be valid)')
-  parser.add_argument('--output_folder', '-o', dest='output_folder', type=str, nargs='?',
-                   default='output',
-                   help='output folder for the generated data (default: "output")')
+    default=20, help='clusters to calculate (default: 20)')
+  parser.add_argument('--skip_validation', '-s', dest='validate_files',
+    action='store_const', const=False, default=True,
+    help='skip image validation (useful if all images are known to be valid)')
+  parser.add_argument('--output_folder', '-o', dest='output_folder',
+    type=str, nargs='?', default='output',
+    help='output folder for the generated data (default: "output")')
 
   args = parser.parse_args()
   if len(args.images) == 1:
-     # We guess that the single arguments is a quoted pattern and glob for backwards compatibility
+     # We guess a single arg is a glob pattern for backwards compatibility
     pattern=args.images[0]
     args.images = glob.glob(pattern)
     if len(args.images) == 0:
       args.images = [pattern]
 
-print(' * building PixPlot structures with ' + str(args.clusters) + ' clusters for ' + str(len(args.images)) +
-      ' images to folder ' + args.output_folder)
-PixPlot(image_files=args.images, output_dir=args.output_folder, clusters=args.clusters, validate_files=args.validate_files)
+print(' * building PixPlot structures with ' + str(args.clusters) +
+  ' clusters for ' + str(len(args.images)) +
+  ' images to folder ' + args.output_folder)
+
+PixPlot(image_files=args.images, output_dir=args.output_folder,
+  clusters=args.clusters, validate_files=args.validate_files)
