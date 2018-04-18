@@ -135,6 +135,7 @@ nav h2 {
   padding-bottom: 110%;
   background-position: 50% 11%;
   margin: 0 5%;
+  background-repeat: no-repeat;
 }
 
 /**
