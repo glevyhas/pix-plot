@@ -39,7 +39,7 @@ def resize_thumb(args):
 
 
 class PixPlot:
-  def __init__(self, image_files, output_dir, clusters):
+  def __init__(self, image_files, output_dir, clusters, validate_files):
     self.image_files = image_files
     self.output_dir = output_dir
     self.sizes = [16, 32, 64, 128]
@@ -51,7 +51,7 @@ class PixPlot:
     self.rewrite_image_thumbs = False
     self.rewrite_image_vectors = False
     self.rewrite_atlas_files = True
-    self.validate_inputs()
+    self.validate_inputs(validate_files)
     self.create_output_dirs()
     self.create_image_thumbs()
     self.create_image_vectors()
@@ -60,17 +60,21 @@ class PixPlot:
     self.create_atlas_files()
     print('Finished generating PixPlot structure for ' + str(len(self.image_files)) + ' images')
 
-  def validate_inputs(self):
+  def validate_inputs(self, validate_files):
     '''
     Make sure the inputs are valid, and warn users if they're not
     '''
-    print(' * Validating input files')
     # ensure the user provided enough input images
     if len(self.image_files) < self.n_clusters:
       print('Please provide >= ' + str(self.n_clusters) + ' images: Only ' + str(len(self.image_files)) + ' was provided')
       sys.exit()
 
+    if not validate_files:
+      print(' * Skipping image validation')
+      return
+      
     # test whether each input image can be processed
+    print(' * Validating input files')
     invalid_files = []
     for i in self.image_files:
       try:
@@ -389,15 +393,21 @@ if __name__ == '__main__':
   parser.add_argument('--clusters', '-c', dest='clusters', type=int, nargs='?',
                    default=20,
                    help='clusters to calculate (default: 20)')
+  parser.add_argument('--skip_validation', '-s', dest='validate_files', action='store_const',
+                      const=False, default=True,
+                      help='skip image file validation (advisable if all images are known to be valid)')
   parser.add_argument('--output_folder', '-o', dest='output_folder', type=str, nargs='?',
                    default='output',
                    help='output folder for the generated data (default: "output")')
 
   args = parser.parse_args()
   if len(args.images) == 1:
-    # We guess that the single arguments is a quoted pattern and glob for backwards compatibility 
-    args.images = glob.glob(args.images[0])
+     # We guess that the single arguments is a quoted pattern and glob for backwards compatibility
+    pattern=args.images[0]
+    args.images = glob.glob(pattern)
+    if len(args.images) == 0:
+      args.images = [pattern]
 
 print(' * building PixPlot structures with ' + str(args.clusters) + ' clusters for ' + str(len(args.images)) +
       ' images to folder ' + args.output_folder)
-PixPlot(image_files=args.images, output_dir=args.output_folder, clusters=args.clusters)
+PixPlot(image_files=args.images, output_dir=args.output_folder, clusters=args.clusters, validate_files=args.validate_files)
