@@ -402,8 +402,11 @@ if __name__ == '__main__':
 
   args = parser.parse_args()
   if len(args.images) == 1:
-    # We guess that the single arguments is a quoted pattern and glob for backwards compatibility 
-    args.images = glob.glob(args.images[0])
+     # We guess that the single arguments is a quoted pattern and glob for backwards compatibility
+    pattern=args.images[0]
+    args.images = glob.glob(pattern)
+    if len(args.images) == 0:
+      args.images = [pattern]
 
 print(' * building PixPlot structures with ' + str(args.clusters) + ' clusters for ' + str(len(args.images)) +
       ' images to folder ' + args.output_folder)
