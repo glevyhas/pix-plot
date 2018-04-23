@@ -885,7 +885,8 @@ function onNavImageClick(event) {
 }
 
 /**
-* On window clicks, resize the canvas & update controls
+* On window resize, resize the canvas & update controls.
+* On hashchange, fly to the image in the hash (if available)
 **/
 
 function addWindowEventListeners() {
@@ -895,6 +896,11 @@ function addWindowEventListeners() {
     renderer.setSize( window.innerWidth, window.innerHeight );
     controls.handleResize();
   });
+  window.addEventListener('hashchange', function(e) {
+    var hash = e.newURL.split('/#')[1];
+    var coords = imageData[hash].pos;
+    flyTo(coords.x, coords.y, coords.z);
+  })
 }
 
 /**
