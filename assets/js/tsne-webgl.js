@@ -885,10 +885,7 @@ function onNavImageClick(event) {
   var img = attr.substring(5, attr.length-2);
   var file = img.split('/')[ img.split('/').length - 1 ];
   var name = file.substring(0, file.lastIndexOf('.'));
-  var coords = imageData[name].pos;
-  setTimeout(function() {
-    flyTo(coords.x, coords.y, coords.z);
-  }, 500)
+  window.location.hash = '#' + name;
 }
 
 /**
