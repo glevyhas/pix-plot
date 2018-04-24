@@ -730,6 +730,13 @@ function removeLoader() {
     setTimeout(slideBlock.bind(null, blocks[i]), i*100);
   }
   document.querySelector('#progress').style.opacity = 0;
+
+  // Fly to location if one is specified
+  var hash = window.location.href.split('/#')[1];
+  if (hash) {
+    var coords = imageData[hash].pos;
+    flyTo(coords.x, coords.y, coords.z);
+  }
 }
 
 /**
