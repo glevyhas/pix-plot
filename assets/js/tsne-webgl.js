@@ -730,6 +730,13 @@ function removeLoader() {
     setTimeout(slideBlock.bind(null, blocks[i]), i*100);
   }
   document.querySelector('#progress').style.opacity = 0;
+
+  // Fly to location if one is specified
+  var hash = window.location.href.split('/#')[1];
+  if (hash) {
+    var coords = imageData[hash].pos;
+    flyTo(coords.x, coords.y, coords.z);
+  }
 }
 
 /**
@@ -878,10 +885,7 @@ function onNavImageClick(event) {
   var img = attr.substring(5, attr.length-2);
   var file = img.split('/')[ img.split('/').length - 1 ];
   var name = file.substring(0, file.lastIndexOf('.'));
-  var coords = imageData[name].pos;
-  setTimeout(function() {
-    flyTo(coords.x, coords.y, coords.z);
-  }, 500)
+  window.location.hash = '#' + name;
 }
 
 /**
