@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-from __future__ import division
+from __future__ import division, print_function
 from collections import defaultdict
 from sklearn.cluster import KMeans
 from sklearn.metrics import pairwise_distances_argmin_min
@@ -343,6 +343,9 @@ class PixPlot:
     Given a thumb_size (int) and image_thumbs [file_path],
     write the total number of required atlas files at this size
     '''
+    if not self.rewrite_atlas_files:
+      return
+
     # build a directory for the atlas files
     out_dir = join(self.output_dir, 'atlas_files', str(thumb_size) + 'px')
     self.ensure_dir_exists(out_dir)
@@ -355,15 +358,17 @@ class PixPlot:
 
     # generate a directory for images at this size if it doesn't exist
     for idx, atlas_images in enumerate(atlas_image_groups):
-      print(' * creating atlas', idx, 'at size', thumb_size)
+      print(' * creating atlas', idx + 1, 'at size', thumb_size)
       out_path = join(out_dir, 'atlas-' + str(idx) + '.jpg')
-      if os.path.exists(out_path) and not self.rewrite_atlas_files:
-        continue
-
       # write a file containing a list of images for the current montage
       tmp_file_path = join(self.output_dir, 'images_to_montage.txt')
       with codecs.open(tmp_file_path, 'w', encoding='utf-8') as out:
-        out.write('\n'.join(map('"{0}"'.decode('utf-8').format, atlas_images)))
+        # python 2
+        try:
+          out.write('\n'.join(map('"{0}"'.decode('utf-8').format, atlas_images)))
+        # python 3
+        except AttributeError:
+          out.write('\n'.join(map('"{0}"'.format, atlas_images)))
 
       # build the imagemagick command to montage the images
       cmd =  'montage @' + tmp_file_path + ' '
