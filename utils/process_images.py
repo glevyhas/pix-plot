@@ -59,7 +59,7 @@ class PixPlot:
     self.load_image_vectors()
     self.write_json()
     self.create_atlas_files()
-    print('Processed output for' + str(len(self.image_files)) + ' images')
+    print('Processed output for ' + str(len(self.image_files)) + ' images')
 
 
   def validate_inputs(self, validate_files):
@@ -377,7 +377,10 @@ class PixPlot:
       os.system(cmd)
 
     # delete the last images to montage file
-    os.remove(tmp_file_path)
+    try:
+      os.remove(tmp_file_path)
+    except Exception:
+      pass
 
 
   def subdivide(self, l, n):
