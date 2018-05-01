@@ -356,7 +356,7 @@ THREE.TrackballControls = function ( object, domElement ) {
 
     if ( _this.enabled === false ) return;
 
-    window.removeEventListener( 'keydown', keydown );
+    window.removeEventListener( 'keydown', keydown, eventBindType );
 
     _prevState = _state;
 
@@ -386,16 +386,13 @@ THREE.TrackballControls = function ( object, domElement ) {
 
     _state = _prevState;
 
-    window.addEventListener( 'keydown', keydown, false );
+    window.addEventListener( 'keydown', keydown, eventBindType );
 
   }
 
   function mousedown( event ) {
 
     if ( _this.enabled === false ) return;
-
-    event.preventDefault();
-    event.stopPropagation();
 
     if ( _state === STATE.NONE ) {
 
@@ -420,8 +417,8 @@ THREE.TrackballControls = function ( object, domElement ) {
 
     }
 
-    document.addEventListener( 'mousemove', mousemove, false );
-    document.addEventListener( 'mouseup', mouseup, false );
+    document.addEventListener( 'mousemove', mousemove, eventBindType );
+    document.addEventListener( 'mouseup', mouseup, eventBindType );
 
     _this.dispatchEvent( startEvent );
 
@@ -430,9 +427,6 @@ THREE.TrackballControls = function ( object, domElement ) {
   function mousemove( event ) {
 
     if ( _this.enabled === false ) return;
-
-    event.preventDefault();
-    event.stopPropagation();
 
     if ( _state === STATE.ROTATE && ! _this.noRotate ) {
 
@@ -455,13 +449,10 @@ THREE.TrackballControls = function ( object, domElement ) {
 
     if ( _this.enabled === false ) return;
 
-    event.preventDefault();
-    event.stopPropagation();
-
     _state = STATE.NONE;
 
-    document.removeEventListener( 'mousemove', mousemove );
-    document.removeEventListener( 'mouseup', mouseup );
+    document.removeEventListener( 'mousemove', mousemove, eventBindType );
+    document.removeEventListener( 'mouseup', mouseup, eventBindType );
     _this.dispatchEvent( endEvent );
 
   }
@@ -528,9 +519,6 @@ THREE.TrackballControls = function ( object, domElement ) {
 
     if ( _this.enabled === false ) return;
 
-    event.preventDefault();
-    event.stopPropagation();
-
     switch ( event.touches.length ) {
 
       case 1:
@@ -584,32 +572,32 @@ THREE.TrackballControls = function ( object, domElement ) {
 
   this.dispose = function() {
 
-    this.domElement.removeEventListener( 'contextmenu', contextmenu, false );
-    this.domElement.removeEventListener( 'mousedown', mousedown, false );
-    this.domElement.removeEventListener( 'wheel', mousewheel, false );
+    this.domElement.removeEventListener( 'contextmenu', contextmenu, eventBindType );
+    this.domElement.removeEventListener( 'mousedown', mousedown, eventBindType );
+    this.domElement.removeEventListener( 'wheel', mousewheel, eventBindType );
 
-    this.domElement.removeEventListener( 'touchstart', touchstart, false );
-    this.domElement.removeEventListener( 'touchend', touchend, false );
-    this.domElement.removeEventListener( 'touchmove', touchmove, false );
+    this.domElement.removeEventListener( 'touchstart', touchstart, eventBindType );
+    this.domElement.removeEventListener( 'touchend', touchend, eventBindType );
+    this.domElement.removeEventListener( 'touchmove', touchmove, eventBindType );
 
-    document.removeEventListener( 'mousemove', mousemove, false );
-    document.removeEventListener( 'mouseup', mouseup, false );
+    document.removeEventListener( 'mousemove', mousemove, eventBindType );
+    document.removeEventListener( 'mouseup', mouseup, eventBindType );
 
-    window.removeEventListener( 'keydown', keydown, false );
-    window.removeEventListener( 'keyup', keyup, false );
+    window.removeEventListener( 'keydown', keydown, eventBindType );
+    window.removeEventListener( 'keyup', keyup, eventBindType );
 
   };
 
-  this.domElement.addEventListener( 'contextmenu', contextmenu, false );
-  this.domElement.addEventListener( 'mousedown', mousedown, false );
-  this.domElement.addEventListener( 'wheel', mousewheel, false );
+  this.domElement.addEventListener( 'contextmenu', contextmenu, eventBindType );
+  this.domElement.addEventListener( 'mousedown', mousedown, eventBindType );
+  this.domElement.addEventListener( 'wheel', mousewheel, eventBindType );
 
-  this.domElement.addEventListener( 'touchstart', touchstart, false );
-  this.domElement.addEventListener( 'touchend', touchend, false );
-  this.domElement.addEventListener( 'touchmove', touchmove, false );
+  this.domElement.addEventListener( 'touchstart', touchstart, eventBindType );
+  this.domElement.addEventListener( 'touchend', touchend, eventBindType );
+  this.domElement.addEventListener( 'touchmove', touchmove, eventBindType );
 
-  window.addEventListener( 'keydown', keydown, false );
-  window.addEventListener( 'keyup', keyup, false );
+  window.addEventListener( 'keydown', keydown, eventBindType );
+  window.addEventListener( 'keyup', keyup, eventBindType );
 
   this.handleResize();
 
@@ -620,3 +608,20 @@ THREE.TrackballControls = function ( object, domElement ) {
 
 THREE.TrackballControls.prototype = Object.create( THREE.EventDispatcher.prototype );
 THREE.TrackballControls.prototype.constructor = THREE.TrackballControls;
+
+/**
+* Determine whether browser supports passive event listener binding
+**/
+
+var supportsPassive = false;
+try {
+  var opts = Object.defineProperty({}, 'passive', {
+    get: function() {
+      supportsPassive = true;
+    }
+  });
+  window.addEventListener('testPassive', null, opts);
+  window.removeEventListener('testPassive', null, opts);
+} catch (e) {}
+
+var eventBindType = supportsPassive ? { passive: true } : false;

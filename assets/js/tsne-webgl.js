@@ -5,6 +5,7 @@
 // Initialize global data stores for image data
 var imageData = {};
 var imageDataKeys = [];
+var atlasImages = {}; // map from atlas index to images in atlas
 
 // Identify data endpoint
 var dataUrl = 'output/';
@@ -13,15 +14,18 @@ var dataUrl = 'output/';
 var sizes = {
   image: {
     width: 32,
-    height: 32
+    height: 32,
   },
   atlas: {
     width: 2048,
     height: 2048,
     cols: 2048 / 32,
-    rows: 2048 / 32
+    rows: 2048 / 32,
   }
 }
+
+// Count of images per atlas
+var imagesPerAtlas = sizes.atlas.rows * sizes.atlas.cols;
 
 // Count of 32px and 64px atlas files to fetch
 var atlasCounts = { '32px': null, '64px': null }
@@ -30,12 +34,22 @@ var atlasCounts = { '32px': null, '64px': null }
 // {atlas0: percentLoaded, atlas1: percentLoaded}
 var loadProgress = {};
 
-// Create a store for the 32px and 64px atlas materials
-var materials = { 32: [], 64: [] }
+// Store of the total initial load progress {0:1}
+var progress = 0;
 
-// Many graphics cards only support 2**16 vertices per mesh,
-// and each image requires 4 distinct vertices
-var imagesPerMesh = 2**14;
+// Create a store for the 32px and 64 px atlas textures
+var textures = { 32: [], 64: [] };
+
+// Create a store for the 32px and 64px loaded canvases
+var canvases = { 32: [], 64: [] };
+
+// Texture loader for XHR requests
+var textureLoader = new AjaxTextureLoader();
+
+// Many graphics cards only support 2**16 vertices per mesh, and
+// each image requires 4 distinct vertices in an 'indexed' geometry
+// and 6 distinct vertices in a non-indexed geometry
+var imagesPerMesh = 2**16 / 6;
 
 // Create a store for meshes
 var meshes = [];
@@ -52,19 +66,13 @@ var lastMouse = new THREE.Vector2();
 // Store of the currently selected image
 var selected = null;
 
-// Store of the total initial load progress {0:1}
-var progress = 0;
-
-// Texture loader for XHR requests
-var textureLoader = new AjaxTextureLoader();
-
 /**
 * Generate  scene object with a background color
 **/
 
 function getScene() {
   var scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x111111);
+  scene.background = new THREE.Color(0xffffff);
   return scene;
 }
 
@@ -85,21 +93,6 @@ function getCamera() {
   var camera = new THREE.PerspectiveCamera(75, aspectRatio, 100, 50000);
   camera.position.set(0, -1000, 12000);
   return camera;
-}
-
-/**
-* Generate the light to be used in the scene. Light args:
-*   [0]: Hexadecimal color of the light
-*   [1]: Numeric value of the light's strength/intensity
-*   [2]: The distance from the light where the intensity is 0
-* @param {obj} scene: the current scene object
-**/
-
-function getLight(scene) {
-  var light = new THREE.PointLight(0xffffff, 1, 0);
-  light.position.set(1, 1, 100);
-  scene.add(light);
-  return light;
 }
 
 /**
@@ -138,7 +131,7 @@ function getControls(camera, renderer) {
 * @param {func} handleSuccess: onSuccess callback function
 **/
 
-function get(url, handleSuccess) {
+function get(url, handleSuccess, handleErr) {
   var xmlhttp = new XMLHttpRequest();
   xmlhttp.onreadystatechange = function() {
     if (xmlhttp.readyState == XMLHttpRequest.DONE) {
@@ -190,6 +183,10 @@ function setImageData(json) {
     imageDataKeys.push(img.name);
     // Update the global data store with this image's data
     imageData[img.name] = getImageData(img, idx);
+    // Add this image to the list of images for the atlas to which it belongs
+    var data = imageData[img.name];
+    atlasImages[data.atlas.idx] = atlasImages[data.atlas.idx] || {};
+    atlasImages[data.atlas.idx][img.name] = data;
   })
 }
 
@@ -254,14 +251,14 @@ function parseImage(img) {
 **/
 
 function getImageData(img, idx) {
-  // Get image position information
-  var position = getImagePositionData(img, idx);
   // Get atlas information for this image
   var atlas = getImageAtlasData(idx);
+  // Get image position information
+  var position = getImagePositionData(img, idx);
   // Get image uv position for this image
   var uv = getImageUvData(img, idx, atlas);
-  // Get the index position of the material within this image's mesh
-  var material = getImageMaterialData(idx);
+  // Get the index position of the texture within this image's mesh
+  var texture = getImageTextureData(idx);
   // Get the index position of this image's mesh among all meshes
   var mesh = getImageMeshData(idx);
   // Return the image data to the parent function
@@ -274,7 +271,7 @@ function getImageData(img, idx) {
     atlas: atlas,
     pos: position,
     uv: uv,
-    material: material,
+    texture: texture,
     mesh: mesh,
   }
 }
@@ -294,9 +291,9 @@ function getImageData(img, idx) {
 
 function getImagePositionData(img, idx) {
   return {
-    x: img.x * 15,
-    y: img.y * 12,
-    z: 2000 + (idx/100),
+    x: img.x * 1.5,
+    y: img.y * 1.2,
+    z: 2000 + ((idx/100) % 100),
   }
 }
 
@@ -311,9 +308,9 @@ function getImagePositionData(img, idx) {
 **/
 
 function getImageAtlasData(idx) {
-  var indexInAtlas = idx % (sizes.atlas.rows * sizes.atlas.cols);
+  var indexInAtlas = idx % (imagesPerAtlas);
   return {
-    index: Math.floor(idx / (sizes.atlas.rows * sizes.atlas.cols)),
+    idx: Math.floor(idx / (imagesPerAtlas)),
     row: Math.floor(indexInAtlas / sizes.atlas.rows),
     col: indexInAtlas % sizes.atlas.cols,
   }
@@ -342,25 +339,25 @@ function getImageUvData(img, idx, atlas) {
     w: img.width / sizes.atlas.width,
     h: img.height / sizes.atlas.height,
     x: ((atlas.col) * cellWidth) + (img.xOffset / sizes.atlas.width),
-    y: (1 - (atlas.row * cellHeight) - cellHeight) + (img.yOffset / sizes.atlas.height),
+    y: (1 - (atlas.row * cellHeight) - cellHeight),
     face: (idx % imagesPerMesh) * 2,
   }
 }
 
 /**
-* Identify the following material attributes for an image:
-*   idx: the index position of the image's material within the list of materials
+* Identify the following texture attributes for an image:
+*   idx: the index position of the image's texture within the list of textures
 *     assigned to the image's mesh
 *
 * @param {int} idx: the index position of an image among
 *   all images
-* @returns {obj} an object detailing the image's material index within
+* @returns {obj} an object detailing the image's texture index within
 *   the image's mesh
 **/
 
-function getImageMaterialData(idx) {
+function getImageTextureData(idx) {
   return {
-    idx: Math.floor( (idx % imagesPerMesh) / (sizes.atlas.rows * sizes.atlas.cols) )
+    idx: Math.floor( (idx % imagesPerMesh) / (imagesPerAtlas) )
   }
 }
 
@@ -386,8 +383,7 @@ function getImageMeshData(idx) {
 function loadAtlasFiles() {
   for (var i=0; i<atlasCounts['32px']; i++) {
     var url = dataUrl + 'atlas_files/32px/atlas-' + i + '.jpg';
-    textureLoader.load(url, handleTexture.bind(null, i),
-      onProgress.bind(null, i))
+    loadAtlasImage(i, url);
   }
 }
 
@@ -402,14 +398,16 @@ function loadAtlasFiles() {
 function onProgress(atlasIndex, xhr) {
   loadProgress[atlasIndex] = xhr.loaded / xhr.total;
   // Sum the total load progress among all atlas files
-  var sum = Object.keys(loadProgress).reduce(function (sum, key) {
+  var sum = _.keys(loadProgress).reduce(function (sum, key) {
     return sum + loadProgress[key];
   }, 0);
   // Update the progress marker
   var loader = document.querySelector('#progress');
   progress = sum / atlasCounts['32px'];
   loader.innerHTML = parseInt(progress * 100) + '%';
-  if (progress === 1) startIfReady()
+  if (progress === 1) {
+    startIfReady()
+  }
 }
 
 /**
@@ -422,8 +420,7 @@ function onProgress(atlasIndex, xhr) {
 **/
 
 function handleTexture(textureIndex, texture) {
-  var material = new THREE.MeshBasicMaterial({ map: texture });
-  materials['32'][textureIndex] = material;
+  textures['32'][textureIndex] = texture;
   startIfReady();
 }
 
@@ -432,18 +429,19 @@ function handleTexture(textureIndex, texture) {
 **/
 
 function startIfReady() {
-  var atlasCount = atlasCounts['32px'];
-  var loadedAtlasCount = Object.keys(materials['32']).length;
-  if (loadedAtlasCount === atlasCount &&
-      Object.keys(imageData).length > 0 &&
-      progress === 1) {
+  if (textures['32'].filter(String).length === atlasCounts['32px'] &&
+      _.keys(imageData).length > 0 /*&& progress === 1*/) {
     // Use setTimeout to wait for the next available loop
     var button = document.querySelector('#enter');
     button.style.opacity = 1;
+
+    buildGeometry()
+    /*
     button.addEventListener('click', function() {
-      removeLoader()
-      setTimeout(buildGeometry, 1100)
+      buildGeometry()
+      setTimeout(removeLoader, 1100)
     })
+    */
   }
 }
 
@@ -457,156 +455,208 @@ function startIfReady() {
 **/
 
 function buildGeometry() {
-  var meshCount = Math.ceil( imageDataKeys.length / imagesPerMesh );
-  for (var i=0; i<meshCount; i++) {
-    var geometry = new THREE.Geometry();
-    var meshImages = imageDataKeys.slice(i*imagesPerMesh, (i+1)*imagesPerMesh);
-    for (var j=0; j<meshImages.length; j++) {
-      var datum = imageData[ meshImages[j] ];
-      geometry = updateVertices(geometry, datum);
-      geometry = updateFaces(geometry);
-      geometry = updateFaceVertexUvs(geometry, datum);
-    }
-    var startMaterial = imageData[ meshImages[0] ].atlas.index;
-    var endMaterial = imageData[ meshImages[j-1] ].atlas.index;
-    buildMesh(geometry, materials['32'].slice(startMaterial, endMaterial + 1));
+
+  // this geometry builds a blueprint and many copies of the blueprint
+  var geometry  = new THREE.InstancedBufferGeometry();
+
+  // add vertices for the blueprint. These vertices define a single square
+  var size = 64; // specify w/h of the unit rendered on the screen for each image
+  var vertices = [
+    0, 0, 0,   // lower right triangle
+    size, 0, 0,
+    size, size, 0,
+    0, 0, 0,   // upper left triangle
+    size, size, 0,
+    0, size, 0,
+  ];
+
+  // add uv coordinates for the blueprint; these coords define a single square
+  var w = 32 / sizes.atlas.width,
+      h = 32 / sizes.atlas.height;
+
+  var uvs = [
+    0, 0, // lower right triangle
+    w, 0,
+    w, h,
+    0, 0, // upper left triangle
+    w, h,
+    0, h,
+  ];
+
+  // Build the blueprint by assigning vertices + uvs as regular attributes.
+  // All instances of the blueprint will share this data
+  var position = new THREE.BufferAttribute( new Float32Array( vertices ), 3);
+  var uv = new THREE.BufferAttribute( new Float32Array( uvs ), 2);
+  geometry.addAttribute( 'position', position );
+  geometry.addAttribute( 'uv', uv );
+
+  // identify the key for each instance to make
+  var instances = _.keys(imageData);
+
+  // initialize instance attribute buffers
+  var translation = new Float32Array( instances.length * 3 );
+  var texture = new Float32Array( instances.length );
+  var uv = new Float32Array( instances.length * 2 );
+
+  // initialize counter variables for each attribute
+  var translationIterator = 0;
+  var textureIterator = 0;
+  var uvIterator = 0;
+
+  // build each instance
+  for (var i=0; i<instances.length; i++) {
+    var img = imageData[instances[i]];
+
+    // add the translation attribute parameters
+    translation[ translationIterator++ ] = img.pos.x;
+    translation[ translationIterator++ ] = img.pos.y;
+    translation[ translationIterator++ ] = img.pos.z;
+
+    // add the uv attribute parameters
+    uv[ uvIterator++ ] = img.uv.x;
+    uv[ uvIterator++ ] = img.uv.y;
+
+    // set the texture index of the instance
+    texture[ textureIterator++ ] = img.texture.idx;
   }
-  requestAnimationFrame(animate);
-  removeLoaderScene();
-  loadLargeAtlasFiles();
-}
 
-/**
-* Add one vertex to a geometry for each corner of
-* the input image, using the following order:
-* lower left, lower right, upper right, upper left
-*
-* @param {obj} geometry: A three.js geometry
-* @param {obj} img: An object whose `pos` property contains
-*   attributes used to set the image's vertex positions
-* @returns {obj} geometry: The input geometry updated to
-*   contain the new image's vertices
-**/
+  // set the attributes for each instance
+  geometry.addAttribute( 'translation', new THREE.InstancedBufferAttribute( translation, 3, 1 ) );
+  geometry.addAttribute( 'texture', new THREE.InstancedBufferAttribute( texture, 1, 1 ) );
+  geometry.addAttribute( 'texOffset', new THREE.InstancedBufferAttribute( uv, 2, 1 ) );
 
-function updateVertices(geometry, img) {
-  geometry.vertices.push(
-    new THREE.Vector3(
-      img.pos.x,
-      img.pos.y,
-      img.pos.z
-    ),
-    new THREE.Vector3(
-      img.pos.x + (img.width * 2),
-      img.pos.y,
-      img.pos.z
-    ),
-    new THREE.Vector3(
-      img.pos.x + (img.width * 2),
-      img.pos.y + (img.height * 2),
-      img.pos.z
-    ),
-    new THREE.Vector3(
-      img.pos.x,
-      img.pos.y + (img.height * 2),
-      img.pos.z
-    )
-  );
-  return geometry;
-}
+  // build the material and mesh and render
+  var material = getShaderMaterial();
+  var mesh = new THREE.Mesh(geometry, material);
 
-/**
-* Add two new faces to a geometry to contain the material
-* content of an image
-*
-* @param {obj} geometry: A three.js geometry that contains
-*   vertices that describe the position of an image
-* @returns {obj} geometry: The input geometry updated to
-*   contain the new image's faces
-**/
+  // prevent the mesh from being clipped on drag
+  mesh.frustumCulled = false;
 
-function updateFaces(geometry) {
-  geometry.faces.push(
-    // Add the first face (the lower-right triangle)
-    new THREE.Face3(
-      geometry.vertices.length-4,
-      geometry.vertices.length-3,
-      geometry.vertices.length-2
-    ),
-    // Add the second face (the upper-left triangle)
-    new THREE.Face3(
-      geometry.vertices.length-4,
-      geometry.vertices.length-2,
-      geometry.vertices.length-1
-    )
-  )
-  return geometry;
-}
-
-/**
-* Identify the regions of the current image's material
-* that should be bound to the image's faces in its mesh
-*
-* @param {obj} geometry: A three.js geometry that contains
-*   vertices and faces that describe the position of an image
-* @param {obj} img: An object whose `uv` property contains
-*   attributes used to set the uv coordinates
-* @returns {obj} geometry: The input geometry updated to
-*   contain the new image's uv attributes
-**/
-
-function updateFaceVertexUvs(geometry, img) {
-  var uv = img.uv;
-  // Use .set() if the given faceVertex is already defined; see:
-  // https://github.com/mrdoob/three.js/issues/7179
-  if (geometry.faceVertexUvs[0][uv.face]) {
-    geometry.faceVertexUvs[0][uv.face][0].set(uv.x, uv.y)
-    geometry.faceVertexUvs[0][uv.face][1].set(uv.x + uv.w, uv.y)
-    geometry.faceVertexUvs[0][uv.face][2].set(uv.x + uv.w, uv.y + uv.h)
-  } else {
-    geometry.faceVertexUvs[0][uv.face] = [
-      new THREE.Vector2(uv.x, uv.y),
-      new THREE.Vector2(uv.x + uv.w, uv.y),
-      new THREE.Vector2(uv.x + uv.w, uv.y + uv.h)
-    ]
-  }
-  // Map the region of the image described by the lower-left, 
-  // upper-right, and upper-left vertices to `faceTwo`
-  if (geometry.faceVertexUvs[0][uv.face + 1]) {
-    geometry.faceVertexUvs[0][uv.face + 1][0].set(uv.x, uv.y)
-    geometry.faceVertexUvs[0][uv.face + 1][1].set(uv.x + uv.w, uv.y + uv.h)
-    geometry.faceVertexUvs[0][uv.face + 1][2].set(uv.x, uv.y + uv.h)
-  } else {
-    geometry.faceVertexUvs[0][uv.face + 1] = [
-      new THREE.Vector2(uv.x, uv.y),
-      new THREE.Vector2(uv.x + uv.w, uv.y + uv.h),
-      new THREE.Vector2(uv.x, uv.y + uv.h)
-    ]
-  }
-  // Set the material index for the new faces
-  geometry.faces[uv.face].materialIndex = img.material.idx;
-  geometry.faces[uv.face + 1].materialIndex = img.material.idx;
-  return geometry;
-}
-
-/**
-* Add a new mesh to the scene
-*
-* @param {obj} geometry: a three.js Geometry
-* @param {arr} materials: a list of three.js Material objects
-**/
-
-function buildMesh(geometry, materials) {
-  // Combine the image geometry and material list into a mesh
-  var mesh = new THREE.Mesh(geometry, materials);
-  // Store the index position of the image and the mesh
-  mesh.userData.meshIndex = meshes.length;
-  // Set the position of the image mesh in the x,y,z dimensions
-  mesh.position.set(0,0,0)
-  // Add the image to the scene
   scene.add(mesh);
-  // Save this mesh
   meshes.push(mesh);
+
+  requestAnimationFrame(animate);
+
+  //removeLoaderScene();
+  //loadLargeAtlasFiles();
+  console.log(geometry, material)
 }
+
+/**
+* Build a shader material
+**/
+
+function getShaderMaterial() {
+  // Uniform types: https://github.com/mrdoob/three.js/wiki/Uniforms-types
+  return new THREE.RawShaderMaterial({
+    uniforms: {
+      // array of sampler2D values
+      textures: {
+        type: 'tv',
+        value: textures['32'],
+      }
+    },
+    vertexShader: document.getElementById('vertex-shader').textContent,
+    fragmentShader: getFragmentShader(textures['32'].length),
+  });
+}
+
+/**
+* Build a fragment shader that supports nTextures
+* @params {int} nTextures: the number of textures that this shader
+*   will support
+* @returns {str} the string content for a fragment shader
+**/
+
+function getFragmentShader(nTextures) {
+  var tree = 'if (textureIndex == 0) {' + getFrag(0) + '} ';
+  for (var i=1; i<nTextures; i++) {
+    tree += 'else if (textureIndex == ' + i + ') { ' + getFrag(i) + ' } ';
+  }
+
+  var raw = document.getElementById('fragment-shader').textContent;
+  raw = raw.replace('TEXTURE_LOOKUP_TREE', tree);
+  raw = raw.replace('N_TEXTURES', nTextures);
+  return raw;
+}
+
+/**
+* Helper function for getFragmentShader. Generates fragment shader
+* code that returns a texture at a given index position. If the alpha
+* value at the requested position is 0, we discard the pixel.
+* @param {int} idx: the index position of a texture
+* @returns {str} shader code that returns the texture at idx `idx`
+**/
+
+function getFrag(idx) {
+  return 'vec4 color = texture2D(textures[' + idx + '], vUv + vTexOffset); ' +
+    'if (color.a < 0.5) { discard; } ' +
+    'gl_FragColor = color;';
+}
+
+/**
+* Load an atlas image from disk
+* @param {int} idx: the index position of the atlas file among all atlas files
+* @param {str} url: the url to the image to be loaded
+**/
+
+function loadAtlasImage(idx, url) {
+  var img = new Image;
+  img.onload = function() {
+    handleImage(idx, url, this);
+  }
+  img.load(url, function(progress) {
+    console.log('progress', progress);
+  })
+}
+
+/**
+* Callback for a loaded image file
+* @param {int} idx: the index position of the loaded image file
+* @param {str} url: the url to the loaded image
+* @param {img} img: an image file
+**/
+
+function handleImage(idx, url, img) {
+  var atlas = document.createElement('img');
+  atlas.src = url;
+
+  var canvas = document.createElement('canvas');
+  canvas.width = 2048;
+  canvas.height = 2048;
+
+  // get the canvas in a context
+  var ctx = canvas.getContext('2d');
+
+  // draw only the regions of the atlas that are filled
+  _.keys(atlasImages[idx]).forEach(function(key) {
+    var img = atlasImages[idx][key];
+
+    // find the coordinates for this image in the atlas
+    var x = (img.uv.x * 2048);
+    var y = (img.uv.y * 2048) + img.yOffset;
+    var w = (img.uv.w * 2048);
+    var h = (img.uv.h * 2048);
+    // image, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight
+    ctx.drawImage(atlas, x, y, w, h, x, y, w, h);
+  })
+
+  // store the composed canvas and texture
+  canvases[32][idx] = canvas;
+  textures[32][idx] = new THREE.Texture(canvas);
+  textures[32][idx].needsUpdate = true;
+
+  // start the display if all assets are loaded
+  startIfReady();
+}
+
+
+
+
+
+/**
+* TODO: All Below
+**/
 
 /**
 * Set the size config variables to the larger atlas size
@@ -624,6 +674,7 @@ function loadLargeAtlasFiles() {
     cols: 2048 / 64,
     rows: 2048 / 64
   }
+  imagesPerAtlas = sizes.atlas.cols * sizes.atlas.rows;
   for (var i=0; i<atlasCounts['64px']; i++) {
     var url = dataUrl + 'atlas_files/64px/atlas-' + i + '.jpg';
     textureLoader.load(url, handleLargeTexture.bind(null, i))
@@ -654,8 +705,6 @@ function handleLargeTexture(atlasIndex, texture) {
 **/
 
 function updateImages(atlasIndex) {
-  // Identify the number of images within a larger atlas file
-  var imagesPerAtlas = sizes.atlas.cols * sizes.atlas.rows;
   // Identify the number of larger atlas files per mesh
   var atlasFilesPerMesh = imagesPerMesh / imagesPerAtlas;
   // Identify the mesh to which this atlas should be added
@@ -689,16 +738,15 @@ function updateImages(atlasIndex) {
 **/
 
 function getAtlasImages(atlasIdx, materialIdx) {
-  // Compute the number of images in each larger atlas
-  var imgsPerAtlas = sizes.atlas.rows * sizes.atlas.cols;
   // Find the index positions of the first and last images in this atlas
-  var startImage = atlasIdx * imgsPerAtlas;
-  var endImage = (atlasIdx + 1) * imgsPerAtlas;
+  var startImage = atlasIdx * imagesPerAtlas;
+  var endImage = (atlasIdx + 1) * imagesPerAtlas;
   // Return a list of images in this atlas after updating the attributes of each
   var images = [];
   imageDataKeys.slice(startImage, endImage).forEach(function(d) {
     // Fetch this image from the global image store & copy to avoid mutations
     var img = Object.assign({}, imageData[d]);
+
     // Update the height, width, and x,y offsets for the image
     img.width *= 2;
     img.height *= 2;
@@ -755,7 +803,7 @@ function slideBlock(elem) {
 **/
 
 function removeElem(elem) {
-  elem.parentNode.removeChild(elem)
+  try { elem.parentNode.removeChild(elem) } catch (err) {}
 }
 
 /**
@@ -908,6 +956,20 @@ function addWindowEventListeners() {
 }
 
 /**
+* Add the stats
+**/
+
+function getStats() {
+  if (!window.location.href.includes('stats=true')) return null;
+  var stats = new Stats();
+  stats.domElement.style.position = 'absolute';
+  stats.domElement.style.top = '65px';
+  stats.domElement.style.right = '5px';
+  document.body.appendChild( stats.domElement );
+  return stats;
+}
+
+/**
 * Create the animation loop that re-renders the scene each frame
 **/
 
@@ -917,6 +979,7 @@ function animate() {
   raycaster.setFromCamera(mouse, camera);
   renderer.render(scene, camera);
   controls.update();
+  if (stats) stats.update();
 }
 
 /**
@@ -925,9 +988,9 @@ function animate() {
 
 var scene = getScene();
 var camera = getCamera();
-var light = getLight(scene);
 var renderer = getRenderer();
 var controls = getControls(camera, renderer);
+var stats = getStats();
 addCanvasEventListeners()
 addWindowEventListeners()
 loadData()

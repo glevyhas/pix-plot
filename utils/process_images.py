@@ -234,7 +234,7 @@ class PixPlot:
       return model.fit_transform( np.array(image_vectors) )
 
     elif self.method == 'umap':
-      model = UMAP(n_neighbors=25, min_dist=0.00001, metric='correlation')
+      model = UMAP(n_neighbors=25, min_dist=0.99, metric='correlation')
       return model.fit_transform( np.array(image_vectors) )
 
 
