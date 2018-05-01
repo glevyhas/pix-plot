@@ -28,6 +28,9 @@
     *   n_components = 1)
     * `uniforms` are constant across all vertices
     * `varyings` are values passed from the vertex to the fragment shader
+    *
+    * For the full list of uniforms defined by three, see:
+    *   https://threejs.org/docs/#api/renderers/webgl/WebGLProgram
     **/
 
     // set float precision
@@ -36,6 +39,9 @@
     // specify geometry uniforms
     uniform mat4 modelViewMatrix;
     uniform mat4 projectionMatrix;
+
+    // to get the camera attributes:
+    uniform vec3 cameraPosition;
 
     // blueprint attributes
     attribute vec3 position; // sets the blueprint's vertex positions
@@ -52,11 +58,21 @@
     varying vec2 vTexOffset; // pass the texture offset
 
     void main() {
+      float cameraZ = cameraPosition[2];
+      float sizeScale = 9000.0 / cameraZ;
+      float posScale = 1000.0 / cameraZ;
+
+      // cameraPosition is an array of the camera positional vals: x, y, z
+      // to control the size of each point within screen space, we can set
+      // the gl_PointSize as a function of the camera's z position
+      gl_PointSize = pow(sizeScale, 3.1);
+
       vUv = uv;
       vTexture = texture;
       vTexOffset = texOffset;
       vec3 pos = position + translation;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+      vec4 projected = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+      gl_Position = projected; // * vec4(posScale, posScale, 1.0, 1.0);
     }
     </script>
 
@@ -75,16 +91,23 @@
     // set float precision
     precision highp float;
 
+    // repeat identifies the size of each image in an atlas
+    uniform vec2 repeat;
+
+    // textures contains an array of textures with length n textures
+    uniform sampler2D textures[N_TEXTURES];
+
     // identify the uv values as a varying attribute
     varying vec2 vUv; // blueprint uv coords
-    varying float vTexture; // set index of each object's vertex
     varying vec2 vTexOffset; // instance uv offsets
-
-    // identify the texture as a uniform argument
-    uniform sampler2D textures[N_TEXTURES];
+    varying float vTexture; // set index of each object's vertex
 
     void main() {
       int textureIndex = int(floor(vTexture));
+
+      vec2 uv = vec2( gl_PointCoord.x, 1.0 - gl_PointCoord.y );
+
+      //gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
 
       // The block below will be replaced with a tree of texture lookups
       TEXTURE_LOOKUP_TREE

@@ -90,7 +90,7 @@ function getScene() {
 
 function getCamera() {
   var aspectRatio = window.innerWidth / window.innerHeight;
-  var camera = new THREE.PerspectiveCamera(75, aspectRatio, 100, 50000);
+  var camera = new THREE.PerspectiveCamera(75, aspectRatio, 10, 50000);
   camera.position.set(0, -1000, 12000);
   return camera;
 }
@@ -463,11 +463,6 @@ function buildGeometry() {
   var size = 64; // specify w/h of the unit rendered on the screen for each image
   var vertices = [
     0, 0, 0,   // lower right triangle
-    size, 0, 0,
-    size, size, 0,
-    0, 0, 0,   // upper left triangle
-    size, size, 0,
-    0, size, 0,
   ];
 
   // add uv coordinates for the blueprint; these coords define a single square
@@ -475,20 +470,15 @@ function buildGeometry() {
       h = 32 / sizes.atlas.height;
 
   var uvs = [
-    0, 0, // lower right triangle
-    w, 0,
-    w, h,
-    0, 0, // upper left triangle
-    w, h,
-    0, h,
+    0, 0,
   ];
 
   // Build the blueprint by assigning vertices + uvs as regular attributes.
   // All instances of the blueprint will share this data
-  var position = new THREE.BufferAttribute( new Float32Array( vertices ), 3);
-  var uv = new THREE.BufferAttribute( new Float32Array( uvs ), 2);
-  geometry.addAttribute( 'position', position );
-  geometry.addAttribute( 'uv', uv );
+  geometry.addAttribute( 'position',
+    new THREE.BufferAttribute( new Float32Array( vertices ), 3));
+  geometry.addAttribute( 'uv',
+    new THREE.BufferAttribute( new Float32Array( uvs ), 2));
 
   // identify the key for each instance to make
   var instances = _.keys(imageData);
@@ -521,13 +511,16 @@ function buildGeometry() {
   }
 
   // set the attributes for each instance
-  geometry.addAttribute( 'translation', new THREE.InstancedBufferAttribute( translation, 3, 1 ) );
-  geometry.addAttribute( 'texture', new THREE.InstancedBufferAttribute( texture, 1, 1 ) );
-  geometry.addAttribute( 'texOffset', new THREE.InstancedBufferAttribute( uv, 2, 1 ) );
+  geometry.addAttribute( 'translation',
+    new THREE.InstancedBufferAttribute( translation, 3, 1 ) );
+  geometry.addAttribute( 'texture',
+    new THREE.InstancedBufferAttribute( texture, 1, 1 ) );
+  geometry.addAttribute( 'texOffset',
+    new THREE.InstancedBufferAttribute( uv, 2, 1 ) );
 
   // build the material and mesh and render
   var material = getShaderMaterial();
-  var mesh = new THREE.Mesh(geometry, material);
+  var mesh = new THREE.Points(geometry, material);
 
   // prevent the mesh from being clipped on drag
   mesh.frustumCulled = false;
@@ -547,6 +540,10 @@ function buildGeometry() {
 **/
 
 function getShaderMaterial() {
+
+  var w = 32 / sizes.atlas.width,
+      h = 32 / sizes.atlas.height;
+
   // Uniform types: https://github.com/mrdoob/three.js/wiki/Uniforms-types
   return new THREE.RawShaderMaterial({
     uniforms: {
@@ -554,6 +551,11 @@ function getShaderMaterial() {
       textures: {
         type: 'tv',
         value: textures['32'],
+      },
+      // specify size of each image in image atlas
+      repeat: {
+        type: 'v2',
+        value: [w, h],
       }
     },
     vertexShader: document.getElementById('vertex-shader').textContent,
@@ -589,7 +591,7 @@ function getFragmentShader(nTextures) {
 **/
 
 function getFrag(idx) {
-  return 'vec4 color = texture2D(textures[' + idx + '], vUv + vTexOffset); ' +
+  return 'vec4 color = texture2D(textures[' + idx + '], uv * repeat + vTexOffset ); ' +
     'if (color.a < 0.5) { discard; } ' +
     'gl_FragColor = color;';
 }
