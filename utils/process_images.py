@@ -28,7 +28,9 @@ def resize_thumb(args):
   '''
   img_path, idx, n_imgs, sizes, out_paths = args
   print(' * creating thumb', idx+1, 'of', n_imgs, 'at sizes', sizes)
-  cmd =  'convert "' + img_path + '" '
+  cmd =  'convert '
+  cmd += '-define jpeg:size={' + str(sizes[0]) + '} ' # 
+  cmd += '"' + img_path + '" '
   cmd += '-strip '
   cmd += '-background none '
   cmd += '-gravity center '
