@@ -24,14 +24,21 @@ FLAGS.model_dir = '/tmp/imagenet'
 def resize_thumb(args):
   '''
   Create a command line request to resize an image
+  Images for all thumb sizes are created in a single call, chaining the resize steps
   '''
-  size, img_path, idx, n_imgs, out_path = args
-  print(' * creating thumb', idx+1, 'of', n_imgs, 'at size', size)
-  cmd =  'convert "' + img_path + '" '
+  img_path, idx, n_imgs, sizes, out_paths = args
+  print(' * creating thumb', idx+1, 'of', n_imgs, 'at sizes', sizes)
+  cmd =  'convert '
+  cmd += '-define jpeg:size={' + str(sizes[0]) + 'x' + str(sizes[0]) + '} ' # 
+  cmd += '"' + img_path + '" '
+  cmd += '-strip '
   cmd += '-background none '
   cmd += '-gravity center '
-  cmd += '-resize "' + str(size) + 'X' + str(size) + '>" '
-  cmd += '"' + out_path + '"'
+  for i in range(0, len(sizes)):
+    cmd += '-resize "' + str(sizes[i]) + 'X' + str(sizes[i]) + '>" '
+    if not i == len(sizes)-1:
+      cmd += "-write "
+    cmd += '"' + out_paths[i] + '" '
   try:
     response = subprocess.check_output(cmd, shell=True)
     return None
@@ -119,14 +126,19 @@ class PixPlot:
     print(' * Creating image thumbs')
     resize_args = []
     n_thumbs = len(self.image_files)
-    for i in self.sizes:
-      print(' * creating', str(i), 'px thumbs')
-      for c, j in enumerate(self.image_files):
+    print(' * creating px thumbs')
+    for c, j in enumerate(self.image_files):
+      sizes = []
+      out_paths = []
+      for i in sorted(self.sizes, key=int, reverse=True):
         out_dir = join(self.output_dir, 'thumbs', str(i) + 'px')
         out_path = join( out_dir, self.get_filename(j) + '.jpg' )
         if os.path.exists(out_path) and not self.rewrite_image_thumbs:
           continue
-        resize_args.append([i, j, c, n_thumbs, out_path])
+        sizes.append(i)
+        out_paths.append(out_path)
+      if len(sizes) > 0:
+        resize_args.append([j, c, n_thumbs, sizes, out_paths])
 
     pool = Pool()
     for result in pool.imap(resize_thumb, resize_args):
