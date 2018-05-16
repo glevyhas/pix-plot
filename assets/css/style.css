@@ -113,6 +113,10 @@ nav.hidden {
   padding: 0 10px;
 }
 
+.nav-inner::-webkit-scrollbar {
+    -webkit-appearance: none;
+}
+
 nav h2 {
   font-size: 0.9em;
   line-height: 1.05em;
