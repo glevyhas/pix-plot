@@ -10,6 +10,7 @@ To install the Python dependencies, you can run (ideally in a virtual environmen
 ```bash
 pip install -r utils/requirements.txt
 ```
+If you have an NVIDIA GPU, consider replacing `tensorflow` with `tensorflow-gpu` in `requirements.txt`.  You'll need to have CUDA and CUDNN working as well.
 
 Image resizing utilities require ImageMagick compiled with jpg support:
 ```bash
