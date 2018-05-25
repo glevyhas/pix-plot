@@ -40,10 +40,34 @@ python -m SimpleHTTPServer 5000
 
 The visualization will then be available on port 5000.
 
+## Processing data with Docker
+
+Some users may find it easiest to use the included Docker image to visualize a dataset.
+
+To do so, you must first install Docker[install Docker](https://docs.docker.com/install/). If you are on Windows 7 or earlier, you may need to install [Docker Toolbox](https://docs.docker.com/toolbox/toolbox_install_windows/) instead.
+
+Once Docker is installed, start a terminal, cd into the folder that contains this README file, and run:
+
+```bash
+# build the container
+docker build --tag pixplot --file Dockerfile .
+
+# process images
+docker run -v $(pwd)/output:/output pixplot \
+  bash -c "python3.6 utils/process_images.py images/*.jpg"
+
+# run the web server
+docker run -v $(pwd)/output:/output \
+  -p 5000:5000 pixplot bash -c "python3.6 -m http.server 5000"
+```
+
+Once the web server starts, you should be able to see your results on `localhost:5000`.
+
 ## Curating Automatic Hotspots
+
 By default, PixPlot uses [*k*-means clustering](https://en.wikipedia.org/wiki/K-means_clustering) to find twenty hotspots in the visualization.  You can adjust the number of discovered hotspots by changing the `n_clusters` value in `utils/process_images.py` and re-running the script.
 
-After processing, you can curate the discovered hotspots by editing the resulting `output/plot_data.json` file. (This file can be unwieldy in large datasets -- you may wish to disable syntax highlighting and automatic wordwrap in your text editor.) The hotspots will be listed at the very end of the JSON data, each containing a label (by default 'Cluster *N*') and the name of an image that represents the centroid of the discovered hotspot. 
+After processing, you can curate the discovered hotspots by editing the resulting `output/plot_data.json` file. (This file can be unwieldy in large datasets -- you may wish to disable syntax highlighting and automatic wordwrap in your text editor.) The hotspots will be listed at the very end of the JSON data, each containing a label (by default 'Cluster *N*') and the name of an image that represents the centroid of the discovered hotspot.
 
 You can add, remove or re-order these, change the labels to make them more meaningful, and/or adjust the image that symbolizes each hotspot in the left-hand **Hotspots** menu.  *Hint: to get the name of an image that you feel better reflects the cluster, click on it in the visualization and it will appear suffixed to the URL.*
 
@@ -52,8 +76,8 @@ You can add, remove or re-order these, change the labels to make them more meani
 
 | Collection | # Images | Collection Info | Image Source |
 | ---------- | -------- |  --------------- | ------------ |
-| [Per Bagge](http://dh.library.yale.edu/projects/pixplot/bagge/) | 29,782 | [Bio](http://www.alvin-portal.org/alvin/view.jsf?pid=alvin-person%3A29409) | [Lund University](http://www.alvin-portal.org/alvin/resultList.jsf?dswid=6772&af=%5B%22RES_facet%3Astill_image%22%2C%22ARCHIVE_ORG_ID_facet%3A8%22%5D&p=1&fs=true&searchType=EXTENDED&sortString=relevance_sort_desc&noOfRows=10&query=&aq=%5B%5B%7B%22PER_PID%22%3A%22alvin-person%3A29409%22%7D%5D%2C%5B%7B%22SWD_PER%22%3A%22alvin-person%3A29409%22%7D%5D%5D&aqe=%5B%5D) |
-| [Meserve-Kunhardt](https://s3-us-west-2.amazonaws.com/lab-apps/pix-plot/index.html) | 27,000 | [Finding Aid](http://drs.library.yale.edu/HLTransformer/HLTransServlet?stylename=yul.ead2002.xhtml.xsl&pid=beinecke:meservekunhardt&clear-stylesheet-cache=yes&big=y) | [Beinecke (Partial)](https://brbl-dl.library.yale.edu/vufind/Search/Results?lookfor=GEN_MSS_1430&type=CallNumber) |
+| [Per Bagge](https://goo.gl/uk8oUx) | 29,782 | [Bio](https://goo.gl/2jQYGz) | [Lund University](https://goo.gl/zHpebT) |
+| [Meserve-Kunhardt](https://goo.gl/sE3ZGy) | 27,000 | [Finding Aid](https://goo.gl/ESfcdB) | [Beinecke (Partial)](goo.gl/ESfcdB) |
 
 
 ## Acknowledgements
