@@ -11,15 +11,32 @@ from os.path import join
 from PIL import Image
 from umap import UMAP
 from math import ceil
-import glob, json, os, re, sys, tarfile, psutil, subprocess
 import tensorflow as tf
 import numpy as np
+import glob
+import json
+import os
+import re
+import sys
+import tarfile
+import psutil
+import subprocess
 import argparse
 import codecs
 
 # tensorflow config
 FLAGS = tf.app.flags.FLAGS
 FLAGS.model_dir = '/tmp/imagenet'
+
+def get_magick_command(cmd):
+  '''
+  Return the specified imagemagick command prefaced with magick if
+  the user is on Windows
+  '''
+  if os.name == 'nt':
+    return 'magick ' + cmd
+  return cmd
+
 
 def resize_thumb(args):
   '''
@@ -28,8 +45,8 @@ def resize_thumb(args):
   '''
   img_path, idx, n_imgs, sizes, out_paths = args
   print(' * creating thumb', idx+1, 'of', n_imgs, 'at sizes', sizes)
-  cmd =  'convert '
-  cmd += '-define jpeg:size={' + str(sizes[0]) + 'x' + str(sizes[0]) + '} ' # 
+  cmd =  get_magick_command('convert') + ' '
+  cmd += '-define jpeg:size={' + str(sizes[0]) + 'x' + str(sizes[0]) + '} ' #
   cmd += '"' + img_path + '" '
   cmd += '-strip '
   cmd += '-background none '
@@ -75,19 +92,20 @@ class PixPlot:
     '''
     # ensure the user provided enough input images
     if len(self.image_files) < self.n_clusters:
-      print('Please provide >= ' + str(self.n_clusters) + ' images: Only ' + str(len(self.image_files)) + ' was provided')
+      print('Please provide >= ' + str(self.n_clusters) + ' images')
+      print('Only ' + str(len(self.image_files)) + ' were provided')
       sys.exit()
 
     if not validate_files:
       print(' * Skipping image validation')
       return
-      
+
     # test whether each input image can be processed
     print(' * Validating input files')
     invalid_files = []
     for i in self.image_files:
       try:
-        cmd = 'identify "' + i + '"'
+        cmd = get_magick_command('identify') + ' "' + i + '"'
         response = subprocess.check_output(cmd, shell=True)
       except:
         invalid_files.append(i)
@@ -383,7 +401,7 @@ class PixPlot:
           out.write('\n'.join(map('"{0}"'.format, atlas_images)))
 
       # build the imagemagick command to montage the images
-      cmd =  'montage @' + tmp_file_path + ' '
+      cmd =  get_magick_command('montage') + ' @' + tmp_file_path + ' '
       cmd += '-background none '
       cmd += '-size ' + str(thumb_size) + 'x' + str(thumb_size) + ' '
       cmd += '-geometry ' + str(thumb_size) + 'x' + str(thumb_size) + '+0+0 '
@@ -430,9 +448,9 @@ if __name__ == '__main__':
     if len(args.images) == 0:
       args.images = [pattern]
 
-print(' * building PixPlot structures with ' + str(args.clusters) +
-  ' clusters for ' + str(len(args.images)) +
-  ' images to folder ' + args.output_folder)
+  print(' * creating PixPlot outputs with ' + str(args.clusters) +
+    ' clusters for ' + str(len(args.images)) +
+    ' images to folder ' + args.output_folder)
 
-PixPlot(image_files=args.images, output_dir=args.output_folder,
-  clusters=args.clusters, validate_files=args.validate_files)
+  PixPlot(image_files=args.images, output_dir=args.output_folder,
+    clusters=args.clusters, validate_files=args.validate_files)
