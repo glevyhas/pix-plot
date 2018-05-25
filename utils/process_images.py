@@ -35,6 +35,8 @@ def get_magick_command(cmd):
   '''
   if os.name == 'nt':
     return 'magick ' + cmd
+  return cmd
+
 
 def resize_thumb(args):
   '''
@@ -44,7 +46,7 @@ def resize_thumb(args):
   img_path, idx, n_imgs, sizes, out_paths = args
   print(' * creating thumb', idx+1, 'of', n_imgs, 'at sizes', sizes)
   cmd =  get_magick_command('convert') + ' '
-  cmd += '-define jpeg:size={' + str(sizes[0]) + 'x' + str(sizes[0]) + '} ' # 
+  cmd += '-define jpeg:size={' + str(sizes[0]) + 'x' + str(sizes[0]) + '} ' #
   cmd += '"' + img_path + '" '
   cmd += '-strip '
   cmd += '-background none '
@@ -97,7 +99,7 @@ class PixPlot:
     if not validate_files:
       print(' * Skipping image validation')
       return
-      
+
     # test whether each input image can be processed
     print(' * Validating input files')
     invalid_files = []
