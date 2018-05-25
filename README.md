@@ -40,7 +40,7 @@ python -m SimpleHTTPServer 5000
 
 The visualization will then be available on port 5000.
 
-## Processing data with Docker
+## Processing Data with Docker
 
 Some users may find it easiest to use the included Docker image to visualize a dataset.
 
