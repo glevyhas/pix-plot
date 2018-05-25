@@ -35,13 +35,16 @@ RUN apt-get install -y imagemagick
 # Copy source files
 ##
 
-ADD . .
+ENV APP_PATH="pixplot"
+RUN mkdir "$APP_PATH"
+ADD . "$APP_PATH"
 
 ##
 # Install PixPlot dependencies
 ##
 
-RUN python3.6 -m pip install -r "utils/requirements.txt"
+RUN cd "$APP_PATH" && \
+  python3.6 -m pip install -r "utils/requirements.txt"
 
 ##
 # Start server on 5000
