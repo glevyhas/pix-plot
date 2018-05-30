@@ -97,11 +97,11 @@ class PixPlot:
       sys.exit()
 
     if not validate_files:
-      print(' * Skipping image validation')
+      print(' * skipping image validation')
       return
 
     # test whether each input image can be processed
-    print(' * Validating input files')
+    print(' * validating input files')
     invalid_files = []
     for i in self.image_files:
       try:
@@ -141,10 +141,9 @@ class PixPlot:
     '''
     Create output thumbs in 32px, 64px, and 128px
     '''
-    print(' * Creating image thumbs')
+    print(' * creating image thumbs')
     resize_args = []
     n_thumbs = len(self.image_files)
-    print(' * creating px thumbs')
     for c, j in enumerate(self.image_files):
       sizes = []
       out_paths = []
@@ -171,7 +170,7 @@ class PixPlot:
     self.download_inception()
     self.create_tf_graph()
 
-    print(' * Creating image vectors')
+    print(' * creating image vectors')
     with tf.Session() as sess:
       for image_index, image in enumerate(self.image_files):
         try:
@@ -206,7 +205,7 @@ class PixPlot:
     '''
     Download the inception model to FLAGS.model_dir
     '''
-    print(' * Verifying inception model availability')
+    print(' * verifying inception model availability')
     inception_path = 'http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz'
     dest_directory = FLAGS.model_dir
     self.ensure_dir_exists(dest_directory)
@@ -225,7 +224,7 @@ class PixPlot:
     '''
     Create a graph from the saved graph_def.pb
     '''
-    print(' * Creating tf graph')
+    print(' * creating tf graph')
     graph_path = join(FLAGS.model_dir, 'classify_image_graph_def.pb')
     with tf.gfile.FastGFile(graph_path, 'rb') as f:
       graph_def = tf.GraphDef()
@@ -237,7 +236,7 @@ class PixPlot:
     '''
     Create a 2d embedding of the image vectors
     '''
-    print(' * Calculating 2D image positions')
+    print(' * calculating 2D image positions')
     model = self.build_model(self.image_vectors)
     return self.get_image_positions(model)
 
@@ -246,7 +245,7 @@ class PixPlot:
     '''
     Return all image vectors
     '''
-    print(' * Loading image vectors')
+    print(' * loading image vectors')
     self.vector_files = glob.glob( join(self.output_dir, 'image_vectors', '*') )
     for c, i in enumerate(self.vector_files):
       self.image_vectors.append(np.load(i))
@@ -257,7 +256,7 @@ class PixPlot:
     '''
     Build a 2d projection of the `image_vectors`
     '''
-    print(' * Building 2D projection')
+    print(' * building 2D projection')
     if self.method == 'tsne':
       model = TSNE(n_components=2, random_state=0)
       np.set_printoptions(suppress=True)
@@ -279,7 +278,7 @@ class PixPlot:
     '''
     Write a JSON file that indicates the 2d position of each image
     '''
-    print(' * Writing JSON file')
+    print(' * writing JSON file')
     image_positions = []
     for c, i in enumerate(fit_model):
       img = self.get_filename(self.vector_files[c])
@@ -304,7 +303,7 @@ class PixPlot:
     Use KMeans clustering to find n centroid images
     that represent the center of an image cluster
     '''
-    print(' * Calculating ' + str(self.n_clusters) + ' clusters')
+    print(' * calculating ' + str(self.n_clusters) + ' clusters')
     model = KMeans(n_clusters=self.n_clusters)
     X = np.array(self.image_vectors)
     fit_model = model.fit(X)
@@ -326,7 +325,7 @@ class PixPlot:
     Write a JSON file with image positions, the number of atlas files
     in each size, and the centroids of the k means clusters
     '''
-    print(' * Writing main JSON plot data file')
+    print(' * writing main JSON plot data file')
     out_path = join(self.output_dir, 'plot_data.json')
     with open(out_path, 'w') as out:
       json.dump({
@@ -348,7 +347,7 @@ class PixPlot:
     '''
     Create image atlas files in each required size
     '''
-    print(' * Creating atlas files')
+    print(' * creating atlas files')
     atlas_group_imgs = []
     for thumb_size in self.sizes[1:-1]:
       # identify the images for this atlas group
