@@ -26,6 +26,7 @@ import codecs
 
 # tensorflow config
 FLAGS = tf.app.flags.FLAGS
+tf.app.flags.DEFINE_string('model_dir', '/tmp/imagenet', 'Location of downloaded imagenet model')
 FLAGS.model_dir = '/tmp/imagenet'
 
 class PixPlot:
