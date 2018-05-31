@@ -47,7 +47,7 @@ The visualization will then be available on port 5000.
 
 Some users may find it easiest to use the included Docker image to visualize a dataset.
 
-To do so, you must first install Docker[install Docker](https://docs.docker.com/install/). If you are on Windows 7 or earlier, you may need to install [Docker Toolbox](https://docs.docker.com/toolbox/toolbox_install_windows/) instead.
+To do so, you must first [install Docker](https://docs.docker.com/install/). If you are on Windows 7 or earlier, you may need to install [Docker Toolbox](https://docs.docker.com/toolbox/toolbox_install_windows/) instead.
 
 Once Docker is installed, start a terminal, cd into the folder that contains this README file, and run:
 
