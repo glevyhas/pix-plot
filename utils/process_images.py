@@ -1,5 +1,17 @@
 #!/usr/bin/python
 
+'''
+Generates all data required to create a PixPlot viewer.
+
+Documentation:
+https://github.com/YaleDHLab/pix-plot
+
+Usage:
+  python utils/process_images.py --image_files="data/*/*.jpg"
+
+                      * * *
+'''
+
 from __future__ import division, print_function
 from collections import defaultdict
 from sklearn.cluster import KMeans
@@ -11,9 +23,9 @@ from os.path import join
 from PIL import Image
 from umap import UMAP
 from math import ceil
+from glob import glob
 import tensorflow as tf
 import numpy as np
-import glob
 import json
 import os
 import re
@@ -21,36 +33,45 @@ import sys
 import tarfile
 import psutil
 import subprocess
-import argparse
 import codecs
 
-# tensorflow config
-FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_string('model_dir', '/tmp/imagenet', 'Location of downloaded imagenet model')
-FLAGS.model_dir = '/tmp/imagenet'
+# configure command line interface arguments
+flags = tf.app.flags
+flags.DEFINE_string('model_dir', '/tmp/imagenet', 'The location of downloaded imagenet model')
+flags.DEFINE_string('image_files', '', 'A glob path of images to process')
+flags.DEFINE_integer('clusters', 20, 'The number of clusters to display in the image browser')
+flags.DEFINE_boolean('validate_images', True, 'Whether to validate images before processing')
+flags.DEFINE_string('output_folder', 'output', 'The folder where output files will be stored')
+flags.DEFINE_string('layout', 'umap', 'The layout method to use {umap|tsne}')
+FLAGS = flags.FLAGS
 
 
 class PixPlot:
-  def __init__(self, image_files, output_dir, clusters, validate_files):
-    self.image_files = image_files
-    self.output_dir = output_dir
+  def __init__(self, image_glob):
+    print(' * writing PixPlot outputs with ' + str(FLAGS.clusters) +
+      ' clusters for ' + str(len(image_glob)) +
+      ' images to folder ' + FLAGS.output_folder)
+
+    self.image_files = image_glob
+    self.output_dir = FLAGS.output_folder
     self.sizes = [16, 32, 64, 128]
-    self.n_clusters = clusters
+    self.n_clusters = FLAGS.clusters
     self.errored_images = set()
     self.vector_files = []
     self.image_vectors = []
-    self.method = 'umap'
+    self.method = FLAGS.layout
     self.rewrite_image_thumbs = False
     self.rewrite_image_vectors = False
     self.rewrite_atlas_files = True
-    self.validate_inputs(validate_files)
+    self.validate_inputs(FLAGS.validate_images)
     self.create_output_dirs()
     self.create_image_thumbs()
     self.create_image_vectors()
     self.load_image_vectors()
     self.write_json()
     self.create_atlas_files()
-    print('Processed output for ' + str(len(self.image_files)) + ' images')
+    print('Processed output for ' + \
+      str(len(self.image_files) - len(self.errored_images)) + ' images')
 
 
   def validate_inputs(self, validate_files):
@@ -60,7 +81,7 @@ class PixPlot:
     # ensure the user provided enough input images
     if len(self.image_files) < self.n_clusters:
       print('Please provide >= ' + str(self.n_clusters) + ' images')
-      print('Only ' + str(len(self.image_files)) + ' were provided')
+      print('Only ' + str(len(self.image_files)) + ' images were provided')
       sys.exit()
 
     if not validate_files:
@@ -199,7 +220,7 @@ class PixPlot:
     Return all image vectors
     '''
     print(' * loading image vectors')
-    self.vector_files = glob.glob( join(self.output_dir, 'image_vectors', '*') )
+    self.vector_files = glob( join(self.output_dir, 'image_vectors', '*') )
     for c, i in enumerate(self.vector_files):
       self.image_vectors.append(np.load(i))
       print(' * loaded', c+1, 'of', len(self.vector_files), 'image vectors')
@@ -436,30 +457,23 @@ def limit_float(f):
   return int(f*10000)/10000
 
 
+def main(*args, **kwargs):
+  '''
+  The main function to run
+  '''
+  # user specified glob path with tensorflow flags
+  if FLAGS.image_files:
+    image_glob = glob(FLAGS.image_files)
+  # only one argument was passed; assume it's a glob of image paths
+  elif len(sys.argv) == 2:
+    image_glob = glob(sys.argv[1])
+  # no glob path was specified
+  else:
+    print('Please specify a glob path of images to process\n' +
+      'e.g. python utils/process_images.py "folder/*.jpg"')
+
+  PixPlot(image_glob)
+
+
 if __name__ == '__main__':
-  parser = argparse.ArgumentParser(description='Cluster similar images.')
-  parser.add_argument('images', metavar='I', type=str, nargs='+',
-    help='images to visualize')
-  parser.add_argument('--clusters', '-c', dest='clusters', type=int, nargs='?',
-    default=20, help='clusters to calculate (default: 20)')
-  parser.add_argument('--skip_validation', '-s', dest='validate_files',
-    action='store_const', const=False, default=True,
-    help='skip image validation (useful if all images are known to be valid)')
-  parser.add_argument('--output_folder', '-o', dest='output_folder',
-    type=str, nargs='?', default='output',
-    help='output folder for the generated data (default: "output")')
-
-  args = parser.parse_args()
-  if len(args.images) == 1:
-     # We guess a single arg is a glob pattern for backwards compatibility
-    pattern=args.images[0]
-    args.images = glob.glob(pattern)
-    if len(args.images) == 0:
-      args.images = [pattern]
-
-  print(' * creating PixPlot outputs with ' + str(args.clusters) +
-    ' clusters for ' + str(len(args.images)) +
-    ' images to folder ' + args.output_folder)
-
-  PixPlot(image_files=args.images, output_dir=args.output_folder,
-    clusters=args.clusters, validate_files=args.validate_files)
+  tf.app.run()
