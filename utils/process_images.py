@@ -28,39 +28,6 @@ import codecs
 FLAGS = tf.app.flags.FLAGS
 FLAGS.model_dir = '/tmp/imagenet'
 
-def get_magick_command(cmd):
-  '''
-  Return the specified imagemagick command prefaced with magick if
-  the user is on Windows
-  '''
-  if os.name == 'nt':
-    return 'magick ' + cmd
-
-def resize_thumb(args):
-  '''
-  Create a command line request to resize an image
-  Images for all thumb sizes are created in a single call, chaining the resize steps
-  '''
-  img_path, idx, n_imgs, sizes, out_paths = args
-  print(' * creating thumb', idx+1, 'of', n_imgs, 'at sizes', sizes)
-  cmd =  get_magick_command('convert') + ' '
-  cmd += '-define jpeg:size={' + str(sizes[0]) + 'x' + str(sizes[0]) + '} ' # 
-  cmd += '"' + img_path + '" '
-  cmd += '-strip '
-  cmd += '-background none '
-  cmd += '-gravity center '
-  for i in range(0, len(sizes)):
-    cmd += '-resize "' + str(sizes[i]) + 'X' + str(sizes[i]) + '>" '
-    if not i == len(sizes)-1:
-      cmd += "-write "
-    cmd += '"' + out_paths[i] + '" '
-  try:
-    response = subprocess.check_output(cmd, shell=True)
-    return None
-  except subprocess.CalledProcessError as exc:
-    return img_path
-
-
 class PixPlot:
   def __init__(self, image_files, output_dir, clusters, validate_files):
     self.image_files = image_files
@@ -121,18 +88,11 @@ class PixPlot:
     '''
     dirs = ['image_vectors', 'atlas_files', 'thumbs']
     for i in dirs:
-      self.ensure_dir_exists( join(self.output_dir, i) )
+      ensure_dir_exists( join(self.output_dir, i) )
     # make subdirectories for each image thumb size
     for i in self.sizes:
-      self.ensure_dir_exists( join(self.output_dir, 'thumbs', str(i) + 'px') )
+      ensure_dir_exists( join(self.output_dir, 'thumbs', str(i) + 'px') )
 
-
-  def ensure_dir_exists(self, directory):
-    '''
-    Create the input directory if it doesn't exist
-    '''
-    if not os.path.exists(directory):
-      os.makedirs(directory)
 
 
   def create_image_thumbs(self):
@@ -148,7 +108,7 @@ class PixPlot:
       out_paths = []
       for i in sorted(self.sizes, key=int, reverse=True):
         out_dir = join(self.output_dir, 'thumbs', str(i) + 'px')
-        out_path = join( out_dir, self.get_filename(j) + '.jpg' )
+        out_path = join( out_dir, get_filename(j) + '.jpg' )
         if os.path.exists(out_path) and not self.rewrite_image_thumbs:
           continue
         sizes.append(i)
@@ -159,7 +119,7 @@ class PixPlot:
     pool = Pool()
     for result in pool.imap(resize_thumb, resize_args):
       if result:
-        self.errored_images.add( self.get_filename(result) )
+        self.errored_images.add( get_filename(result) )
 
 
   def create_image_vectors(self):
@@ -189,15 +149,8 @@ class PixPlot:
             file_handler = getattr(open_file, 'fd')
             os.close(file_handler)
         except Exception as exc:
-          self.errored_images.add( self.get_filename(image) )
-          print(' * image', image, 'hit a snag', exc)
-
-
-  def get_filename(self, path):
-    '''
-    Return the root filename of `path` without file extension
-    '''
-    return os.path.splitext( os.path.basename(path) )[0]
+          self.errored_images.add( get_filename(image) )
+          print(' * image', get_ascii_chars(image), 'hit a snag', exc)
 
 
   def download_inception(self):
@@ -207,7 +160,7 @@ class PixPlot:
     print(' * Verifying inception model availability')
     inception_path = 'http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz'
     dest_directory = FLAGS.model_dir
-    self.ensure_dir_exists(dest_directory)
+    ensure_dir_exists(dest_directory)
     filename = inception_path.split('/')[-1]
     filepath = join(dest_directory, filename)
     if not os.path.exists(filepath):
@@ -266,13 +219,6 @@ class PixPlot:
       return model.fit_transform( np.array(image_vectors) )
 
 
-  def limit_float(self, f):
-    '''
-    Limit the float point precision of f
-    '''
-    return int(f*10000)/10000
-
-
   def get_image_positions(self, fit_model):
     '''
     Write a JSON file that indicates the 2d position of each image
@@ -280,7 +226,7 @@ class PixPlot:
     print(' * Writing JSON file')
     image_positions = []
     for c, i in enumerate(fit_model):
-      img = self.get_filename(self.vector_files[c])
+      img = get_filename(self.vector_files[c])
       if img in self.errored_images:
         continue
       thumb_path = join(self.output_dir, 'thumbs', '32px', img)
@@ -313,7 +259,7 @@ class PixPlot:
     centroid_json = []
     for c, i in enumerate(centroid_paths):
       centroid_json.append({
-        'img': self.get_filename(i),
+        'img': get_filename(i),
         'label': 'Cluster ' + str(c+1)
       })
     return centroid_json
@@ -376,13 +322,13 @@ class PixPlot:
 
     # build a directory for the atlas files
     out_dir = join(self.output_dir, 'atlas_files', str(thumb_size) + 'px')
-    self.ensure_dir_exists(out_dir)
+    ensure_dir_exists(out_dir)
 
     # specify number of columns in a 2048 x 2048px texture
     atlas_cols = 2048/thumb_size
 
     # subdivide the image thumbs into groups
-    atlas_image_groups = self.subdivide(image_thumbs, atlas_cols**2)
+    atlas_image_groups = subdivide(image_thumbs, atlas_cols**2)
 
     # generate a directory for images at this size if it doesn't exist
     for idx, atlas_images in enumerate(atlas_image_groups):
@@ -416,13 +362,76 @@ class PixPlot:
       pass
 
 
-  def subdivide(self, l, n):
-    '''
-    Return n-sized sublists from iterable l
-    '''
-    n = int(n)
-    for i in range(0, len(l), n):
-      yield l[i:i + n]
+def get_magick_command(cmd):
+  '''
+  Return the specified imagemagick command prefaced with magick if
+  the user is on Windows
+  '''
+  if os.name == 'nt':
+    return 'magick ' + cmd
+
+
+def resize_thumb(args):
+  '''
+  Create a command line request to resize an image
+  Images for all thumb sizes are created in a single call, chaining the resize steps
+  '''
+  img_path, idx, n_imgs, sizes, out_paths = args
+  print(' * creating thumb', idx+1, 'of', n_imgs, 'at sizes', sizes)
+  cmd =  get_magick_command('convert') + ' '
+  cmd += '-define jpeg:size={' + str(sizes[0]) + 'x' + str(sizes[0]) + '} '
+  cmd += '"' + img_path + '" '
+  cmd += '-strip '
+  cmd += '-background none '
+  cmd += '-gravity center '
+  for i in range(0, len(sizes)):
+    cmd += '-resize "' + str(sizes[i]) + 'X' + str(sizes[i]) + '>" '
+    if not i == len(sizes)-1:
+      cmd += "-write "
+    cmd += '"' + out_paths[i] + '" '
+  try:
+    response = subprocess.check_output(cmd, shell=True)
+    return None
+  except subprocess.CalledProcessError as exc:
+    return img_path
+
+
+def subdivide(l, n):
+  '''
+  Return n-sized sublists from iterable l
+  '''
+  n = int(n)
+  for i in range(0, len(l), n):
+    yield l[i:i + n]
+
+
+def get_ascii_chars(s):
+  '''
+  Return a string that contains the ascii characters from string `s`
+  '''
+  return ''.join(i for i in s if ord(i) < 128)
+
+
+def get_filename(path):
+  '''
+  Return the root filename of `path` without file extension
+  '''
+  return os.path.splitext( os.path.basename(path) )[0]
+
+
+def ensure_dir_exists(directory):
+  '''
+  Create the input directory if it doesn't exist
+  '''
+  if not os.path.exists(directory):
+    os.makedirs(directory)
+
+
+def limit_float(f):
+  '''
+  Limit the float point precision of f
+  '''
+  return int(f*10000)/10000
 
 
 if __name__ == '__main__':
