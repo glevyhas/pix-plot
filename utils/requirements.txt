@@ -2,7 +2,7 @@ h5py==2.8.0rc1
 numpy==1.14.3
 Pillow==4.1.1
 psutil==5.2.2
-scikit-learn==0.18.1
+scikit-learn==0.19.1
 six==1.11.0
 tensorflow==1.8.0
 umap-learn==0.2.3
