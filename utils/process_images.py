@@ -81,7 +81,7 @@ class PixPlot:
     # ensure the user provided enough input images
     if len(self.image_files) < self.n_clusters:
       print('Please provide >= ' + str(self.n_clusters) + ' images')
-      print('Only ' + str(len(self.image_files)) + ' images were provided')
+      print(str(len(self.image_files)) + ' images were provided')
       sys.exit()
 
     if not validate_files:
