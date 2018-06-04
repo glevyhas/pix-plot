@@ -464,9 +464,15 @@ def main(*args, **kwargs):
   # user specified glob path with tensorflow flags
   if FLAGS.image_files:
     image_glob = glob(FLAGS.image_files)
-  # only one argument was passed; assume it's a glob of image paths
+  # one argument was passed; assume it's a glob of image paths
   elif len(sys.argv) == 2:
     image_glob = glob(sys.argv[1])
+  # many args were passed; assume the user passed a glob
+  # path without quotes, and the shell auto-expanded them
+  # into a list of file arguments
+  elif len(sys.argv) > 2:
+    image_glob = sys.argv[1:]
+
   # no glob path was specified
   else:
     print('Please specify a glob path of images to process\n' +
