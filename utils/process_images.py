@@ -117,7 +117,6 @@ class PixPlot:
       ensure_dir_exists( join(self.output_dir, 'thumbs', str(i) + 'px') )
 
 
-
   def create_image_thumbs(self):
     '''
     Create output thumbs in 32px, 64px, and 128px
@@ -479,7 +478,6 @@ def main(*args, **kwargs):
       'e.g. python utils/process_images.py "folder/*.jpg"')
 
   PixPlot(image_glob)
-
 
 if __name__ == '__main__':
   tf.app.run()
