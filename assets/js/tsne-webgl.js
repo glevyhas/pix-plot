@@ -72,7 +72,7 @@ var selected = null;
 
 function getScene() {
   var scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xffffff);
+  scene.background = new THREE.Color(0xaaaaaa);
   return scene;
 }
 
@@ -91,7 +91,7 @@ function getScene() {
 function getCamera() {
   var aspectRatio = window.innerWidth / window.innerHeight;
   var camera = new THREE.PerspectiveCamera(75, aspectRatio, 10, 50000);
-  camera.position.set(0, -1000, 12000);
+  camera.position.set(0, -1000, 5000);
   return camera;
 }
 
@@ -460,7 +460,6 @@ function buildGeometry() {
   var geometry  = new THREE.InstancedBufferGeometry();
 
   // add vertices for the blueprint. These vertices define a single square
-  var size = 64; // specify w/h of the unit rendered on the screen for each image
   var vertices = [
     0, 0, 0,   // lower right triangle
   ];
@@ -553,7 +552,7 @@ function getShaderMaterial() {
         value: textures['32'],
       },
       // specify size of each image in image atlas
-      repeat: {
+      cellSize: {
         type: 'v2',
         value: [w, h],
       }
@@ -573,7 +572,7 @@ function getShaderMaterial() {
 function getFragmentShader(nTextures) {
   var tree = 'if (textureIndex == 0) {' + getFrag(0) + '} ';
   for (var i=1; i<nTextures; i++) {
-    tree += 'else if (textureIndex == ' + i + ') { ' + getFrag(i) + ' } ';
+    tree += 'else if (textureIndex == ' + i + ') { ' + getFrag(i) + ' } \n';
   }
 
   var raw = document.getElementById('fragment-shader').textContent;
@@ -591,9 +590,9 @@ function getFragmentShader(nTextures) {
 **/
 
 function getFrag(idx) {
-  return 'vec4 color = texture2D(textures[' + idx + '], uv * repeat + vTexOffset ); ' +
+  return 'vec4 color = texture2D(textures[' + idx + '], uv * cellSize + vTexOffset ); ' +
     'if (color.a < 0.5) { discard; } ' +
-    'gl_FragColor = color;';
+    'gl_FragColor = color; ';
 }
 
 /**
@@ -620,6 +619,7 @@ function loadAtlasImage(idx, url) {
 **/
 
 function handleImage(idx, url, img) {
+  /* TODO: debug canvas
   var atlas = document.createElement('img');
   atlas.src = url;
 
@@ -642,10 +642,11 @@ function handleImage(idx, url, img) {
     // image, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight
     ctx.drawImage(atlas, x, y, w, h, x, y, w, h);
   })
+  */
 
   // store the composed canvas and texture
-  canvases[32][idx] = canvas;
-  textures[32][idx] = new THREE.Texture(canvas);
+  //canvases[32][idx] = canvas;
+  textures[32][idx] = new THREE.Texture(img);
   textures[32][idx].needsUpdate = true;
 
   // start the display if all assets are loaded

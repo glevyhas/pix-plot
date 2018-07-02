@@ -91,11 +91,11 @@
     // set float precision
     precision highp float;
 
-    // repeat identifies the size of each image in an atlas
-    uniform vec2 repeat;
+    // cellSize identifies the [w, h] size of each image in an atlas
+    uniform vec2 cellSize;
 
     // textures contains an array of textures with length n textures
-    uniform sampler2D textures[N_TEXTURES];
+    uniform sampler2D textures[1];
 
     // identify the uv values as a varying attribute
     varying vec2 vUv; // blueprint uv coords
@@ -106,8 +106,6 @@
       int textureIndex = int(floor(vTexture));
 
       vec2 uv = vec2( gl_PointCoord.x, 1.0 - gl_PointCoord.y );
-
-      //gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
 
       // The block below will be replaced with a tree of texture lookups
       TEXTURE_LOOKUP_TREE
