@@ -338,8 +338,8 @@ function getImageUvData(img, idx, atlas) {
   return {
     w: img.width / sizes.atlas.width,
     h: img.height / sizes.atlas.height,
-    x: ((atlas.col) * cellWidth),
-    y: (1 - (atlas.row * cellHeight) - cellHeight),
+    x: ((atlas.col) * cellWidth) + (img.xOffset / sizes.atlas.width),
+    y: (1 - (atlas.row * cellHeight) - cellHeight) + (img.yOffset / sizes.atlas.height),
     face: (idx % imagesPerMesh) * 2,
   }
 }
@@ -539,8 +539,8 @@ function buildGeometry() {
 
 function getShaderMaterial() {
 
-  var w = 32 / sizes.atlas.width,
-      h = 32 / sizes.atlas.height;
+  var w = sizes.image.width / sizes.atlas.width,
+      h = sizes.image.height / sizes.atlas.height;
 
   // Uniform types: https://github.com/mrdoob/three.js/wiki/Uniforms-types
   return new THREE.RawShaderMaterial({
@@ -618,42 +618,44 @@ function loadAtlasImage(idx, url) {
 **/
 
 function handleImage(idx, url, img) {
-  /* TODO: debug canvas
+
   var atlas = document.createElement('img');
   atlas.src = url;
+  atlas.width = 2048;
+  atlas.height = 2048;
+  atlas.onload = function() {
 
-  var canvas = document.createElement('canvas');
-  canvas.width = 2048;
-  canvas.height = 2048;
+    var canvas = document.createElement('canvas');
+    canvas.width = 2048;
+    canvas.height = 2048;
 
-  // get the canvas in a context
-  var ctx = canvas.getContext('2d');
+    // get the canvas in a context
+    var ctx = canvas.getContext('2d');
+    ctx.globalAlpha = 0.5;
 
-  // draw only the regions of the atlas that are filled
-  _.keys(atlasImages[idx]).forEach(function(key) {
-    var img = atlasImages[idx][key];
+    // draw only the regions of the atlas that are filled
+    _.keys(atlasImages[idx]).forEach(function(key) {
+      var img = atlasImages[idx][key];
 
-    // find the coordinates for this image in the atlas
-    var x = (img.uv.x * 2048);
-    var y = (img.uv.y * 2048) + img.yOffset;
-    var w = (img.uv.w * 2048);
-    var h = (img.uv.h * 2048);
-    // image, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight
-    ctx.drawImage(atlas, x, y, w, h, x, y, w, h);
-  })
-  */
+      // find the coordinates for this image in the atlas
+      var x = (img.uv.x * 2048);
+      var y = 2048 - (img.uv.y * 2048) - sizes.image.height;
+      var w = (img.uv.w * 2048);
+      var h = (img.uv.h * 2048);
 
-  // store the composed canvas and texture
-  //canvases[32][idx] = canvas;
-  textures[32][idx] = new THREE.Texture(img);
-  textures[32][idx].needsUpdate = true;
+      // image, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight
+      ctx.drawImage(atlas, x, y, w, h, x, y, w, h);
+    })
 
-  // start the display if all assets are loaded
-  startIfReady();
+    // store the composed canvas and texture
+    canvases[32][idx] = canvas;
+    textures[32][idx] = new THREE.Texture(canvas);
+    textures[32][idx].needsUpdate = true;
+
+    // start the display if all assets are loaded
+    startIfReady();
+  }
 }
-
-
-
 
 
 /**
