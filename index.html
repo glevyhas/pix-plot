@@ -49,13 +49,13 @@
     // instance attributes
     attribute vec2 uv; // texture coordinate offsets for an instance
     attribute vec3 translation; // x y translation offsets for an instance
-    attribute float texture; // index of an instance's texture
-    attribute vec2 texOffset; // offset of a texture
+    attribute float textureIndex; // index of an instance's texture
+    attribute vec2 textureOffset; // offset of a texture
 
     // pass the uv coordinates of each vertex to the fragment shader
     varying vec2 vUv; // pass the texture offsets to the frag shader
-    varying float vTexture; // pass the texture idx (varyings must be float)
-    varying vec2 vTexOffset; // pass the texture offset
+    varying float vTextureIndex; // pass the texture idx (varyings must be float)
+    varying vec2 vTextureOffset; // pass the texture offset
 
     void main() {
       float cameraZ = cameraPosition[2];
@@ -68,8 +68,8 @@
       gl_PointSize = pow(sizeScale, 3.1);
 
       vUv = uv;
-      vTexture = texture;
-      vTexOffset = texOffset;
+      vTextureIndex = textureIndex;
+      vTextureOffset = textureOffset;
       vec3 pos = position + translation;
       vec4 projected = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
       gl_Position = projected; // * vec4(posScale, posScale, 1.0, 1.0);
@@ -99,13 +99,13 @@
 
     // identify the uv values as a varying attribute
     varying vec2 vUv; // blueprint uv coords
-    varying vec2 vTexOffset; // instance uv offsets
-    varying float vTexture; // set index of each object's vertex
+    varying vec2 vTextureOffset; // instance uv offsets
+    varying float vTextureIndex; // set index of each object's texture
 
     void main() {
-      int textureIndex = int(floor(vTexture));
+      int textureIndex = int(floor(vTextureIndex));
 
-      vec2 uv = vec2( gl_PointCoord.x, 1.0 - gl_PointCoord.y );
+      vec2 uv = vec2( gl_PointCoord.x, 1.0 - gl_PointCoord.y ) + vUv;
 
       // The block below will be replaced with a tree of texture lookups
       TEXTURE_LOOKUP_TREE

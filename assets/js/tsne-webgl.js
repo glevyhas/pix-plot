@@ -484,7 +484,7 @@ function buildGeometry() {
 
   // initialize instance attribute buffers
   var translation = new Float32Array( instances.length * 3 );
-  var texture = new Float32Array( instances.length );
+  var textureIndex = new Float32Array( instances.length );
   var uv = new Float32Array( instances.length * 2 );
 
   // initialize counter variables for each attribute
@@ -506,15 +506,15 @@ function buildGeometry() {
     uv[ uvIterator++ ] = img.uv.y;
 
     // set the texture index of the instance
-    texture[ textureIterator++ ] = img.texture.idx;
+    textureIndex[ textureIterator++ ] = img.texture.idx;
   }
 
   // set the attributes for each instance
   geometry.addAttribute( 'translation',
     new THREE.InstancedBufferAttribute( translation, 3, 1 ) );
   geometry.addAttribute( 'texture',
-    new THREE.InstancedBufferAttribute( texture, 1, 1 ) );
-  geometry.addAttribute( 'texOffset',
+    new THREE.InstancedBufferAttribute( textureIndex, 1, 1 ) );
+  geometry.addAttribute( 'textureOffset',
     new THREE.InstancedBufferAttribute( uv, 2, 1 ) );
 
   // build the material and mesh and render
@@ -531,7 +531,6 @@ function buildGeometry() {
 
   //removeLoaderScene();
   //loadLargeAtlasFiles();
-  console.log(geometry, material)
 }
 
 /**
@@ -590,7 +589,7 @@ function getFragmentShader(nTextures) {
 **/
 
 function getFrag(idx) {
-  return 'vec4 color = texture2D(textures[' + idx + '], uv * cellSize + vTexOffset ); ' +
+  return 'vec4 color = texture2D(textures[' + idx + '], uv * cellSize + vTextureOffset ); ' +
     'if (color.a < 0.5) { discard; } ' +
     'gl_FragColor = color; ';
 }
