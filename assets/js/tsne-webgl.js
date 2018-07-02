@@ -338,7 +338,7 @@ function getImageUvData(img, idx, atlas) {
   return {
     w: img.width / sizes.atlas.width,
     h: img.height / sizes.atlas.height,
-    x: ((atlas.col) * cellWidth) + (img.xOffset / sizes.atlas.width),
+    x: ((atlas.col) * cellWidth),
     y: (1 - (atlas.row * cellHeight) - cellHeight),
     face: (idx % imagesPerMesh) * 2,
   }
