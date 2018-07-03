@@ -34,7 +34,7 @@ import tarfile
 import psutil
 import subprocess
 import codecs
-
+from tqdm import tqdm
 # configure command line interface arguments
 flags = tf.app.flags
 flags.DEFINE_string('model_dir', '/tmp/imagenet', 'The location of downloaded imagenet model')
@@ -91,7 +91,7 @@ class PixPlot:
     # test whether each input image can be processed
     print(' * validating input files')
     invalid_files = []
-    for i in self.image_files:
+    for i in tqdm(self.image_files):
       try:
         cmd = get_magick_command('identify') + ' "' + i + '"'
         response = subprocess.check_output(cmd, shell=True)
@@ -152,9 +152,8 @@ class PixPlot:
 
     print(' * creating image vectors')
     with tf.Session() as sess:
-      for image_index, image in enumerate(self.image_files):
+      for image_index, image in enumerate(tqdm(self.image_files)):
         try:
-          print(' * processing image', image_index+1, 'of', len(self.image_files))
           outfile_name = os.path.basename(image) + '.npy'
           out_path = join(self.output_dir, 'image_vectors', outfile_name)
           if os.path.exists(out_path) and not self.rewrite_image_vectors:
@@ -220,9 +219,8 @@ class PixPlot:
     '''
     print(' * loading image vectors')
     self.vector_files = glob( join(self.output_dir, 'image_vectors', '*') )
-    for c, i in enumerate(self.vector_files):
+    for c, i in enumerate(tqdm(self.vector_files)):
       self.image_vectors.append(np.load(i))
-      print(' * loaded', c+1, 'of', len(self.vector_files), 'image vectors')
 
 
   def build_model(self, image_vectors):
@@ -246,7 +244,7 @@ class PixPlot:
     '''
     print(' * writing JSON file')
     image_positions = []
-    for c, i in enumerate(fit_model):
+    for c, i in tqdm(enumerate(fit_model)):
       img = get_filename(self.vector_files[c])
       if img in self.errored_images:
         continue
@@ -278,7 +276,7 @@ class PixPlot:
     closest, _ = pairwise_distances_argmin_min(centroids, X)
     centroid_paths = [self.vector_files[i] for i in closest]
     centroid_json = []
-    for c, i in enumerate(centroid_paths):
+    for c, i in tqdm(enumerate(centroid_paths)):
       centroid_json.append({
         'img': get_filename(i),
         'label': 'Cluster ' + str(c+1)
@@ -315,7 +313,7 @@ class PixPlot:
     '''
     print(' * creating atlas files')
     atlas_group_imgs = []
-    for thumb_size in self.sizes[1:-1]:
+    for thumb_size in tqdm(self.sizes[1:-1]):
       # identify the images for this atlas group
       atlas_thumbs = self.get_atlas_thumbs(thumb_size)
       atlas_group_imgs.append(len(atlas_thumbs))
@@ -352,7 +350,7 @@ class PixPlot:
     atlas_image_groups = subdivide(image_thumbs, atlas_cols**2)
 
     # generate a directory for images at this size if it doesn't exist
-    for idx, atlas_images in enumerate(atlas_image_groups):
+    for idx, atlas_images in tqdm(enumerate(atlas_image_groups)):
       print(' * creating atlas', idx + 1, 'at size', thumb_size)
       out_path = join(out_dir, 'atlas-' + str(idx) + '.jpg')
       # write a file containing a list of images for the current montage
