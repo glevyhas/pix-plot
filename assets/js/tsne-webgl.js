@@ -49,7 +49,7 @@ var textureLoader = new AjaxTextureLoader();
 // Many graphics cards only support 2**16 vertices per mesh, and
 // each image requires 4 distinct vertices in an 'indexed' geometry
 // and 6 distinct vertices in a non-indexed geometry
-var imagesPerMesh = 2**16 / 6;
+var imagesPerMesh = 2**16 / 4;
 
 // Create a store for meshes
 var meshes = [];
@@ -90,7 +90,7 @@ function getScene() {
 
 function getCamera() {
   var aspectRatio = window.innerWidth / window.innerHeight;
-  var camera = new THREE.PerspectiveCamera(75, aspectRatio, 10, 50000);
+  var camera = new THREE.PerspectiveCamera(75, aspectRatio, 100, 2000);
   camera.position.set(0, -1000, 5000);
   return camera;
 }
@@ -494,19 +494,21 @@ function buildGeometry() {
 
   // build each instance
   for (var i=0; i<instances.length; i++) {
-    var img = imageData[instances[i]];
+    if (i < 10000) {
+      var img = imageData[instances[i]];
 
-    // add the translation attribute parameters
-    translation[ translationIterator++ ] = img.pos.x;
-    translation[ translationIterator++ ] = img.pos.y;
-    translation[ translationIterator++ ] = img.pos.z;
+      // add the translation attribute parameters
+      translation[ translationIterator++ ] = img.pos.x;
+      translation[ translationIterator++ ] = img.pos.y;
+      translation[ translationIterator++ ] = img.pos.z;
 
-    // add the uv attribute parameters
-    uv[ uvIterator++ ] = img.uv.x;
-    uv[ uvIterator++ ] = img.uv.y;
+      // add the uv attribute parameters
+      uv[ uvIterator++ ] = img.uv.x;
+      uv[ uvIterator++ ] = img.uv.y;
 
-    // set the texture index of the instance
-    textureIndex[ textureIterator++ ] = img.texture.idx;
+      // set the texture index of the instance
+      textureIndex[ textureIterator++ ] = img.texture.idx;
+    }
   }
 
   // set the attributes for each instance
@@ -529,6 +531,7 @@ function buildGeometry() {
 
   requestAnimationFrame(animate);
 
+  // TODO: re-enable start sequence
   //removeLoaderScene();
   //loadLargeAtlasFiles();
 }
@@ -542,13 +545,15 @@ function getShaderMaterial() {
   var w = sizes.image.width / sizes.atlas.width,
       h = sizes.image.height / sizes.atlas.height;
 
+  var tex = textures[sizes.image.width].slice(0, 2);
+
   // Uniform types: https://github.com/mrdoob/three.js/wiki/Uniforms-types
   return new THREE.RawShaderMaterial({
     uniforms: {
       // array of sampler2D values
       textures: {
         type: 'tv',
-        value: textures['32'],
+        value: tex,
       },
       // specify size of each image in image atlas
       cellSize: {
@@ -556,8 +561,10 @@ function getShaderMaterial() {
         value: [w, h],
       }
     },
+    // TODO: partition into separate draw calls
     vertexShader: document.getElementById('vertex-shader').textContent,
-    fragmentShader: getFragmentShader(textures['32'].length),
+    //fragmentShader: getFragmentShader(textures['32'].length),
+    fragmentShader: getFragmentShader(2),
   });
 }
 
