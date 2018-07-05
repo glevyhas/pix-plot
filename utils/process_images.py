@@ -35,6 +35,8 @@ import psutil
 import subprocess
 import codecs
 from tqdm import tqdm
+import fitsne
+
 # configure command line interface arguments
 flags = tf.app.flags
 flags.DEFINE_string('model_dir', '/tmp/imagenet', 'The location of downloaded imagenet model')
@@ -42,7 +44,7 @@ flags.DEFINE_string('image_files', '', 'A glob path of images to process')
 flags.DEFINE_integer('clusters', 20, 'The number of clusters to display in the image browser')
 flags.DEFINE_boolean('validate_images', True, 'Whether to validate images before processing')
 flags.DEFINE_string('output_folder', 'output', 'The folder where output files will be stored')
-flags.DEFINE_string('layout', 'umap', 'The layout method to use {umap|tsne}')
+flags.DEFINE_string('layout', 'umap', 'The layout method to use {umap|tsne|fitsne}')
 FLAGS = flags.FLAGS
 
 
@@ -138,9 +140,12 @@ class PixPlot:
         resize_args.append([j, c, n_thumbs, sizes, out_paths])
 
     pool = Pool()
-    for result in pool.imap(resize_thumb, resize_args):
-      if result:
-        self.errored_images.add( get_filename(result) )
+    total = len(resize_args)
+    with tqdm(total=total) as pbar:
+        for result in pool.imap(resize_thumb, resize_args):
+            pbar.update()
+            if result:
+                self.errored_images.add( get_filename(result) )
 
 
   def create_image_vectors(self):
@@ -151,7 +156,7 @@ class PixPlot:
     self.create_tf_graph()
 
     print(' * creating image vectors')
-    with tf.Session() as sess:
+    with tf.Session(config=config) as sess:
       for image_index, image in enumerate(tqdm(self.image_files)):
         try:
           outfile_name = os.path.basename(image) + '.npy'
@@ -220,7 +225,7 @@ class PixPlot:
     print(' * loading image vectors')
     self.vector_files = glob( join(self.output_dir, 'image_vectors', '*') )
     for c, i in enumerate(tqdm(self.vector_files)):
-      self.image_vectors.append(np.load(i))
+        self.image_vectors.append(np.load(i))
 
 
   def build_model(self, image_vectors):
@@ -232,7 +237,11 @@ class PixPlot:
       model = TSNE(n_components=2, random_state=0)
       np.set_printoptions(suppress=True)
       return model.fit_transform( np.array(image_vectors) )
-
+    elif self.method == 'fitsne':
+        return fitsne.FItSNE(np.asarray(image_vectors, dtype=float),
+                             perplexity=25,
+                             ann_not_vptree=True,
+                             max_iter=1000)
     elif self.method == 'umap':
       model = UMAP(n_neighbors=25, min_dist=0.00001, metric='correlation')
       return model.fit_transform( np.array(image_vectors) )
@@ -244,11 +253,11 @@ class PixPlot:
     '''
     print(' * writing JSON file')
     image_positions = []
-    for c, i in tqdm(enumerate(fit_model)):
+    for c, i in enumerate(tqdm(fit_model)):
       img = get_filename(self.vector_files[c])
       if img in self.errored_images:
         continue
-      thumb_path = join(self.output_dir, 'thumbs', '32px', img)
+      thumb_path = join(self.output_dir, 'thumbs', '32px', img.replace('.png', '.jpg'))
       with Image.open(thumb_path) as image:
         width, height = image.size
       # Add the image name, x offset, y offset
@@ -276,7 +285,7 @@ class PixPlot:
     closest, _ = pairwise_distances_argmin_min(centroids, X)
     centroid_paths = [self.vector_files[i] for i in closest]
     centroid_json = []
-    for c, i in tqdm(enumerate(centroid_paths)):
+    for c, i in enumerate(tqdm(centroid_paths)):
       centroid_json.append({
         'img': get_filename(i),
         'label': 'Cluster ' + str(c+1)
@@ -350,8 +359,8 @@ class PixPlot:
     atlas_image_groups = subdivide(image_thumbs, atlas_cols**2)
 
     # generate a directory for images at this size if it doesn't exist
-    for idx, atlas_images in tqdm(enumerate(atlas_image_groups)):
-      print(' * creating atlas', idx + 1, 'at size', thumb_size)
+    for idx, atlas_images in enumerate(atlas_image_groups):
+      #print(' * creating atlas', idx + 1, 'at size', thumb_size)
       out_path = join(out_dir, 'atlas-' + str(idx) + '.jpg')
       # write a file containing a list of images for the current montage
       tmp_file_path = join(self.output_dir, 'images_to_montage.txt')
@@ -397,7 +406,7 @@ def resize_thumb(args):
   Images for all thumb sizes are created in a single call, chaining the resize steps
   '''
   img_path, idx, n_imgs, sizes, out_paths = args
-  print(' * creating thumb', idx+1, 'of', n_imgs, 'at sizes', sizes)
+  #print(' * creating thumb', idx+1, 'of', n_imgs, 'at sizes', sizes)
   cmd =  get_magick_command('convert') + ' '
   cmd += '-define jpeg:size={' + str(sizes[0]) + 'x' + str(sizes[0]) + '} '
   cmd += '"' + img_path + '" '
