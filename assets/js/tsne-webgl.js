@@ -2,6 +2,11 @@
 * Globals
 **/
 
+// Check the user agent's WebGL settings
+var gl = document.createElement('canvas').getContext('webgl');
+if (!gl) webglNotAvailable();
+var limits = getBrowserLimits();
+
 // Initialize global data stores for image data
 var imageData = {};
 var imageDataKeys = [];
@@ -65,6 +70,23 @@ var lastMouse = new THREE.Vector2();
 
 // Store of the currently selected image
 var selected = null;
+
+/**
+* Handle the case that the user can't create a WebGL context
+**/
+
+function webglNotAvailable() {
+  document.querySelector('#webgl-not-available').style.display = 'block';
+}
+
+/**
+* Identify the limits of vertices, textures, etc per
+* draw call for the user agent's GPU system
+**/
+
+function getBrowserLimits() {
+
+}
 
 /**
 * Generate  scene object with a background color

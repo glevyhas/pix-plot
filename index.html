@@ -44,17 +44,17 @@
     uniform vec3 cameraPosition;
 
     // blueprint attributes
-    attribute vec3 position; // sets the blueprint's vertex positions
+    attribute vec3 position; // blueprint position
+    attribute vec2 uv; // blueprint texture offsets
 
     // instance attributes
-    attribute vec2 uv; // texture coordinate offsets for an instance
-    attribute vec3 translation; // x y translation offsets for an instance
+    attribute vec3 translation; // x y z position offsets for an instance
     attribute float textureIndex; // index of an instance's texture
-    attribute vec2 textureOffset; // offset of a texture
+    attribute vec2 textureOffset; // offset of the texture coords for an instance
 
     // varyings: pass the uv coordinates of each vertex to the fragment shader
     varying vec2 vUv; // pass the texture offsets to the frag shader
-    varying float vTextureIndex; // pass the texture idx (varyings must be float)
+    varying float vTextureIndex; // pass the texture idx (varyings can't be int)
     varying vec2 vTextureOffset; // pass the texture offset
 
     void main() {
@@ -154,6 +154,12 @@
         </script>
       </div>
     </nav>
+    <div id='webgl-not-available'>
+      <span class='browser-message'>Sorry, your browser is not able to load a WebGL scene currently. Please check your browser settings and try again.</span>
+    </div>
+    <noscript>
+      <span class='browser-message'>Sorry, your browser is not able to load a WebGL scene currently. Please enable JavaScript and try again.</span>
+    </noscript>
     <script type='text/javascript' src='https://cdnjs.cloudflare.com/ajax/libs/three.js/92/three.min.js'></script>
     <script type='text/javascript' src='https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.4/lodash.min.js'></script>
     <script type='text/javascript' src='assets/js/image-progress.js'></script>

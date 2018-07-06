@@ -9,6 +9,7 @@ html,
 canvas {
   background: #000;
   overflow: hidden;
+  height: 100%;
 }
 
 canvas {
@@ -289,4 +290,29 @@ button {
 
 button.active {
   opacity: 1;
+}
+
+/**
+* Browser messages
+**/
+
+#webgl-not-available {
+  text-align: center;
+  display: none;
+}
+
+noscript {
+  text-align: center;
+  display: block;
+  width: 100%;
+}
+
+.browser-message {
+  position: relative;
+  top: 90px;
+  z-index: 100;
+  background: #c62d1e;
+  color: #fff;
+  padding: 12px 17px;
+  font-size: 17px;
 }
