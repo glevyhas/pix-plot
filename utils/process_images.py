@@ -74,7 +74,7 @@ class PixPlot:
     if not validate_files:
       print(' * Skipping image validation')
       return
-      
+
     # test whether each input image can be processed
     print(' * Validating input files')
     invalid_files = []

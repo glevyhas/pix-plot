@@ -52,27 +52,29 @@
     attribute float textureIndex; // index of an instance's texture
     attribute vec2 textureOffset; // offset of a texture
 
-    // pass the uv coordinates of each vertex to the fragment shader
+    // varyings: pass the uv coordinates of each vertex to the fragment shader
     varying vec2 vUv; // pass the texture offsets to the frag shader
     varying float vTextureIndex; // pass the texture idx (varyings must be float)
     varying vec2 vTextureOffset; // pass the texture offset
 
     void main() {
-      float cameraZ = cameraPosition[2];
-      float sizeScale = 9000.0 / cameraZ;
-      float posScale = 1000.0 / cameraZ;
 
-      // cameraPosition is an array of the camera positional vals: x, y, z
-      // to control the size of each point within screen space, we can set
-      // the gl_PointSize as a function of the camera's z position
-      gl_PointSize = pow(sizeScale, 3.1);
-
+      // pass varyings to fragment shader
       vUv = uv;
       vTextureIndex = textureIndex;
       vTextureOffset = textureOffset;
+
+      // set point position
       vec3 pos = position + translation;
       vec4 projected = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
-      gl_Position = projected; // * vec4(posScale, posScale, 1.0, 1.0);
+      gl_Position = projected;
+
+      // use the delta between the point position and camera position to size point
+      float xDelta = pow(pos[0] - cameraPosition[0], 2.0);
+      float yDelta = pow(pos[1] - cameraPosition[1], 2.0);
+      float zDelta = pow(pos[2] - cameraPosition[2], 2.0);
+      float delta  = pow(xDelta + yDelta + zDelta, 0.5);
+      gl_PointSize = 10000.0 / delta;
     }
     </script>
 
@@ -88,7 +90,6 @@
     * throw a warning but won't prevent shader compiling.
     **/
 
-    // set float precision
     precision highp float;
 
     // cellSize identifies the [w, h] size of each image in an atlas
@@ -108,7 +109,8 @@
       vec2 uv = vec2( gl_PointCoord.x, 1.0 - gl_PointCoord.y ) + vUv;
 
       // The block below will be replaced with a tree of texture lookups
-      TEXTURE_LOOKUP_TREE
+      //TEXTURE_LOOKUP_TREE
+      gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
     }
     </script>
 

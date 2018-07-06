@@ -90,8 +90,8 @@ function getScene() {
 
 function getCamera() {
   var aspectRatio = window.innerWidth / window.innerHeight;
-  var camera = new THREE.PerspectiveCamera(75, aspectRatio, 100, 2000);
-  camera.position.set(0, -1000, 5000);
+  var camera = new THREE.PerspectiveCamera(75, aspectRatio, 0.1, 12000);
+  camera.position.set(0, -1000, 7000);
   return camera;
 }
 
@@ -291,8 +291,8 @@ function getImageData(img, idx) {
 
 function getImagePositionData(img, idx) {
   return {
-    x: img.x * 1.5,
-    y: img.y * 1.2,
+    x: img.x * 10,
+    y: img.y * 6,
     z: 2000 + ((idx/100) % 100),
   }
 }
@@ -461,12 +461,12 @@ function buildGeometry() {
 
   // add vertices for the blueprint. These vertices define a single square
   var vertices = [
-    0, 0, 0,   // lower right triangle
+    0, 0, 0,
   ];
 
   // add uv coordinates for the blueprint; these coords define a single square
-  var w = 32 / sizes.atlas.width,
-      h = 32 / sizes.atlas.height;
+  var w = sizes.image.width / sizes.atlas.width,
+      h = sizes.image.height / sizes.atlas.height;
 
   var uvs = [
     0, 0,
@@ -494,21 +494,19 @@ function buildGeometry() {
 
   // build each instance
   for (var i=0; i<instances.length; i++) {
-    if (i < 10000) {
-      var img = imageData[instances[i]];
+    var img = imageData[instances[i]];
 
-      // add the translation attribute parameters
-      translation[ translationIterator++ ] = img.pos.x;
-      translation[ translationIterator++ ] = img.pos.y;
-      translation[ translationIterator++ ] = img.pos.z;
+    // add the translation attribute parameters
+    translation[ translationIterator++ ] = img.pos.x;
+    translation[ translationIterator++ ] = img.pos.y;
+    translation[ translationIterator++ ] = 0; //img.pos.z;
 
-      // add the uv attribute parameters
-      uv[ uvIterator++ ] = img.uv.x;
-      uv[ uvIterator++ ] = img.uv.y;
+    // add the uv attribute parameters
+    uv[ uvIterator++ ] = img.uv.x;
+    uv[ uvIterator++ ] = img.uv.y;
 
-      // set the texture index of the instance
-      textureIndex[ textureIterator++ ] = img.texture.idx;
-    }
+    // set the texture index of the instance
+    textureIndex[ textureIterator++ ] = img.texture.idx;
   }
 
   // set the attributes for each instance
@@ -582,7 +580,7 @@ function getFragmentShader(nTextures) {
   }
 
   var raw = document.getElementById('fragment-shader').textContent;
-  raw = raw.replace('TEXTURE_LOOKUP_TREE', tree);
+  //raw = raw.replace('TEXTURE_LOOKUP_TREE', tree);
   raw = raw.replace('N_TEXTURES', nTextures);
   return raw;
 }
@@ -597,7 +595,7 @@ function getFragmentShader(nTextures) {
 
 function getFrag(idx) {
   return 'vec4 color = texture2D(textures[' + idx + '], uv * cellSize + vTextureOffset ); ' +
-    'if (color.a < 0.5) { discard; } ' +
+    //'if (color.a < 0.5) { discard; } ' +
     'gl_FragColor = color; ';
 }
 
