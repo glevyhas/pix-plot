@@ -8,8 +8,8 @@ if (!gl) webglNotAvailable();
 var limits = getBrowserLimits();
 
 // Initialize global data stores for image data
-var imageData = {};
-var imageDataKeys = [];
+var imageData = {}; // map from image id to rendering attributes
+var imageDataKeys = []; // array of distinct image id values
 var atlasImages = {}; // map from atlas index to images in atlas
 
 // Identify data endpoint
@@ -52,9 +52,12 @@ var canvases = { 32: [], 64: [] };
 var textureLoader = new AjaxTextureLoader();
 
 // Many graphics cards only support 2**16 vertices per mesh, and
-// each image requires 4 distinct vertices in an 'indexed' geometry
-// and 6 distinct vertices in a non-indexed geometry
-var imagesPerMesh = 2**16 / 4;
+// each image/quad requires:
+//   6 vertices in a two-triangle quad without indexing
+//   4 vertices in a two-triangle quad with indexing (reused vertices)
+//   1 vertex in a point primitive
+var verticesPerObject = 1; // depends on the primitive used for each quad
+var imagesPerMesh = 2**16 / verticesPerObject;
 
 // Create a store for meshes
 var meshes = [];
@@ -85,7 +88,10 @@ function webglNotAvailable() {
 **/
 
 function getBrowserLimits() {
-
+  return {
+    textureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE),
+    textureCount: gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS),
+  }
 }
 
 /**
@@ -478,76 +484,68 @@ function startIfReady() {
 
 function buildGeometry() {
 
-  // this geometry builds a blueprint and many copies of the blueprint
-  var geometry  = new THREE.InstancedBufferGeometry();
+  // create one group to which all meshes / draw calls will be added
+  var group = new THREE.Group();
 
-  // add vertices for the blueprint. These vertices define a single square
-  var vertices = [
-    0, 0, 0,
-  ];
-
-  // add uv coordinates for the blueprint; these coords define a single square
-  var w = sizes.image.width / sizes.atlas.width,
-      h = sizes.image.height / sizes.atlas.height;
-
-  var uvs = [
-    0, 0,
-  ];
-
-  // Build the blueprint by assigning vertices + uvs as regular attributes.
-  // All instances of the blueprint will share this data
-  geometry.addAttribute( 'position',
-    new THREE.BufferAttribute( new Float32Array( vertices ), 3));
-  geometry.addAttribute( 'uv',
-    new THREE.BufferAttribute( new Float32Array( uvs ), 2));
-
-  // identify the key for each instance to make
+  // pull out the keys for all images to be rendered
   var instances = _.keys(imageData);
 
-  // initialize instance attribute buffers
-  var translation = new Float32Array( instances.length * 3 );
-  var textureIndex = new Float32Array( instances.length );
-  var uv = new Float32Array( instances.length * 2 );
+  // total number of draw calls to make
+  var meshCount = Math.ceil(instances.length / imagesPerMesh);
 
-  // initialize counter variables for each attribute
-  var translationIterator = 0;
-  var textureIterator = 0;
-  var uvIterator = 0;
+  // fit the maximum number of vertices in each draw call
+  for (var i=0; i<meshCount; i++) {
 
-  // build each instance
-  for (var i=0; i<instances.length; i++) {
-    var img = imageData[instances[i]];
+    // find start and end indices of images in this mesh
+    var start = i * imagesPerMesh;
+    var end = Math.min( (i+1) * imagesPerMesh, instances.length);
+    var count = end - start;
 
-    // add the translation attribute parameters
-    translation[ translationIterator++ ] = img.pos.x;
-    translation[ translationIterator++ ] = img.pos.y;
-    translation[ translationIterator++ ] = 0; //img.pos.z;
+    // create the blueprint attributes shared by all instances in the geometry
+    var geometry  = new THREE.InstancedBufferGeometry();
+    geometry.addAttribute( 'position', // add position coords shared by all instances
+      new THREE.BufferAttribute( new Float32Array( [ 0, 0, 0, ] ), 3));
+    geometry.addAttribute( 'uv',       // add uv coords shared by all instances
+      new THREE.BufferAttribute( new Float32Array( [ 0, 0, ] ), 2));
 
-    // add the uv attribute parameters
-    uv[ uvIterator++ ] = img.uv.x;
-    uv[ uvIterator++ ] = img.uv.y;
+    // initialize instance attribute buffers
+    var translation = new Float32Array( count * 3 );
+    var uv = new Float32Array( count * 2 );
+    var textureIndex = new Float32Array( count );
 
-    // set the texture index of the instance
-    textureIndex[ textureIterator++ ] = img.texture.idx;
+    // initialize counter variables for each attribute
+    var translationIterator = 0;
+    var uvIterator = 0;
+    var textureIterator = 0;
+
+    // add the instance attributes
+    for (var j=start; j<end; j++) {
+      var img = imageData[instances[j]];
+      translation[ translationIterator++ ] = img.pos.x; // set translation x
+      translation[ translationIterator++ ] = img.pos.y; // set translation y
+      translation[ translationIterator++ ] = img.pos.z; // set translation z
+      uv[ uvIterator++ ] = img.uv.x; // set uv offset x
+      uv[ uvIterator++ ] = img.uv.y; // set uv offset y
+      textureIndex[ textureIterator++ ] = img.texture.idx; // set texture index
+    }
+
+    // bind the built buffers to the geometry as instance attributes
+    geometry.addAttribute( 'translation',
+      new THREE.InstancedBufferAttribute( translation, 3, 1 ) );
+    geometry.addAttribute( 'texture',
+      new THREE.InstancedBufferAttribute( textureIndex, 1, 1 ) );
+    geometry.addAttribute( 'textureOffset',
+      new THREE.InstancedBufferAttribute( uv, 2, 1 ) );
+
+    // build the geometry into a mesh
+    var material = getShaderMaterial();
+    var mesh = new THREE.Points(geometry, material);
+    // prevent the mesh from being clipped on drag
+    mesh.frustumCulled = false;
+    group.add(mesh);
   }
 
-  // set the attributes for each instance
-  geometry.addAttribute( 'translation',
-    new THREE.InstancedBufferAttribute( translation, 3, 1 ) );
-  geometry.addAttribute( 'texture',
-    new THREE.InstancedBufferAttribute( textureIndex, 1, 1 ) );
-  geometry.addAttribute( 'textureOffset',
-    new THREE.InstancedBufferAttribute( uv, 2, 1 ) );
-
-  // build the material and mesh and render
-  var material = getShaderMaterial();
-  var mesh = new THREE.Points(geometry, material);
-
-  // prevent the mesh from being clipped on drag
-  mesh.frustumCulled = false;
-
-  scene.add(mesh);
-  meshes.push(mesh);
+  scene.add(group);
 
   requestAnimationFrame(animate);
 
@@ -683,7 +681,6 @@ function handleImage(idx, url, img) {
     startIfReady();
   }
 }
-
 
 /**
 * TODO: All Below
