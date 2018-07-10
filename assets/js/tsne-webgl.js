@@ -631,7 +631,6 @@ function getFragmentShader(nTextures) {
 
 function getFrag(idx) {
   return 'vec4 color = texture2D(textures[' + idx + '], uv * cellSize + vTextureOffset ); ' +
-    'if (color.a < 0.5) { discard; }\n ' +
     'gl_FragColor = color; ';
 }
 
@@ -672,7 +671,7 @@ function handleImage(idx, url, img) {
 
     // get the canvas in a context
     var ctx = canvas.getContext('2d');
-    ctx.globalAlpha = 0.5;
+    //ctx.globalAlpha = 0.5;
 
     // draw only the regions of the atlas that are filled
     _.keys(atlasImages[idx]).forEach(function(key) {
@@ -683,6 +682,13 @@ function handleImage(idx, url, img) {
       var y = 2048 - (img.uv.y * 2048) - sizes.image.height;
       var w = (img.uv.w * 2048);
       var h = (img.uv.h * 2048);
+
+      // find the padding on the top + left of the current image
+      var left = (sizes.image.width - w) / 2;
+      var top = (sizes.image.height - h) / 2;
+
+      x += left;
+      y += top;
 
       // image, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight
       ctx.drawImage(atlas, x, y, w, h, x, y, w, h);
