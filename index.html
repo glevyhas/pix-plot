@@ -34,47 +34,44 @@
     **/
 
     // set float precision
-    precision mediump float;
+    precision highp float;
 
-    // specify geometry uniforms
+    // specify geometry and camera uniforms
     uniform mat4 modelViewMatrix;
     uniform mat4 projectionMatrix;
-
-    // to get the camera attributes:
     uniform vec3 cameraPosition;
 
-    // blueprint attributes
-    attribute vec3 position; // blueprint position
-    attribute vec2 uv; // blueprint texture offsets
-
     // instance attributes
+    attribute vec3 position; // base x y z position for all points
     attribute vec3 translation; // x y z position offsets for an instance
     attribute float textureIndex; // index of an instance's texture
     attribute vec2 textureOffset; // offset of the texture coords for an instance
 
     // varyings: pass the uv coordinates of each vertex to the fragment shader
-    varying vec2 vUv; // pass the texture offsets to the frag shader
-    varying float vTextureIndex; // pass the texture idx (varyings can't be int)
+    varying float vTextureIndex; // pass the texture idx (varyings can't be bool or int)
     varying vec2 vTextureOffset; // pass the texture offset
 
-    void main() {
+    // function that returns the size of a point, scaled by the camera position
+    float scalePoint(in vec3 pos, in vec3 cameraPosition) {
+      float xDelta = pow(pos[0] - cameraPosition[0], 2.0);
+      float yDelta = pow(pos[1] - cameraPosition[1], 2.0);
+      float zDelta = pow(pos[2] - cameraPosition[2], 2.0);
+      float delta  = pow(xDelta + yDelta + zDelta, 0.5);
+      float size = 10000.0 / delta;
+      return size;
+    }
 
+    void main() {
       // pass varyings to fragment shader
-      vUv = uv;
       vTextureIndex = textureIndex;
       vTextureOffset = textureOffset;
 
       // set point position
       vec3 pos = position + translation;
-      vec4 projected = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
-      gl_Position = projected;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
 
-      // use the delta between the point position and camera position to size point
-      float xDelta = pow(pos[0] - cameraPosition[0], 2.0);
-      float yDelta = pow(pos[1] - cameraPosition[1], 2.0);
-      float zDelta = pow(pos[2] - cameraPosition[2], 2.0);
-      float delta  = pow(xDelta + yDelta + zDelta, 0.5);
-      gl_PointSize = 10000.0 / delta;
+      // use the unscaled point position and camera position to set point size
+      gl_PointSize = scalePoint(pos, cameraPosition);
     }
     </script>
 
@@ -99,14 +96,15 @@
     uniform sampler2D textures[N_TEXTURES];
 
     // identify the uv values as a varying attribute
-    varying vec2 vUv; // blueprint uv coords
     varying vec2 vTextureOffset; // instance uv offsets
     varying float vTextureIndex; // set index of each object's texture
 
     void main() {
-      int textureIndex = int(floor(vTextureIndex));
+      int textureIndex = int(vTextureIndex);
 
-      vec2 uv = vec2( gl_PointCoord.x, 1.0 - gl_PointCoord.y ) + vUv;
+      // 1.0 - gl_PointCoord.y flips each pixel so the image is rightside-up
+      vec2 uv = vec2( gl_PointCoord.x, 1.0 - gl_PointCoord.y );
+      vec2 scaledUv = uv * cellSize;
 
       // The block below will be replaced with a tree of texture lookups
       TEXTURE_LOOKUP_TREE
