@@ -336,9 +336,9 @@ function getImageData(img, idx) {
 
 function getImagePositionData(img, idx) {
   return {
-    x: img.x * 10,
-    y: img.y * 6,
-    z: 2000 + ((idx/100) % 100),
+    x: img.x * 10, // 10 is just a scalar to set the point spread
+    y: img.y * 6,  // 6 is just a scalar to set the point spread
+    z: 2000 + ((idx/100) % 100), // TODO: replace with heightmap
   }
 }
 
@@ -355,7 +355,7 @@ function getImagePositionData(img, idx) {
 function getImageAtlasData(idx) {
   var indexInAtlas = idx % (imagesPerAtlas);
   return {
-    idx: Math.floor(idx / (imagesPerAtlas)),
+    idx: Math.floor(idx / imagesPerAtlas),
     row: Math.floor(indexInAtlas / sizes.atlas.rows),
     col: indexInAtlas % sizes.atlas.cols,
   }
