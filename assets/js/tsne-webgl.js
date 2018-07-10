@@ -511,13 +511,6 @@ function buildGeometry() {
   // fit the maximum number of vertices in each draw call
   for (var i=0; i<meshCount; i++) {
 
-    // create the blueprint attributes shared by all instances in the geometry
-    var geometry  = new THREE.InstancedBufferGeometry();
-    geometry.addAttribute( 'position', // add position coords shared by all instances
-      new THREE.BufferAttribute( new Float32Array( [ 0, 0, 0, ] ), 3));
-    geometry.addAttribute( 'uv',       // add uv coords shared by all instances
-      new THREE.BufferAttribute( new Float32Array( [ 0, 0, ] ), 2));
-
     // find start and end indices of images in this mesh
     var imageStart = i * imagesPerMesh;
     var imageEnd = Math.min( (i+1) * imagesPerMesh, instances.length );
@@ -544,18 +537,29 @@ function buildGeometry() {
       textureIndex[ textureIterator++ ] = img.texture.idx; // set texture index
     }
 
-    // bind the built buffers to the geometry as instance attributes
+    var geometry  = new THREE.InstancedBufferGeometry();
+
+    // add blueprint attributes shared by all instances
+    geometry.addAttribute( 'position',
+      new THREE.BufferAttribute( new Float32Array( [ 0, 0, 0, ] ), 3));
+    geometry.addAttribute( 'uv',
+      new THREE.BufferAttribute( new Float32Array( [ 0, 0, ] ), 2));
+
+    // add instance-specific attributes
     geometry.addAttribute( 'translation',
       new THREE.InstancedBufferAttribute( translation, 3, 1 ) );
-    geometry.addAttribute( 'texture',
+    geometry.addAttribute( 'textureIndex',
       new THREE.InstancedBufferAttribute( textureIndex, 1, 1 ) );
     geometry.addAttribute( 'textureOffset',
       new THREE.InstancedBufferAttribute( uv, 2, 1 ) );
 
-    // build the geometry into a mesh
-    var startMaterial = Math.floor((imagesPerMesh * i) / imagesPerAtlas);
-    var endMaterial = Math.floor((imagesPerMesh * (i+1)) / imagesPerAtlas);
-    var material = getShaderMaterial(startMaterial, endMaterial);
+    // get the first and last indices of materials to include in this mesh
+    var startMaterialIdx = Math.floor((imagesPerMesh * i) / imagesPerAtlas);
+    var endMaterialIdx = Math.floor((imagesPerMesh * (i+1)) / imagesPerAtlas) - 1;
+    // do not request materials beyond the final material index
+    var maxMaterialIdx = textures[sizes.image.width].length-1;
+    endMaterial = Math.min(endMaterialIdx, maxMaterialIdx);
+    var material = getShaderMaterial(startMaterialIdx, endMaterialIdx);
 
     // build a mesh and prevent the mesh from being clipped on drag
     var mesh = new THREE.Points(geometry, material);
@@ -573,18 +577,17 @@ function buildGeometry() {
 }
 
 /**
-* Build a shader material
+* Build a shader material. NB, a full list of uniform types is available:
+*   https://github.com/mrdoob/three.js/wiki/Uniforms-types
 **/
 
 function getShaderMaterial(start, end) {
-
-  // Uniform types: https://github.com/mrdoob/three.js/wiki/Uniforms-types
   return new THREE.RawShaderMaterial({
     uniforms: {
       // array of sampler2D values
       textures: {
         type: 'tv',
-        value: textures[sizes.image.width].slice(start, end),
+        value: textures[sizes.image.width].slice(start, end + 1),
       },
       // specify size of each image in image atlas
       cellSize: {
@@ -622,14 +625,18 @@ function getFragmentShader(nTextures) {
 /**
 * Helper function for getFragmentShader. Generates fragment shader
 * code that returns a texture at a given index position. If the alpha
-* value at the requested position is 0, we discard the pixel.
+* value at the requested position is 0, we discard the pixel. NB:
+* texture2D returns a vec4
+*
 * @param {int} idx: the index position of a texture
-* @returns {str} shader code that returns the texture at idx `idx`
+* @returns {str} shader code that sets the gl_FragColor of a
+*   quad pixel using the offsets in uv and the texture data in textures[idx]
 **/
 
 function getFrag(idx) {
-  return 'vec4 color = texture2D(textures[' + idx + '], uv * cellSize ); ' +
-    'gl_FragColor = color; ';
+  return 'vec4 color = texture2D(textures[' + idx + '], scaledUv );\n ' +
+    'if (color.a < 0.5) { discard; }\n ' +
+    'gl_FragColor = color;\n ';
 }
 
 /**
@@ -669,17 +676,16 @@ function handleImage(idx, url, img) {
 
     // get the canvas in a context
     var ctx = canvas.getContext('2d');
-    //ctx.globalAlpha = 0.5;
 
     // draw only the regions of the atlas that are filled
     _.keys(atlasImages[idx]).forEach(function(key) {
       var img = atlasImages[idx][key];
 
-      // find the coordinates for this image in the atlas
-      var x = (img.uv.x * 2048);
+      // find the image's px coordinates in its atlas (top-left == 0,0)
+      var x = img.uv.x * 2048;
       var y = 2048 - (img.uv.y * 2048) - sizes.image.height;
-      var w = (img.uv.w * 2048);
-      var h = (img.uv.h * 2048);
+      var w = img.uv.w * 2048;
+      var h = img.uv.h * 2048;
 
       // find the padding on the top + left of the current image
       var left = (sizes.image.width - w) / 2;
@@ -693,9 +699,9 @@ function handleImage(idx, url, img) {
     })
 
     // store the composed canvas and texture
-    canvases[32][idx] = canvas;
-    textures[32][idx] = new THREE.Texture(canvas);
-    textures[32][idx].needsUpdate = true;
+    canvases[sizes.image.width][idx] = canvas;
+    textures[sizes.image.width][idx] = new THREE.Texture(canvas);
+    textures[sizes.image.width][idx].needsUpdate = true;
 
     // start the display if all assets are loaded
     startIfReady();
