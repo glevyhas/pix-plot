@@ -367,7 +367,6 @@ function getImageAtlasData(idx) {
 *   h: the relative height of this image within its atlas {0:1}
 *   x: the left offset of this image within its atlas {0:1}
 *   y: the top offset of this image within its atlas {0:1}
-*   face: the index position of this image's face within its mesh
 *
 * @param {obj} img: an image object with `width`, `height`,
 *   `xOffset`, `yOffset` properties
@@ -383,9 +382,8 @@ function getImageUvData(img, idx, atlas) {
   return {
     w: img.width / sizes.atlas.width,
     h: img.height / sizes.atlas.height,
-    x: ((atlas.col) * cellWidth),
-    y: (1 - (atlas.row * cellHeight) - cellHeight),
-    face: (idx % imagesPerMesh) * 2,
+    x: atlas.col * cellWidth,
+    y: 1 - (atlas.row * cellHeight) - cellHeight, // y + h = top of image
   }
 }
 
@@ -402,7 +400,7 @@ function getImageUvData(img, idx, atlas) {
 
 function getImageTextureData(idx) {
   return {
-    idx: Math.floor( (idx % imagesPerMesh) / (imagesPerAtlas) )
+    idx: Math.floor( (idx % imagesPerMesh) / imagesPerAtlas )
   }
 }
 
@@ -630,7 +628,7 @@ function getFragmentShader(nTextures) {
 **/
 
 function getFrag(idx) {
-  return 'vec4 color = texture2D(textures[' + idx + '], uv * cellSize + vTextureOffset ); ' +
+  return 'vec4 color = texture2D(textures[' + idx + '], uv * cellSize ); ' +
     'gl_FragColor = color; ';
 }
 
