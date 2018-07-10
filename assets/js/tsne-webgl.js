@@ -117,7 +117,7 @@ function getImagesPerMesh() {
 
 function getScene() {
   var scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xaaaaaa);
+  scene.background = new THREE.Color(0x111111);
   return scene;
 }
 
