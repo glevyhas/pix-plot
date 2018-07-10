@@ -7,9 +7,13 @@
 body,
 html,
 canvas {
-  background: #000;
   overflow: hidden;
   height: 100%;
+}
+
+body,
+html {
+  background: #000;
 }
 
 canvas {
