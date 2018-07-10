@@ -35,8 +35,7 @@ var imagesPerAtlas = sizes.atlas.rows * sizes.atlas.cols;
 // Count of 32px and 64px atlas files to fetch
 var atlasCounts = { '32px': null, '64px': null }
 
-// Create a store for the load progress. Data structure:
-// {atlas0: percentLoaded, atlas1: percentLoaded}
+// Store the load progress: {atlas0: percentLoaded, atlas1: percentLoaded}
 var loadProgress = {};
 
 // Store of the total initial load progress {0:1}
@@ -51,13 +50,8 @@ var canvases = { 32: [], 64: [] };
 // Texture loader for XHR requests
 var textureLoader = new AjaxTextureLoader();
 
-// Many graphics cards only support 2**16 vertices per mesh, and
-// each image/quad requires:
-//   6 vertices in a two-triangle quad without indexing
-//   4 vertices in a two-triangle quad with indexing (reused vertices)
-//   1 vertex in a point primitive
-var verticesPerObject = 1; // depends on the primitive used for each quad
-var imagesPerMesh = 2**16 / verticesPerObject;
+// Determine how many images we can pack into each mesh / draw call
+var imagesPerMesh = getImagesPerMesh();
 
 // Create a store for meshes
 var meshes = [];
@@ -92,6 +86,29 @@ function getBrowserLimits() {
     textureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE),
     textureCount: gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS),
   }
+}
+
+/**
+* Determine how many images can fit in each mesh
+**/
+
+function getImagesPerMesh() {
+  // Many graphics cards only support 2**16 vertices per mesh, and
+  // each image/quad requires:
+  //   6 vertices in a two-triangle quad without indexing
+  //   4 vertices in a two-triangle quad with indexing (reused vertices)
+  //   1 vertex in a point primitive
+  // The number of images per mesh can be limited by several factors,
+  // including the number of vertices per draw call in the current GPU card,
+  // and the number of textures per draw call in the current GPU card.
+  // verticesPerObject depends on the primitive used for each quad.
+  var verticesPerObject = 1;
+  // Determine how many images fit in each draw call if we're vertex-bound.
+  var vertexBound = 2**16 / verticesPerObject;
+  // Determine how many images fit in each draw call if we're texture-bound.
+  var textureBound = limits.textureCount * imagesPerAtlas;
+  // Set the images per mesh by the limiting factor
+  return Math.min(vertexBound, textureBound);
 }
 
 /**
@@ -366,8 +383,8 @@ function getImageUvData(img, idx, atlas) {
   return {
     w: img.width / sizes.atlas.width,
     h: img.height / sizes.atlas.height,
-    x: ((atlas.col) * cellWidth) + (img.xOffset / sizes.atlas.width),
-    y: (1 - (atlas.row * cellHeight) - cellHeight) + (img.yOffset / sizes.atlas.height),
+    x: ((atlas.col) * cellWidth),
+    y: (1 - (atlas.row * cellHeight) - cellHeight),
     face: (idx % imagesPerMesh) * 2,
   }
 }
@@ -496,11 +513,6 @@ function buildGeometry() {
   // fit the maximum number of vertices in each draw call
   for (var i=0; i<meshCount; i++) {
 
-    // find start and end indices of images in this mesh
-    var start = i * imagesPerMesh;
-    var end = Math.min( (i+1) * imagesPerMesh, instances.length);
-    var count = end - start;
-
     // create the blueprint attributes shared by all instances in the geometry
     var geometry  = new THREE.InstancedBufferGeometry();
     geometry.addAttribute( 'position', // add position coords shared by all instances
@@ -508,10 +520,15 @@ function buildGeometry() {
     geometry.addAttribute( 'uv',       // add uv coords shared by all instances
       new THREE.BufferAttribute( new Float32Array( [ 0, 0, ] ), 2));
 
+    // find start and end indices of images in this mesh
+    var imageStart = i * imagesPerMesh;
+    var imageEnd = Math.min( (i+1) * imagesPerMesh, instances.length );
+    var imageCount = imageEnd - imageStart;
+
     // initialize instance attribute buffers
-    var translation = new Float32Array( count * 3 );
-    var uv = new Float32Array( count * 2 );
-    var textureIndex = new Float32Array( count );
+    var translation = new Float32Array( imageCount * 3 );
+    var uv = new Float32Array( imageCount * 2 );
+    var textureIndex = new Float32Array( imageCount );
 
     // initialize counter variables for each attribute
     var translationIterator = 0;
@@ -519,7 +536,7 @@ function buildGeometry() {
     var textureIterator = 0;
 
     // add the instance attributes
-    for (var j=start; j<end; j++) {
+    for (var j=imageStart; j<imageEnd; j++) {
       var img = imageData[instances[j]];
       translation[ translationIterator++ ] = img.pos.x; // set translation x
       translation[ translationIterator++ ] = img.pos.y; // set translation y
@@ -538,9 +555,12 @@ function buildGeometry() {
       new THREE.InstancedBufferAttribute( uv, 2, 1 ) );
 
     // build the geometry into a mesh
-    var material = getShaderMaterial();
+    var startMaterial = Math.floor((imagesPerMesh * i) / imagesPerAtlas);
+    var endMaterial = Math.floor((imagesPerMesh * (i+1)) / imagesPerAtlas);
+    var material = getShaderMaterial(startMaterial, endMaterial);
+
+    // build a mesh and prevent the mesh from being clipped on drag
     var mesh = new THREE.Points(geometry, material);
-    // prevent the mesh from being clipped on drag
     mesh.frustumCulled = false;
     group.add(mesh);
   }
@@ -558,12 +578,7 @@ function buildGeometry() {
 * Build a shader material
 **/
 
-function getShaderMaterial() {
-
-  var w = sizes.image.width / sizes.atlas.width,
-      h = sizes.image.height / sizes.atlas.height;
-
-  var tex = textures[sizes.image.width].slice(0, 2);
+function getShaderMaterial(start, end) {
 
   // Uniform types: https://github.com/mrdoob/three.js/wiki/Uniforms-types
   return new THREE.RawShaderMaterial({
@@ -571,18 +586,19 @@ function getShaderMaterial() {
       // array of sampler2D values
       textures: {
         type: 'tv',
-        value: tex,
+        value: textures[sizes.image.width].slice(start, end),
       },
       // specify size of each image in image atlas
       cellSize: {
         type: 'v2',
-        value: [w, h],
+        value: [
+          sizes.image.width / sizes.atlas.width,
+          sizes.image.height / sizes.atlas.height,
+        ],
       }
     },
-    // TODO: partition into separate draw calls
     vertexShader: document.getElementById('vertex-shader').textContent,
-    //fragmentShader: getFragmentShader(textures['32'].length),
-    fragmentShader: getFragmentShader(2),
+    fragmentShader: getFragmentShader(end - start + 1),
   });
 }
 
@@ -594,13 +610,13 @@ function getShaderMaterial() {
 **/
 
 function getFragmentShader(nTextures) {
-  var tree = 'if (textureIndex == 0) {' + getFrag(0) + '} ';
-  for (var i=1; i<nTextures; i++) {
-    tree += 'else if (textureIndex == ' + i + ') { ' + getFrag(i) + ' } \n';
+  var tree = 'if (textureIndex == 0) {' + getFrag(0) + '}\n ';
+  for (var i=1; i<nTextures-1; i++) {
+    tree += 'else if (textureIndex == ' + i + ') { ' + getFrag(i) + ' }\n ';
   }
 
   var raw = document.getElementById('fragment-shader').textContent;
-  //raw = raw.replace('TEXTURE_LOOKUP_TREE', tree);
+  raw = raw.replace('TEXTURE_LOOKUP_TREE', tree);
   raw = raw.replace('N_TEXTURES', nTextures);
   return raw;
 }
@@ -615,7 +631,7 @@ function getFragmentShader(nTextures) {
 
 function getFrag(idx) {
   return 'vec4 color = texture2D(textures[' + idx + '], uv * cellSize + vTextureOffset ); ' +
-    //'if (color.a < 0.5) { discard; } ' +
+    'if (color.a < 0.5) { discard; }\n ' +
     'gl_FragColor = color; ';
 }
 
