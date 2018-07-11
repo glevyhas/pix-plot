@@ -15,22 +15,16 @@ var atlasImages = {}; // map from atlas index to images in atlas
 // Identify data endpoint
 var dataUrl = 'output/';
 
-// Create global stores for image and atlas sizes
+// Store size of image, atlas, atlas row, atlas column
 var sizes = {
-  image: {
-    width: 32,
-    height: 32,
-  },
-  atlas: {
-    width: 2048,
-    height: 2048,
-    cols: 2048 / 32,
-    rows: 2048 / 32,
-  }
+  image: 32,
+  atlas: 2048,
+  row: 2048 / 32,
+  col: 2048 / 32,
 }
 
 // Count of images per atlas
-var imagesPerAtlas = sizes.atlas.rows * sizes.atlas.cols;
+var imagesPerAtlas = sizes.row * sizes.col;
 
 // Count of 32px and 64px atlas files to fetch
 var atlasCounts = { '32px': null, '64px': null }
@@ -257,8 +251,8 @@ function parseImage(img) {
     y: img[2],
     width: img[3],
     height: img[4],
-    xOffset: (sizes.image.width - img[3])/2,
-    yOffset: (sizes.image.height - img[4])/2
+    xOffset: (sizes.image - img[3])/2,
+    yOffset: (sizes.image - img[4])/2,
   }
 }
 
@@ -356,8 +350,8 @@ function getImageAtlasData(idx) {
   var indexInAtlas = idx % (imagesPerAtlas);
   return {
     idx: Math.floor(idx / imagesPerAtlas),
-    row: Math.floor(indexInAtlas / sizes.atlas.rows),
-    col: indexInAtlas % sizes.atlas.cols,
+    row: Math.floor(indexInAtlas / sizes.row),
+    col: indexInAtlas % sizes.col,
   }
 }
 
@@ -377,11 +371,11 @@ function getImageAtlasData(idx) {
 
 function getImageUvData(img, idx, atlas) {
   // Store the relative width and height of each cell in an atlas
-  var cellWidth = sizes.image.width / sizes.atlas.width;
-  var cellHeight = sizes.image.height / sizes.atlas.height;
+  var cellWidth = sizes.image / sizes.atlas;
+  var cellHeight = sizes.image / sizes.atlas;
   return {
-    w: img.width / sizes.atlas.width,
-    h: img.height / sizes.atlas.height,
+    w: img.width / sizes.atlas,
+    h: img.height / sizes.atlas,
     x: atlas.col * cellWidth,
     y: 1 - (atlas.row * cellHeight) - cellHeight, // y + h = top of image
   }
@@ -557,7 +551,7 @@ function buildGeometry() {
     var startMaterialIdx = Math.floor((imagesPerMesh * i) / imagesPerAtlas);
     var endMaterialIdx = Math.floor((imagesPerMesh * (i+1)) / imagesPerAtlas) - 1;
     // do not request materials beyond the final material index
-    var maxMaterialIdx = textures[sizes.image.width].length-1;
+    var maxMaterialIdx = textures[sizes.image].length-1;
     endMaterial = Math.min(endMaterialIdx, maxMaterialIdx);
     var material = getShaderMaterial(startMaterialIdx, endMaterialIdx);
 
@@ -587,14 +581,14 @@ function getShaderMaterial(start, end) {
       // array of sampler2D values
       textures: {
         type: 'tv',
-        value: textures[sizes.image.width].slice(start, end + 1),
+        value: textures[sizes.image].slice(start, end + 1),
       },
       // specify size of each image in image atlas
       cellSize: {
         type: 'v2',
         value: [
-          sizes.image.width / sizes.atlas.width,
-          sizes.image.height / sizes.atlas.height,
+          sizes.image / sizes.atlas,
+          sizes.image / sizes.atlas,
         ],
       }
     },
@@ -671,8 +665,8 @@ function handleImage(idx, url, img) {
   atlas.onload = function() {
 
     var canvas = document.createElement('canvas');
-    canvas.width = 2048;
-    canvas.height = 2048;
+    canvas.width = sizes.atlas;
+    canvas.height = sizes.atlas;
 
     // get the canvas in a context
     var ctx = canvas.getContext('2d');
@@ -682,14 +676,14 @@ function handleImage(idx, url, img) {
       var img = atlasImages[idx][key];
 
       // find the image's px coordinates in its atlas (top-left == 0,0)
-      var x = img.uv.x * 2048;
-      var y = 2048 - (img.uv.y * 2048) - sizes.image.height;
-      var w = img.uv.w * 2048;
-      var h = img.uv.h * 2048;
+      var x = img.uv.x * sizes.atlas;
+      var y = sizes.atlas - (img.uv.y * sizes.atlas) - sizes.image;
+      var w = img.uv.w * sizes.atlas;
+      var h = img.uv.h * sizes.atlas;
 
       // find the padding on the top + left of the current image
-      var left = (sizes.image.width - w) / 2;
-      var top = (sizes.image.height - h) / 2;
+      var left = (sizes.image - w) / 2;
+      var top = (sizes.image - h) / 2;
 
       x += left;
       y += top;
@@ -699,9 +693,9 @@ function handleImage(idx, url, img) {
     })
 
     // store the composed canvas and texture
-    canvases[sizes.image.width][idx] = canvas;
-    textures[sizes.image.width][idx] = new THREE.Texture(canvas);
-    textures[sizes.image.width][idx].needsUpdate = true;
+    canvases[sizes.image][idx] = canvas;
+    textures[sizes.image][idx] = new THREE.Texture(canvas);
+    textures[sizes.image][idx].needsUpdate = true;
 
     // start the display if all assets are loaded
     startIfReady();
@@ -718,17 +712,14 @@ function handleImage(idx, url, img) {
 **/
 
 function loadLargeAtlasFiles() {
-  sizes.image = {
-    width: 64,
-    height: 64
+  sizes = {
+    image: 64,
+    atlas: 2048,
+    row: 2048 / 64,
+    col: 2048 / 64,
   }
-  sizes.atlas = {
-    width: 2048,
-    height: 2048,
-    cols: 2048 / 64,
-    rows: 2048 / 64
-  }
-  imagesPerAtlas = sizes.atlas.cols * sizes.atlas.rows;
+
+  imagesPerAtlas = sizes.atlas * sizes.atlas;
   for (var i=0; i<atlasCounts['64px']; i++) {
     var url = dataUrl + 'atlas_files/64px/atlas-' + i + '.jpg';
     textureLoader.load(url, handleLargeTexture.bind(null, i))
