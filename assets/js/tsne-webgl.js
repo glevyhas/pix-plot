@@ -23,6 +23,12 @@ var sizes = {
   col: 2048 / 32,
 }
 
+// Set an amount of spread between points in the x/y dimensions
+var spread = {
+  x: 1,
+  y: 1,
+}
+
 // Count of images per atlas
 var imagesPerAtlas = sizes.row * sizes.col;
 
@@ -37,9 +43,6 @@ var progress = 0;
 
 // Create a store for the 32px and 64 px atlas textures
 var textures = { 32: [], 64: [] };
-
-// Create a store for the 32px and 64px loaded canvases
-var canvases = { 32: [], 64: [] };
 
 // Texture loader for XHR requests
 var textureLoader = new AjaxTextureLoader();
@@ -72,13 +75,32 @@ function webglNotAvailable() {
 
 /**
 * Identify the limits of vertices, textures, etc per
-* draw call for the user agent's GPU system
+* draw call for the user agent's GPU system. Full list
+* of browser limits is available via MDN:
+* https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/getParameter
 **/
 
 function getBrowserLimits() {
+
+  // fetch all browser extensions as a map for O(1) lookups
+  var extensions = gl.getSupportedExtensions().reduce(function(obj, i) {
+    obj[i] = true; return obj;
+  }, {})
+
+  // assess support for 32-bit indices in gl.drawElements calls
+  var maxIndex = 2**16 - 1;
+  ['OES_element_index_uint',
+    'MOZ_OES_element_index_uint',
+    'WEBKIT_OES_element_index_uint',
+  ].forEach(function(ext) {
+    if (extensions[ext]) maxIndex = 2**32 - 1;
+  })
+
   return {
     textureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE),
     textureCount: gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS),
+    vShaderTextures: gl.getParameter(gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS),
+    indexedElements: maxIndex,
   }
 }
 
@@ -98,7 +120,7 @@ function getImagesPerMesh() {
   // verticesPerObject depends on the primitive used for each quad.
   var verticesPerObject = 1;
   // Determine how many images fit in each draw call if we're vertex-bound.
-  var vertexBound = 2**16 / verticesPerObject;
+  var vertexBound = limits.indexedElements / verticesPerObject;
   // Determine how many images fit in each draw call if we're texture-bound.
   var textureBound = limits.textureCount * imagesPerAtlas;
   // Set the images per mesh by the limiting factor
@@ -144,10 +166,22 @@ function getRenderer() {
   // Add support for retina displays
   renderer.setPixelRatio(window.devicePixelRatio);
   // Specify the size of the canvas
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  setRendererSize(renderer);
   // Add the canvas to the DOM
   document.body.appendChild(renderer.domElement);
   return renderer;
+}
+
+/**
+* Set the size at which the canvas will be rendered.
+* One can then upsize the canvas with CSS if needed.
+**/
+
+function setRendererSize(renderer) {
+  renderer.setSize(
+    window.innerWidth / 2,
+    window.innerHeight / 2,
+  );
 }
 
 /**
@@ -330,9 +364,9 @@ function getImageData(img, idx) {
 
 function getImagePositionData(img, idx) {
   return {
-    x: img.x * 10, // 10 is just a scalar to set the point spread
-    y: img.y * 6,  // 6 is just a scalar to set the point spread
-    z: 2000 + ((idx/100) % 100), // TODO: replace with heightmap
+    x: img.x * spread.x,
+    y: img.y * spread.y,
+    z: idx / 200, // TODO: replace with heightmap
   }
 }
 
@@ -512,23 +546,23 @@ function buildGeometry() {
 
     // initialize instance attribute buffers
     var translation = new Float32Array( imageCount * 3 );
-    var uv = new Float32Array( imageCount * 2 );
     var textureIndex = new Float32Array( imageCount );
+    var textureOffset = new Float32Array( imageCount * 2 );
 
     // initialize counter variables for each attribute
     var translationIterator = 0;
-    var uvIterator = 0;
-    var textureIterator = 0;
+    var textureIndexIterator = 0;
+    var textureOffsetIterator = 0;
 
     // add the instance attributes
     for (var j=imageStart; j<imageEnd; j++) {
       var img = imageData[instances[j]];
-      translation[ translationIterator++ ] = img.pos.x; // set translation x
-      translation[ translationIterator++ ] = img.pos.y; // set translation y
-      translation[ translationIterator++ ] = img.pos.z; // set translation z
-      uv[ uvIterator++ ] = img.uv.x; // set uv offset x
-      uv[ uvIterator++ ] = img.uv.y; // set uv offset y
-      textureIndex[ textureIterator++ ] = img.texture.idx; // set texture index
+      translation[ translationIterator++ ] = img.pos.x;
+      translation[ translationIterator++ ] = img.pos.y;
+      translation[ translationIterator++ ] = img.pos.z;
+      textureIndex[ textureIndexIterator++ ] = img.texture.idx;
+      textureOffset[ textureOffsetIterator++ ] = img.uv.x * (sizes.atlas/sizes.image);
+      textureOffset[ textureOffsetIterator++ ] = img.uv.y * (sizes.atlas/sizes.image);
     }
 
     var geometry  = new THREE.InstancedBufferGeometry();
@@ -545,7 +579,7 @@ function buildGeometry() {
     geometry.addAttribute( 'textureIndex',
       new THREE.InstancedBufferAttribute( textureIndex, 1, 1 ) );
     geometry.addAttribute( 'textureOffset',
-      new THREE.InstancedBufferAttribute( uv, 2, 1 ) );
+      new THREE.InstancedBufferAttribute( textureOffset, 2, 1 ) );
 
     // get the first and last indices of materials to include in this mesh
     var startMaterialIdx = Math.floor((imagesPerMesh * i) / imagesPerAtlas);
@@ -611,8 +645,8 @@ function getFragmentShader(nTextures) {
   }
 
   var raw = document.getElementById('fragment-shader').textContent;
-  raw = raw.replace('TEXTURE_LOOKUP_TREE', tree);
-  raw = raw.replace('N_TEXTURES', nTextures);
+  //raw = raw.replace('TEXTURE_LOOKUP_TREE', tree);
+  //raw = raw.replace('N_TEXTURES', nTextures);
   return raw;
 }
 
@@ -667,8 +701,6 @@ function handleImage(idx, url, img) {
     var canvas = document.createElement('canvas');
     canvas.width = sizes.atlas;
     canvas.height = sizes.atlas;
-
-    // get the canvas in a context
     var ctx = canvas.getContext('2d');
 
     // draw only the regions of the atlas that are filled
@@ -681,19 +713,15 @@ function handleImage(idx, url, img) {
       var w = img.uv.w * sizes.atlas;
       var h = img.uv.h * sizes.atlas;
 
-      // find the padding on the top + left of the current image
-      var left = (sizes.image - w) / 2;
-      var top = (sizes.image - h) / 2;
+      // add the top and left padding to crop just the image, not its cell
+      x += (sizes.image - w) / 2; // left offset
+      y += (sizes.image - h) / 2; // top offset
 
-      x += left;
-      y += top;
-
-      // image, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight
+      // args: image, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight
       ctx.drawImage(atlas, x, y, w, h, x, y, w, h);
     })
 
     // store the composed canvas and texture
-    canvases[sizes.image][idx] = canvas;
     textures[sizes.image][idx] = new THREE.Texture(canvas);
     textures[sizes.image][idx].needsUpdate = true;
 
@@ -990,7 +1018,7 @@ function addWindowEventListeners() {
   window.addEventListener('resize', function() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
-    renderer.setSize( window.innerWidth, window.innerHeight );
+    setRendererSize(renderer);
     controls.handleResize();
   });
   window.addEventListener('hashchange', function(e) {
