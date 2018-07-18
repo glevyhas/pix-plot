@@ -7,4 +7,3 @@ six==1.11.0
 tensorflow==1.8.0
 umap-learn==0.2.3
 tqdm==4.23.4
-fitsne==0.2.5
