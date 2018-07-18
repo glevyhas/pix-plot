@@ -35,7 +35,6 @@ import psutil
 import subprocess
 import codecs
 from tqdm import tqdm
-import fitsne
 
 # configure command line interface arguments
 flags = tf.app.flags
@@ -156,7 +155,7 @@ class PixPlot:
     self.create_tf_graph()
 
     print(' * creating image vectors')
-    with tf.Session(config=config) as sess:
+    with tf.Session() as sess:
       for image_index, image in enumerate(tqdm(self.image_files)):
         try:
           outfile_name = os.path.basename(image) + '.npy'
@@ -238,6 +237,11 @@ class PixPlot:
       np.set_printoptions(suppress=True)
       return model.fit_transform( np.array(image_vectors) )
     elif self.method == 'fitsne':
+        try:
+            import fitsne
+        except ImportError:
+            sys.stderr.write('Requires fit-sne to be installed\n\
+                             Please install fit-sne with pip install -r utils/fitsne-dependencies.txt')
         return fitsne.FItSNE(np.asarray(image_vectors, dtype=float),
                              perplexity=25,
                              ann_not_vptree=True,
