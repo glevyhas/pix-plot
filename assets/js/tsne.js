@@ -521,7 +521,7 @@ function Webgl() {
       if (extensions[ext + 'OES_element_index_uint']) maxIndex = 2**32 - 1;
     })
     self.limits = {
-      textureSize: 4096, //gl.getParameter(gl.MAX_TEXTURE_SIZE),
+      textureSize: self.gl.getParameter(self.gl.MAX_TEXTURE_SIZE),
       textureCount: self.gl.getParameter(self.gl.MAX_TEXTURE_IMAGE_UNITS),
       vShaderTextures: self.gl.getParameter(self.gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS),
       indexedElements: maxIndex,
