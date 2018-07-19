@@ -14,6 +14,7 @@ function Config() {
   self.atlasSize = 2048;
   self.atlasesPerTex = Math.pow((webgl.limits.textureSize / self.atlasSize), 2);
   self.cellsPerAtlas = Math.pow((self.atlasSize / self.cellSize), 2);
+  self.cellsPerAtlasSide = Math.pow(self.cellsPerAtlas, 0.5);
 }
 
 /**
@@ -194,8 +195,15 @@ function Atlas(obj) {
     // find the index position of the first cell among all cells
     var start = self.textureIdx * config.atlasesPerTex * config.cellsPerAtlas;
     for (var i=0; i<self.positions.length; i++) {
-      var data = self.positions[i].concat(start + i);
-      self.cells.push(new Cell(data));
+      var data = self.positions[i];
+      self.cells.push(new Cell({
+        name: data[0],
+        x: data[1] * config.spread.x,
+        y: data[2] * config.spread.y,
+        w: data[3],
+        h: data[4],
+        idx: start + i,
+      }))
     }
   }
 
@@ -207,17 +215,21 @@ function Atlas(obj) {
 * Cell
 **/
 
-function Cell(arr) {
+function Cell(obj) {
   var self = this;
-  self.name = arr[0];
-  self.x = arr[1] * config.spread.x;
-  self.y = arr[2] * config.spread.y;
+  self.name = obj.name;
+  self.x = obj.x;
+  self.y = obj.y;
   self.z = 1;
-  self.w = arr[3];
-  self.h = arr[4];
-  self.idx = arr[5];
-  self.xOffset = (config.cellSize - self.w) / 2;
-  self.yOffset = (config.cellSize - self.h) / 2;
+  self.w = obj.w;
+  self.h = obj.h;
+  self.idx = obj.idx;
+  self.xPad = (config.cellSize - self.w) / 2;
+  self.yPad = (config.cellSize - self.h) / 2;
+  self.perRow = config.cellsPerAtlasSide;
+  self.idxInAtlas = self.idx % config.cellsPerAtlas;
+  self.xPosInAtlas = (self.idx % self.perRow) * config.cellSize;
+  self.yPosInAtlas = Math.floor(self.idx / self.perRow) * config.cellSize;
 }
 
 /**
@@ -307,33 +319,54 @@ function World() {
   **/
 
   self.plot = function() {
-    var n = data.positions.length;
+    var attrs = self.getPointAttributes();
+    var group = new THREE.Group();
     var BA = THREE.BufferAttribute;
     var IBA = THREE.InstancedBufferAttribute;
-    var group = new THREE.Group();
-    var translations = new Float32Array(n * 3);
+    var geometry = new THREE.InstancedBufferGeometry();
+    geometry.addAttribute('uv', new BA(attrs.uvs, 2));
+    geometry.addAttribute('position', new BA(attrs.positions, 3));
+    geometry.addAttribute('textureIndex', new IBA(attrs.texIndices, 1, 1));
+    geometry.addAttribute('textureOffset', new IBA(attrs.texOffsets, 2, 1));
+    geometry.addAttribute('translation', new IBA(attrs.translations, 3, 1));
+    var material = self.getShaderMaterial(attrs.textures);
+    var mesh = new THREE.Points(geometry, material);
+    mesh.frustumCulled = false;
+    group.add(mesh);
+    self.scene.add(group);
+    self.render();
+  }
+
+  self.getPointAttributes = function() {
+    var n = data.positions.length;
     var textures = [];
+    var texIndices = new Float32Array(n);
+    var texOffsets = new Float32Array(n * 2);
+    var translations = new Float32Array(n * 3);
+    var texIndexIterator = 0;
+    var texOffsetIterator = 0;
     var translationIterator = 0;
     data.textures.forEach(function(texture, tidx) {
       textures.push( new THREE.Texture(texture.canvas) );
       texture.atlases.forEach(function(atlas, aidx) {
         atlas.cells.forEach(function(cell) {
+          texIndices[texIndexIterator++] = cell.textureIdx;
+          texOffsets[texOffsetIterator++] = cell.xPosInAtlas;
+          texOffsets[texOffsetIterator++] = cell.yPosInAtlas;
           translations[translationIterator++] = cell.x;
           translations[translationIterator++] = cell.y;
           translations[translationIterator++] = cell.z;
         })
       })
     })
-    var geometry = new THREE.InstancedBufferGeometry();
-    var positions = new Float32Array([0, 0, 0]);
-    geometry.addAttribute('position', new BA(positions, 3));
-    geometry.addAttribute('translation', new IBA(translations, 3, 1));
-    var material = self.getShaderMaterial(textures);
-    var mesh = new THREE.Points(geometry, material);
-    mesh.frustumCulled = false;
-    group.add(mesh);
-    self.scene.add(group);
-    self.render();
+    return {
+      uvs: new Float32Array([0, 0]),
+      positions: new Float32Array([0, 0, 0]),
+      texIndices: texIndices,
+      texOffsets: texOffsets,
+      translations: translations,
+      textures: textures,
+    }
   }
 
   /**
@@ -343,7 +376,7 @@ function World() {
 
   self.getShaderMaterial = function(textures) {
     return new THREE.RawShaderMaterial({
-      /*uniforms: {
+      uniforms: {
         // array of sampler2D values
         textures: {
           type: 'tv',
@@ -358,7 +391,6 @@ function World() {
           ],
         }
       },
-      */
       vertexShader: find('#vertex-shader').textContent,
       fragmentShader: find('#fragment-shader').textContent,
     });
@@ -366,8 +398,8 @@ function World() {
 
   self.render = function() {
     requestAnimationFrame(self.render);
-    //TWEEN.update();
-    //self.raycaster.setFromCamera(self.mouse, self.camera);
+    TWEEN.update();
+    self.raycaster.setFromCamera(self.mouse, self.camera);
     self.renderer.render(self.scene, self.camera);
     self.controls.update();
     if (self.stats) self.stats.update();
