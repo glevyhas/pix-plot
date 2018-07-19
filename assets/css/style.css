@@ -18,7 +18,6 @@ html {
 
 canvas {
   transition: opacity 3s;
-  transform: scale(3);
 }
 
 a {

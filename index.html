@@ -89,25 +89,8 @@
 
     precision highp float;
 
-    // cellSize identifies the [w, h] size of each image in an atlas
-    uniform vec2 cellSize;
-
-    // textures contains an array of textures with length n textures
-    uniform sampler2D textures[N_TEXTURES];
-
-    // identify the uv values as a varying attribute
-    varying vec2 vTextureOffset; // instance uv offsets
-    varying float vTextureIndex; // set index of each object's texture
-
     void main() {
-      int textureIndex = int(vTextureIndex);
-
-      // 1.0 - gl_PointCoord.y flips each pixel so the image is rightside-up
-      vec2 uv = vec2( gl_PointCoord.x, 1.0 - gl_PointCoord.y );
-      vec2 scaledUv = uv * cellSize;
-
-      // The block below will be replaced with a tree of texture lookups
-      TEXTURE_LOOKUP_TREE
+      gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
     }
     </script>
 
@@ -159,13 +142,12 @@
     </noscript>
     <script type='text/javascript' src='https://cdnjs.cloudflare.com/ajax/libs/three.js/92/three.min.js'></script>
     <script type='text/javascript' src='https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.4/lodash.min.js'></script>
-    <script type='text/javascript' src='assets/js/image-progress.js'></script>
     <script type='text/javascript' src='assets/js/object-assign-polyfill.js'></script>
-    <script type='text/javascript' src='assets/vendor/tween.js'></script>
-    <script type='text/javascript' src='assets/vendor/trackball-controls.js'></script>
-    <script type='text/javascript' src='assets/vendor/texture-loader.js'></script>
-    <script type='text/javascript' src='assets/vendor/stats.js'></script>
-    <script type='text/javascript' src='assets/js/tsne-webgl.js'></script>
+    <script type='text/javascript' src='assets/vendor/dist/tween.min.js'></script>
+    <script type='text/javascript' src='assets/vendor/dist/trackball-controls.min.js'></script>
+    <script type='text/javascript' src='assets/vendor/dist/texture-loader.min.js'></script>
+    <script type='text/javascript' src='assets/vendor/dist/stats.min.js'></script>
+    <script type='text/javascript' src='assets/js/tsne.js'></script>
     <script>
       (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
       (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
