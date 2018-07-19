@@ -13,6 +13,7 @@ function Config() {
   self.cellSize = 32;
   self.atlasSize = 2048;
   self.atlasesPerTex = Math.pow((webgl.limits.textureSize / self.atlasSize), 2);
+  self.atlasesPerTexSide = Math.pow(self.atlasesPerTex, 0.5);
   self.cellsPerAtlas = Math.pow((self.atlasSize / self.cellSize), 2);
   self.cellsPerAtlasSide = Math.pow(self.cellsPerAtlas, 0.5);
 }
@@ -32,6 +33,8 @@ function Data() {
   self.atlases = [];
   self.textures = [];
   self.textureProgress = {};
+  self.nTextures = null;
+  self.loadedTextures = 0;
 
   /**
   * Make an XHR get request for data
@@ -69,6 +72,7 @@ function Data() {
           idx: i,
           positions: self.getTexturePositions(i),
           onProgress: self.onTextureProgress,
+          onLoad: self.onTextureLoad,
         }))
       }
     })
@@ -87,7 +91,12 @@ function Data() {
     self.textureProgress[texIdx] = progress;
     var progressSum = valueSum(self.textureProgress);
     var completeSum = self.nTextures * 100 * config.atlasesPerTex;
-    if (progressSum === completeSum) {
+  }
+
+  // When a texture loads, draw plot if all have loaded
+  self.onTextureLoad = function(texIdx) {
+    self.loadedTextures += 1;
+    if (self.loadedTextures == self.nTextures) {
       world.plot();
     }
   }
@@ -108,6 +117,7 @@ function Texture(obj) {
   self.positions = obj.positions;
   self.onProgress = obj.onProgress;
   self.onLoad = obj.onLoad;
+  self.loadedAtlases = 0;
   self.canvas = null;
   self.ctx = null;
 
@@ -124,7 +134,7 @@ function Texture(obj) {
     self.setCanvas();
     for (var i=0; i<config.atlasesPerTex; i++) {
       self.atlases.push(new Atlas({
-        idx: i,
+        idx: (config.atlasesPerTex * self.idx) + i,
         positions: self.getAtlasPositions(i),
         size: config.atlasSize,
         textureIdx: self.idx,
@@ -152,9 +162,14 @@ function Texture(obj) {
   self.onAtlasLoad = function(atlas) {
     // Add the loaded atlas file the texture's canvas
     var texSize = webgl.limits.textureSize;
-    var x = (atlas.idx * config.atlasSize) % texSize;
-    var y = Math.floor((atlas.idx * config.atlasSize) / texSize) * config.atlasSize;
+    var idx = atlas.idx % config.atlasesPerTex;
+    var x = (idx * config.atlasSize) % texSize;
+    var y = Math.floor((idx * config.atlasSize) / texSize) * config.atlasSize;
     self.ctx.drawImage(atlas.image, x, y, config.atlasSize, config.atlasSize);
+    self.loadedAtlases += 1;
+    if (self.loadedAtlases == config.atlasesPerTex) {
+      self.onLoad(self.idx);
+    }
   }
 
   self.load();
@@ -168,6 +183,7 @@ function Atlas(obj) {
   var self = this;
   self.textureIdx = obj.textureIdx;
   self.idx = obj.idx;
+  self.idxInTex = obj.idx % config.atlasesPerTex;
   self.size = obj.size;
   self.onLoad = obj.onLoad;
   self.onProgress = obj.onProgress;
@@ -176,6 +192,8 @@ function Atlas(obj) {
   self.progress = 0;
   self.url = config.dataUrl + 'atlas_files/32px/atlas-' + self.idx + '.jpg';
   self.cells = [];
+  self.xPosInTex = (self.idxInTex % config.atlasesPerTexSide) * config.atlasSize;
+  self.yPosInTex = Math.floor(self.idxInTex / config.atlasesPerTexSide) * config.atlasSize;
 
   self.load = function() {
     self.image = new Image;
@@ -197,12 +215,16 @@ function Atlas(obj) {
     for (var i=0; i<self.positions.length; i++) {
       var data = self.positions[i];
       self.cells.push(new Cell({
+        idx: start + i,
         name: data[0],
         x: data[1] * config.spread.x,
         y: data[2] * config.spread.y,
         w: data[3],
         h: data[4],
-        idx: start + i,
+        atlasPosInTex: {
+          x: self.xPosInTex,
+          y: self.yPosInTex,
+        }
       }))
     }
   }
@@ -217,19 +239,28 @@ function Atlas(obj) {
 
 function Cell(obj) {
   var self = this;
-  self.name = obj.name;
-  self.x = obj.x;
-  self.y = obj.y;
-  self.z = 1;
-  self.w = obj.w;
-  self.h = obj.h;
   self.idx = obj.idx;
-  self.xPad = (config.cellSize - self.w) / 2;
-  self.yPad = (config.cellSize - self.h) / 2;
-  self.perRow = config.cellsPerAtlasSide;
+  self.name = obj.name;
+  self.position = {
+    x: obj.x,
+    y: obj.y,
+    z: 1,
+  }
+  self.size = {
+    w: obj.w,
+    h: obj.h,
+    topPad: (config.cellSize - obj.w) / 2,
+    leftPad: (config.cellSize - obj.h) / 2,
+  };
   self.idxInAtlas = self.idx % config.cellsPerAtlas;
-  self.xPosInAtlas = (self.idx % self.perRow) * config.cellSize;
-  self.yPosInAtlas = Math.floor(self.idx / self.perRow) * config.cellSize;
+  self.posInAtlas = {
+    x: (self.idxInAtlas % config.cellsPerAtlasSide) * config.cellSize,
+    y: Math.floor(self.idxInAtlas / config.cellsPerAtlasSide) * config.cellSize,
+  };
+  self.posInTex = {
+    x: self.posInAtlas.x + obj.atlasPosInTex.x,
+    y: self.posInAtlas.y + obj.atlasPosInTex.y,
+  }
 }
 
 /**
@@ -253,7 +284,7 @@ function World() {
 
   self.getScene = function() {
     var scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x111111);
+    scene.background = new THREE.Color(0x777777);
     return scene;
   }
 
@@ -347,15 +378,17 @@ function World() {
     var texOffsetIterator = 0;
     var translationIterator = 0;
     data.textures.forEach(function(texture, tidx) {
-      textures.push( new THREE.Texture(texture.canvas) );
+      var tex = new THREE.Texture(texture.canvas);
+      tex.needsUpdate = true;
+      textures.push(tex);
       texture.atlases.forEach(function(atlas, aidx) {
         atlas.cells.forEach(function(cell) {
-          texIndices[texIndexIterator++] = cell.textureIdx;
-          texOffsets[texOffsetIterator++] = cell.xPosInAtlas;
-          texOffsets[texOffsetIterator++] = cell.yPosInAtlas;
-          translations[translationIterator++] = cell.x;
-          translations[translationIterator++] = cell.y;
-          translations[translationIterator++] = cell.z;
+          texIndices[texIndexIterator++] = texture.idx;
+          texOffsets[texOffsetIterator++] = cell.posInTex.x / config.cellSize;
+          texOffsets[texOffsetIterator++] = cell.posInTex.y / config.cellSize;
+          translations[translationIterator++] = cell.position.x;
+          translations[translationIterator++] = cell.position.y;
+          translations[translationIterator++] = cell.position.z;
         })
       })
     })
@@ -375,6 +408,7 @@ function World() {
   **/
 
   self.getShaderMaterial = function(textures) {
+    self.setFragmentShader(textures.length);
     return new THREE.RawShaderMaterial({
       uniforms: {
         // array of sampler2D values
@@ -386,14 +420,44 @@ function World() {
         cellSize: {
           type: 'v2',
           value: [
-            config.cellSize / config.atlasSize,
-            config.cellSize / config.atlasSize,
+            config.cellSize / webgl.limits.textureSize,
+            config.cellSize / webgl.limits.textureSize,
           ],
         }
       },
       vertexShader: find('#vertex-shader').textContent,
       fragmentShader: find('#fragment-shader').textContent,
     });
+  }
+
+  /**
+  * Set the interior content of the fragment shader
+  **/
+
+  self.setFragmentShader = function(nTextures) {
+    // get the texture lookup tree
+    var tree = self.getTextureConditional(0);
+    for (var i=1; i<nTextures; i++) {
+      tree += ' else ' + self.getTextureConditional(i);
+    }
+    // replace the text in the fragment shader
+    var fragShader = find('#fragment-shader').textContent;
+    fragShader = fragShader.replace('N_TEXTURES', nTextures);
+    fragShader = fragShader.replace('TEXTURE_LOOKUP_TREE', tree);
+    find('#fragment-shader').textContent = fragShader;
+  }
+
+  /**
+  * Get the leaf component of a texture lookup tree
+  **/
+
+  self.getTextureConditional = function(textureIdx) {
+    var ws = '        ';
+    return 'if (textureIndex == ' + textureIdx + ') {\n' +
+      ws + 'vec4 color = texture2D(textures[' + textureIdx + '], scaledUv);\n' +
+      ws + 'if (color.a < 0.5) { discard; }\n' +
+      ws + 'gl_FragColor = color;\n ' +
+      ws.substring(3) + '}';
   }
 
   self.render = function() {

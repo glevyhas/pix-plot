@@ -4,6 +4,7 @@
     <link href='https://fonts.googleapis.com/css?family=Open+Sans:300,400,600' rel='stylesheet'>
     <link rel='stylesheet' type='text/css' href='assets/css/style.css'>
     <title>Visualizing Image Fields</title>
+    <meta charset='utf-8'/>
     <meta name='author' content='Douglas Duhaime'>
   </head>
   <body>
@@ -89,8 +90,21 @@
 
     precision highp float;
 
+    // cellSize identifies the [w, h] size of each image in an atlas
+    uniform vec2 cellSize;
+
+    // textures contains an array of sampler2Ds
+    uniform sampler2D textures[N_TEXTURES];
+
+    // identify the uv values as a varying attribute
+    varying float vTextureIndex; // set index of each object's texture
+    varying vec2 vTextureOffset; // instance uv offsets
+
     void main() {
-      gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
+      int textureIndex = int(vTextureIndex);
+      vec2 uv = vTextureOffset + vec2( gl_PointCoord.x, 1.0 - gl_PointCoord.y );
+      vec2 scaledUv = uv * cellSize;
+      TEXTURE_LOOKUP_TREE
     }
     </script>
 
