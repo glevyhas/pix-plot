@@ -102,7 +102,7 @@
 
     void main() {
       int textureIndex = int(vTextureIndex);
-      vec2 uv = vTextureOffset + vec2( gl_PointCoord.x, 1.0 - gl_PointCoord.y );
+      vec2 uv = vTextureOffset + vec2( gl_PointCoord.x, gl_PointCoord.y );
       vec2 scaledUv = uv * cellSize;
       TEXTURE_LOOKUP_TREE
     }

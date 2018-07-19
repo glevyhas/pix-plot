@@ -380,6 +380,7 @@ function World() {
     data.textures.forEach(function(texture, tidx) {
       var tex = new THREE.Texture(texture.canvas);
       tex.needsUpdate = true;
+      tex.flipY = false;
       textures.push(tex);
       texture.atlases.forEach(function(atlas, aidx) {
         atlas.cells.forEach(function(cell) {
