@@ -26,14 +26,14 @@ function Data() {
   var self = this;
   self.root = config.dataUrl;
   self.file = 'plot_data.json';
-  self.atlasCounts = null;
+  self.atlasCount = null;
   self.centroids = null;
   self.positions = null;
   self.images = [];
   self.atlases = [];
   self.textures = [];
   self.textureProgress = {};
-  self.nTextures = null;
+  self.textureCount = null;
   self.loadedTextures = 0;
 
   /**
@@ -64,15 +64,16 @@ function Data() {
       var json = JSON.parse(data);
       self.centroids = json.centroids;
       self.positions = json.positions;
-      self.atlasCounts = json.atlas_counts;
-      self.nTextures = self.atlasCounts['32px'] / config.atlasesPerTex;
+      self.atlasCount = json.atlas_counts['32px'];
+      self.textureCount = Math.ceil(self.atlasCount / config.atlasesPerTex);
       // load each texture for this data set
-      for (var i=0; i<self.nTextures; i++) {
+      for (var i=0; i<self.textureCount; i++) {
         self.textures.push(new Texture({
           idx: i,
           positions: self.getTexturePositions(i),
           onProgress: self.onTextureProgress,
           onLoad: self.onTextureLoad,
+          atlasCount: self.getAtlasCount(i),
         }))
       }
     })
@@ -90,15 +91,22 @@ function Data() {
   self.onTextureProgress = function(texIdx, progress) {
     self.textureProgress[texIdx] = progress;
     var progressSum = valueSum(self.textureProgress);
-    var completeSum = self.nTextures * 100 * config.atlasesPerTex;
+    var completeSum = self.textureCount * 100 * config.atlasesPerTex;
   }
 
   // When a texture loads, draw plot if all have loaded
   self.onTextureLoad = function(texIdx) {
     self.loadedTextures += 1;
-    if (self.loadedTextures == self.nTextures) {
+    if (self.loadedTextures == self.textureCount) {
       world.plot();
     }
+  }
+
+  // Get the number of atlases to include in texture at index `idx`
+  self.getAtlasCount = function(texIdx) {
+    return self.atlasCount / config.atlasesPerTex > (texIdx + 1)
+      ? config.atlasesPerTex
+      : self.atlasCount % config.atlasesPerTex;
   }
 
   // main
@@ -114,6 +122,7 @@ function Texture(obj) {
   self.idx = obj.idx;
   self.atlasProgress = {};
   self.atlases = [];
+  self.atlasCount = obj.atlasCount;
   self.positions = obj.positions;
   self.onProgress = obj.onProgress;
   self.onLoad = obj.onLoad;
@@ -132,7 +141,7 @@ function Texture(obj) {
 
   self.load = function() {
     self.setCanvas();
-    for (var i=0; i<config.atlasesPerTex; i++) {
+    for (var i=0; i<self.atlasCount; i++) {
       self.atlases.push(new Atlas({
         idx: (config.atlasesPerTex * self.idx) + i,
         positions: self.getAtlasPositions(i),
@@ -167,7 +176,7 @@ function Texture(obj) {
     var y = Math.floor((idx * config.atlasSize) / texSize) * config.atlasSize;
     self.ctx.drawImage(atlas.image, x, y, config.atlasSize, config.atlasSize);
     self.loadedAtlases += 1;
-    if (self.loadedAtlases == config.atlasesPerTex) {
+    if (self.loadedAtlases == self.atlasCount) {
       self.onLoad(self.idx);
     }
   }
@@ -435,15 +444,15 @@ function World() {
   * Set the interior content of the fragment shader
   **/
 
-  self.setFragmentShader = function(nTextures) {
+  self.setFragmentShader = function(textureCount) {
     // get the texture lookup tree
     var tree = self.getTextureConditional(0);
-    for (var i=1; i<nTextures; i++) {
+    for (var i=1; i<textureCount; i++) {
       tree += ' else ' + self.getTextureConditional(i);
     }
     // replace the text in the fragment shader
     var fragShader = find('#fragment-shader').textContent;
-    fragShader = fragShader.replace('N_TEXTURES', nTextures);
+    fragShader = fragShader.replace('N_TEXTURES', textureCount);
     fragShader = fragShader.replace('TEXTURE_LOOKUP_TREE', tree);
     find('#fragment-shader').textContent = fragShader;
   }
