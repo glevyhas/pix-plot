@@ -360,6 +360,24 @@ function World() {
   }
 
   /**
+  * Add event listeners, e.g. to resize canvas on window resize
+  **/
+
+  self.addEventListeners = function() {
+    self.addResizeListener();
+  }
+
+  self.addResizeListener = function() {
+    window.addEventListener('resize', function() {
+      var windowSize = self.getWindowSize();
+      self.camera.aspect = windowSize.w / windowSize.h;
+      self.camera.updateProjectionMatrix();
+      self.renderer.setSize(windowSize.w, windowSize.h);
+      self.controls.handleResize();
+    });
+  }
+
+  /**
   * Draw each of the vertices
   **/
 
@@ -535,6 +553,7 @@ function World() {
   self.renderer = self.getRenderer();
   self.controls = self.getControls();
   self.stats = self.getStats();
+  self.addEventListeners();
 }
 
 /**
