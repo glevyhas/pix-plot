@@ -16,6 +16,9 @@ function Config() {
   self.atlasesPerTexSide = Math.pow(self.atlasesPerTex, 0.5);
   self.cellsPerAtlas = Math.pow((self.atlasSize / self.cellSize), 2);
   self.cellsPerAtlasSide = Math.pow(self.cellsPerAtlas, 0.5);
+  self.cellsPerTex = self.cellsPerAtlas * self.atlasesPerTex;
+  self.cellsPerDrawCall = Math.min(webgl.limits.indexedElements,
+    webgl.limits.textureCount * self.cellsPerTex);
 }
 
 /**
@@ -146,7 +149,7 @@ function Texture(obj) {
         idx: (config.atlasesPerTex * self.idx) + i,
         positions: self.getAtlasPositions(i),
         size: config.atlasSize,
-        textureIdx: self.idx,
+        texIdx: self.idx,
         onProgress: self.onAtlasProgress,
         onLoad: self.onAtlasLoad,
       }))
@@ -190,7 +193,7 @@ function Texture(obj) {
 
 function Atlas(obj) {
   var self = this;
-  self.textureIdx = obj.textureIdx;
+  self.texIdx = obj.texIdx;
   self.idx = obj.idx;
   self.idxInTex = obj.idx % config.atlasesPerTex;
   self.size = obj.size;
@@ -220,7 +223,7 @@ function Atlas(obj) {
 
   self.setCells = function() {
     // find the index position of the first cell among all cells
-    var start = self.textureIdx * config.atlasesPerTex * config.cellsPerAtlas;
+    var start = self.texIdx * config.atlasesPerTex * config.cellsPerAtlas;
     for (var i=0; i<self.positions.length; i++) {
       var data = self.positions[i];
       self.cells.push(new Cell({
@@ -233,7 +236,8 @@ function Atlas(obj) {
         atlasPosInTex: {
           x: self.xPosInTex,
           y: self.yPosInTex,
-        }
+        },
+        texIdx: self.texIdx,
       }))
     }
   }
@@ -269,7 +273,8 @@ function Cell(obj) {
   self.posInTex = {
     x: self.posInAtlas.x + obj.atlasPosInTex.x,
     y: self.posInAtlas.y + obj.atlasPosInTex.y,
-  }
+  };
+  self.texIdx = obj.texIdx;
 }
 
 /**
@@ -359,57 +364,92 @@ function World() {
   **/
 
   self.plot = function() {
-    var attrs = self.getPointAttributes();
     var group = new THREE.Group();
     var BA = THREE.BufferAttribute;
     var IBA = THREE.InstancedBufferAttribute;
-    var geometry = new THREE.InstancedBufferGeometry();
-    geometry.addAttribute('uv', new BA(attrs.uvs, 2));
-    geometry.addAttribute('position', new BA(attrs.positions, 3));
-    geometry.addAttribute('textureIndex', new IBA(attrs.texIndices, 1, 1));
-    geometry.addAttribute('textureOffset', new IBA(attrs.texOffsets, 2, 1));
-    geometry.addAttribute('translation', new IBA(attrs.translations, 3, 1));
-    var material = self.getShaderMaterial(attrs.textures);
-    var mesh = new THREE.Points(geometry, material);
-    mesh.frustumCulled = false;
-    group.add(mesh);
+    var cells = self.getCells();
+    var drawCalls = Math.ceil(data.positions.length / config.cellsPerDrawCall);
+    for (var i=0; i<drawCalls; i++) {
+      var start = i * config.cellsPerDrawCall;
+      var end = (i+1) * config.cellsPerDrawCall;
+      var groupCells = cells.slice(start, end);
+      var attrs = self.getGroupAttributes(groupCells);
+      var geometry = new THREE.InstancedBufferGeometry();
+      geometry.addAttribute('uv', new BA(attrs.uvs, 2));
+      geometry.addAttribute('position', new BA(attrs.positions, 3));
+      geometry.addAttribute('textureIndex', new IBA(attrs.texIndices, 1, 1));
+      geometry.addAttribute('textureOffset', new IBA(attrs.texOffsets, 2, 1));
+      geometry.addAttribute('translation', new IBA(attrs.translations, 3, 1));
+      var material = self.getShaderMaterial(attrs.textures);
+      var mesh = new THREE.Points(geometry, material);
+      mesh.frustumCulled = false;
+      group.add(mesh);
+    }
     self.scene.add(group);
     self.render();
   }
 
-  self.getPointAttributes = function() {
-    var n = data.positions.length;
+  // Get all cells for plot as an array of items
+  self.getCells = function() {
+    var cells = [];
+    data.textures.forEach(function(texture) {
+      texture.atlases.forEach(function(atlas) {
+        atlas.cells.forEach(function(cell) {
+          cells.push(cell);
+        })
+      })
+    })
+    return cells;
+  }
+
+  // Return attribute data for a single draw call
+  self.getGroupAttributes = function(cells) {
+    var it = self.getCellIterators(cells.length);
+    for (var i=0; i<cells.length; i++) {
+      var cell = cells[i];
+      it.texIndices[it.texIndexIterator++] = cell.texIdx;
+      it.texOffsets[it.texOffsetIterator++] = cell.posInTex.x / config.cellSize;
+      it.texOffsets[it.texOffsetIterator++] = cell.posInTex.y / config.cellSize;
+      it.translations[it.translationIterator++] = cell.position.x;
+      it.translations[it.translationIterator++] = cell.position.y;
+      it.translations[it.translationIterator++] = cell.position.z;
+    }
+    return {
+      uvs: new Float32Array([0, 0]),
+      positions: new Float32Array([0, 0, 0]),
+      texIndices: it.texIndices,
+      texOffsets: it.texOffsets,
+      translations: it.translations,
+      textures: self.getTextures({
+        startIdx: it.texIndices[0],
+        endIdx: it.texIndices[cells.length-1],
+      }),
+    }
+  }
+
+  // Get the iterators required to store attribute data for `n` cells
+  self.getCellIterators = function(n) {
+    return {
+      texIndices: new Float32Array(n),
+      texOffsets: new Float32Array(n * 2),
+      translations: new Float32Array(n * 3),
+      texIndexIterator: 0,
+      texOffsetIterator: 0,
+      translationIterator: 0,
+    }
+  }
+
+  // Return textures from `obj.startIdx` to `obj.endIdx` indices
+  self.getTextures = function(obj) {
     var textures = [];
-    var texIndices = new Float32Array(n);
-    var texOffsets = new Float32Array(n * 2);
-    var translations = new Float32Array(n * 3);
-    var texIndexIterator = 0;
-    var texOffsetIterator = 0;
-    var translationIterator = 0;
-    data.textures.forEach(function(texture, tidx) {
+    for (var i=obj.startIdx; i<=obj.endIdx - obj.startIdx; i++) {
+      var texture = data.textures[i];
       var tex = new THREE.Texture(texture.canvas);
       tex.needsUpdate = true;
       tex.flipY = false;
       textures.push(tex);
-      texture.atlases.forEach(function(atlas, aidx) {
-        atlas.cells.forEach(function(cell) {
-          texIndices[texIndexIterator++] = texture.idx;
-          texOffsets[texOffsetIterator++] = cell.posInTex.x / config.cellSize;
-          texOffsets[texOffsetIterator++] = cell.posInTex.y / config.cellSize;
-          translations[translationIterator++] = cell.position.x;
-          translations[translationIterator++] = cell.position.y;
-          translations[translationIterator++] = cell.position.z;
-        })
-      })
-    })
-    return {
-      uvs: new Float32Array([0, 0]),
-      positions: new Float32Array([0, 0, 0]),
-      texIndices: texIndices,
-      texOffsets: texOffsets,
-      translations: translations,
-      textures: textures,
     }
+    return textures;
   }
 
   /**
