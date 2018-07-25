@@ -47,10 +47,12 @@
     attribute vec3 translation; // x y z position offsets for an instance
     attribute float textureIndex; // index of an instance's texture
     attribute vec2 textureOffset; // offset of the texture coords for an instance
+    attribute float size; // the size of each side of the current instance
 
-    // varyings: pass the uv coordinates of each vertex to the fragment shader
-    varying float vTextureIndex; // pass the texture idx (varyings can't be bool or int)
-    varying vec2 vTextureOffset; // pass the texture offset
+    // varyings
+    varying float vTextureIndex; // cell texture idx (varyings can't be int)
+    varying vec2 vTextureOffset; // cell texture offset
+    varying vec2 vCellSize;      // cell size
 
     // function that returns the size of a point, scaled by the camera position
     float scalePoint(in vec3 pos, in vec3 cameraPosition) {
@@ -58,14 +60,15 @@
       float yDelta = pow(pos[1] - cameraPosition[1], 2.0);
       float zDelta = pow(pos[2] - cameraPosition[2], 2.0);
       float delta  = pow(xDelta + yDelta + zDelta, 0.5);
-      float size = 10000.0 / delta;
-      return size;
+      float scaled = 10000.0 / delta;
+      return scaled;
     }
 
     void main() {
       // pass varyings to fragment shader
       vTextureIndex = textureIndex;
       vTextureOffset = textureOffset;
+      vCellSize = vec2(size, size);
 
       // set point position
       vec3 pos = position + translation;
@@ -90,20 +93,19 @@
 
     precision highp float;
 
-    // cellSize identifies the [w, h] size of each image in an atlas
-    uniform vec2 cellSize;
-
     // textures contains an array of sampler2Ds
     uniform sampler2D textures[N_TEXTURES];
+    uniform sampler2D lodTexture;
 
     // identify the uv values as a varying attribute
     varying float vTextureIndex; // set index of each object's texture
     varying vec2 vTextureOffset; // instance uv offsets
+    varying vec2 vCellSize; // the size of the current instance
 
     void main() {
       int textureIndex = int(vTextureIndex);
       vec2 uv = vTextureOffset + vec2( gl_PointCoord.x, gl_PointCoord.y );
-      vec2 scaledUv = uv * cellSize;
+      vec2 scaledUv = uv * vCellSize;
       TEXTURE_LOOKUP_TREE
     }
     </script>
