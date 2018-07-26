@@ -428,8 +428,6 @@ function World() {
 
   self.plot = function() {
     var group = new THREE.Group();
-    var BA = THREE.BufferAttribute;
-    var IBA = THREE.InstancedBufferAttribute;
     var cells = self.getCells();
     var drawCalls = Math.ceil(data.positions.length / config.cellsPerDrawCall);
     for (var i=0; i<drawCalls; i++) {
@@ -439,12 +437,12 @@ function World() {
       var attrs = self.getGroupAttributes(groupCells);
       var geometry = new THREE.InstancedBufferGeometry();
       self.setFragmentShader(attrs.texStartIdx, attrs.textures.length);
-      geometry.addAttribute('uv', new BA(attrs.uvs, 2));
-      geometry.addAttribute('position', new BA(attrs.positions, 3));
-      geometry.addAttribute('size', new IBA(attrs.size, 1, 1));
-      geometry.addAttribute('textureIndex', new IBA(attrs.texIndices, 1, 1));
-      geometry.addAttribute('textureOffset', new IBA(attrs.texOffsets, 2, 1));
-      geometry.addAttribute('translation', new IBA(attrs.translations, 3, 1));
+      geometry.addAttribute('uv', attrs.uv);
+      geometry.addAttribute('position', attrs.position);
+      geometry.addAttribute('size', attrs.size);
+      geometry.addAttribute('textureIndex', attrs.textureIndex);
+      geometry.addAttribute('textureOffset', attrs.textureOffset);
+      geometry.addAttribute('translation', attrs.translation);
       var material = self.getShaderMaterial(attrs.textures);
       var mesh = new THREE.Points(geometry, material);
       mesh.frustumCulled = false;
@@ -467,21 +465,36 @@ function World() {
       var cell = cells[i].state;
       var texIdx = cell.isLarge ? texIndices.last + 1 : cell.texIdx;
       var fullCellSize = cell.isLarge ? config.lodCellSize : config.cellSize;
+      it.texIndices[it.texIndexIterator++] = texIdx;
       it.sizes[it.sizesIterator++] = fullCellSize / webgl.limits.textureSize;
       it.texOffsets[it.texOffsetIterator++] = cell.posInTex.x / fullCellSize;
       it.texOffsets[it.texOffsetIterator++] = cell.posInTex.y / fullCellSize;
       it.translations[it.translationIterator++] = cell.position.x;
       it.translations[it.translationIterator++] = cell.position.y;
       it.translations[it.translationIterator++] = cell.position.z;
-      it.texIndices[it.texIndexIterator++] = texIdx;
     }
+    // format the arrays into THREE attributes
+    var BA = THREE.BufferAttribute;
+    var IBA = THREE.InstancedBufferAttribute;
+    var uvAttr = new BA(new Float32Array([0, 0]), 2);
+    var positionAttr = new BA(new Float32Array([0, 0, 0]), 3);
+    var sizeAttr = new IBA(it.sizes, 1, 1);
+    var texIndexAttr = new IBA(it.texIndices, 1, 1);
+    var texOffsetAttr = new IBA(it.texOffsets, 2, 1);
+    var translationAttr = new IBA(it.translations, 3, 1);
+    uvAttr.dynamic = true;
+    positionAttr.dynamic = true;
+    sizeAttr.dynamic = true;
+    texIndexAttr.dynamic = true;
+    texOffsetAttr.dynamic = true;
+    translationAttr.dynamic = true;
     return {
-      size: it.sizes,
-      uvs: new Float32Array([0, 0]),
-      positions: new Float32Array([0, 0, 0]),
-      texIndices: it.texIndices,
-      texOffsets: it.texOffsets,
-      translations: it.translations,
+      uv: uvAttr,
+      size: sizeAttr,
+      position: positionAttr,
+      textureIndex: texIndexAttr,
+      textureOffset: texOffsetAttr,
+      translation: translationAttr,
       textures: self.getTextures({
         startIdx: texIndices.first,
         endIdx: texIndices.last,
@@ -817,7 +830,9 @@ function LOD() {
           y = parseInt(split[1]);
       if (Math.abs(self.gridPos.x - x) >= self.maxRadius ||
           Math.abs(self.gridPos.y - y) >= self.maxRadius) {
+        // remove the old grid position from the list of active grid positions
         delete self.tex.gridPosToCoords[pos];
+        // free all of the cells previously assigned to the deleted grid position
         var toUnload = self.tex.gridPosToCoords[pos];
         self.tex.openCoords = self.tex.openCoords.concat(toUnload);
       }
