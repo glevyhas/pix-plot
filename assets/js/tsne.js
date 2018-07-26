@@ -581,7 +581,7 @@ function World() {
   self.setFragmentShader = function(startTexIdx, textureCount) {
     // get the texture lookup tree
     var tree = self.getFragShaderTex(0, 'textures[0]', true);
-    for (var i=startTexIdx; i<startTexIdx + textureCount; i++) {
+    for (var i=startTexIdx; i<startTexIdx + textureCount-1; i++) {
       tree += ' else ' + self.getFragShaderTex(i, 'textures[' + i + ']', true);
     }
     // add the conditional for the lod texture
@@ -590,6 +590,7 @@ function World() {
     var fragShader = find('#fragment-shader').textContent;
     fragShader = fragShader.replace('N_TEXTURES', textureCount);
     fragShader = fragShader.replace('TEXTURE_LOOKUP_TREE', tree);
+    window.fragShader = fragShader;
     find('#fragment-shader').textContent = fragShader;
   }
 
@@ -601,7 +602,7 @@ function World() {
     var ws = '        '; // whitespace (purely aesthetic)
     var start = includeIf
       ? 'if (textureIndex == ' + texIdx + ') {\n'
-      : '{';
+      : '{\n';
     return start +
       ws + 'vec4 color = texture2D(' + texture + ', scaledUv);\n' +
       ws + 'if (color.a < 0.5) { discard; }\n' +
