@@ -280,6 +280,8 @@ function Cell(obj) {
       h: obj.h,
       topPad: (config.cellSize - obj.w) / 2,
       leftPad: (config.cellSize - obj.h) / 2,
+      fullCell: config.cellSize,
+      inTexture: config.cellSize / config.textureSize,
     }
   }
 
@@ -458,19 +460,16 @@ function World() {
     return data.cells;
   }
 
-  // Return attribute data for a single draw call
+  // Return attribute data for the initial draw call of a mesh
   self.getGroupAttributes = function(cells) {
     var it = self.getCellIterators(cells.length);
     var texIndices = self.getTexIndices(cells);
     for (var i=0; i<cells.length; i++) {
       var cell = cells[i].state;
-      var texIdx = cell.isLarge ? texIndices.last + 1 : cell.texIdx;
-      var fullCellSize = cell.isLarge ? config.lodCellSize : config.cellSize;
-      var fullTexSize = cell.isLarge ? config.lodTextureSize : config.textureSize;
-      it.texIndices[it.texIndexIterator++] = texIdx;
-      it.sizes[it.sizesIterator++] = fullCellSize / fullTexSize;
-      it.texOffsets[it.texOffsetIterator++] = cell.posInTex.x / fullCellSize;
-      it.texOffsets[it.texOffsetIterator++] = cell.posInTex.y / fullCellSize;
+      it.texIndices[it.texIndexIterator++] = cell.texIdx;
+      it.sizes[it.sizesIterator++] = cell.size.inTexture;
+      it.texOffsets[it.texOffsetIterator++] = cell.posInTex.x / cell.size.fullCell;
+      it.texOffsets[it.texOffsetIterator++] = cell.posInTex.y / cell.size.fullCell;
       it.translations[it.translationIterator++] = cell.position.x;
       it.translations[it.translationIterator++] = cell.position.y;
       it.translations[it.translationIterator++] = cell.position.z;
@@ -848,22 +847,42 @@ function LOD() {
     cell.state = Object.assign({}, cell.state, {
       isLarge: true,
       texIdx: -1,
+      posInTex: {
+        x: self.state.cellIdxToCoords[cell.idx].x,
+        y: self.state.cellIdxToCoords[cell.idx].y,
+      },
       size: {
         w: config.lodCellSize,
         h: config.lodCellSize,
         topPad: cell.state.size.topPad * self.cellSizeScalar,
         leftPad: cell.state.size.leftPad * self.cellSizeScalar,
-      }
+        inTexture: config.lodCellSize / config.lodTextureSize,
+        fullCell: config.lodCellSize,
+      },
     })
-    var posInTex = self.state.cellIdxToCoords[cell.idx];
+    self.mutateCellBuffers(cell);
+  }
+
+  // use a cell's state to mutate its attribute buffers
+  self.mutateCellBuffers = function(cell) {
     var attrs = world.scene.children[0].children[0].geometry.attributes;
+    var posInTex = {
+      x: cell.state.posInTex.x / cell.state.size.fullCell,
+      y: cell.state.posInTex.y / cell.state.size.fullCell,
+    }
     // set the texIdx to -1 so we read from the uniforms.lodTexture
     attrs.textureIndex.array[cell.idx] = cell.state.texIdx;
     // set the x then y texture offsets for this cell
-    attrs.textureOffset.array[(cell.idx * 2)] = posInTex.x / config.lodCellSize;
-    attrs.textureOffset.array[(cell.idx * 2) + 1] = posInTex.y / config.lodCellSize;
+    attrs.textureOffset.array[(cell.idx * 2)] = posInTex.x;
+    attrs.textureOffset.array[(cell.idx * 2) + 1] = posInTex.y;
     // set the updated lod cell size
-    attrs.size.array[cell.idx] = config.lodCellSize / config.lodTextureSize;
+    attrs.size.array[cell.idx] = cell.state.size.inTexture;
+  }
+
+  // restore a cell's buffer attributes to the default attributes
+  self.deactivateCell = function(cell) {
+    cell.state = Object.assign({}, cell.state, cell.default);
+    self.mutateCellBuffers(cell);
   }
 
   // load the next nearest grid of cell images
@@ -902,6 +921,7 @@ function LOD() {
         // delete unloaded cell keys in the cellIdxToCoords map
         toUnload.forEach(function(coords) {
           delete self.state.cellIdxToCoords[coords.cellIdx];
+          self.deactivateCell(data.cells[coords.cellIdx]);
         })
       }
     });
