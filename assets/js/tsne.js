@@ -14,7 +14,9 @@ function Config() {
   self.cellSize = 32;
   self.lodCellSize = 128;
   self.atlasSize = 2048;
-  self.atlasesPerTex = Math.pow((webgl.limits.textureSize / self.atlasSize), 2);
+  self.textureSize = webgl.limits.textureSize;
+  self.lodTextureSize = 2048;
+  self.atlasesPerTex = Math.pow((self.textureSize / self.atlasSize), 2);
   self.atlasesPerTexSide = Math.pow(self.atlasesPerTex, 0.5);
   self.cellsPerAtlas = Math.pow((self.atlasSize / self.cellSize), 2);
   self.cellsPerAtlasSide = Math.pow(self.cellsPerAtlas, 0.5);
@@ -126,8 +128,8 @@ function Texture(obj) {
 
   self.setCanvas = function() {
     self.canvas = getElem('canvas', {
-      width: webgl.limits.textureSize,
-      height: webgl.limits.textureSize,
+      width: config.textureSize,
+      height: config.textureSize,
       id: 'texture-' + self.idx,
     })
     self.ctx = self.canvas.getContext('2d');
@@ -165,7 +167,7 @@ function Texture(obj) {
   // When an atlas loads, check to see if we can build a texture
   self.onAtlasLoad = function(atlas) {
     // Add the loaded atlas file the texture's canvas
-    var texSize = webgl.limits.textureSize;
+    var texSize = config.textureSize;
     var idx = atlas.idx % config.atlasesPerTex;
     var x = (idx * config.atlasSize) % texSize;
     var y = Math.floor((idx * config.atlasSize) / texSize) * config.atlasSize;
@@ -196,8 +198,10 @@ function Atlas(obj) {
   self.progress = 0;
   self.url = config.dataUrl + 'atlas_files/32px/atlas-' + self.idx + '.jpg';
   self.cells = [];
-  self.xPosInTex = (self.idxInTex % config.atlasesPerTexSide) * config.atlasSize;
-  self.yPosInTex = Math.floor(self.idxInTex / config.atlasesPerTexSide) * config.atlasSize;
+  self.posInTex = {
+    x: (self.idxInTex % config.atlasesPerTexSide) * config.atlasSize,
+    y: Math.floor(self.idxInTex / config.atlasesPerTexSide) * config.atlasSize,
+  }
 
   self.load = function() {
     self.image = new Image;
@@ -227,10 +231,7 @@ function Atlas(obj) {
         y: cellData[2] * config.spread.y,
         w: cellData[3],
         h: cellData[4],
-        atlasPosInTex: {
-          x: self.xPosInTex,
-          y: self.yPosInTex,
-        },
+        atlasPosInTex: self.posInTex,
         texIdx: self.texIdx,
       }))
     }
@@ -255,7 +256,7 @@ function Cell(obj) {
     size: {},     // size of the cell in its atlas
     posInTex: {}, // position of the cell in its texture
     texIdx: null, // texture index to use when drawing cell
-    isLarge: false, // is the cell large?
+    isLarge: false, // set to true when high-res image is loaded
   }
   self.state = {
     position: null,
@@ -465,8 +466,9 @@ function World() {
       var cell = cells[i].state;
       var texIdx = cell.isLarge ? texIndices.last + 1 : cell.texIdx;
       var fullCellSize = cell.isLarge ? config.lodCellSize : config.cellSize;
+      var fullTexSize = cell.isLarge ? config.lodTextureSize : config.textureSize;
       it.texIndices[it.texIndexIterator++] = texIdx;
-      it.sizes[it.sizesIterator++] = fullCellSize / webgl.limits.textureSize;
+      it.sizes[it.sizesIterator++] = fullCellSize / fullTexSize;
       it.texOffsets[it.texOffsetIterator++] = cell.posInTex.x / fullCellSize;
       it.texOffsets[it.texOffsetIterator++] = cell.posInTex.y / fullCellSize;
       it.translations[it.translationIterator++] = cell.position.x;
@@ -566,7 +568,7 @@ function World() {
         },
         lodTexture: {
           type: 't',
-          value: self.getTexture(lod.tex.canvas),
+          value: lod.tex.texture,
         }
       },
       vertexShader: find('#vertex-shader').textContent,
@@ -698,17 +700,23 @@ function Webgl() {
 function LOD() {
   var self = this;
   self.gridPos = {x: null, y: null};
-  self.loadQueue = [];
   self.cellIdxToImage = {};
-  self.neighborsRequested = false;
-  self.maxRadius = 10; // max radius for neighboring block search
+  self.maxRadius = 2; // max radius for neighboring block search
+  self.cellSizeScalar = config.lodCellSize / config.cellSize;
+  self.framesBetweenUpdates = 60; // frames that elapse between texture updates
   self.tex = {
     canvas: null,
     ctx: null,
-    size: webgl.limits.textureSize,
+    texture: null,
+  };
+  self.state = {
+    loadQueue: [],
+    neighborsRequested: false,
     openCoords: [],
     gridPosToCoords: {},
-    cellSizeScalar: config.lodCellSize / config.cellSize,
+    cellIdxToCoords: {},
+    cellsToActivate: [],
+    frame: 0,
   };
   self.grid = {
     coords: {}, // set by data constructor
@@ -721,16 +729,17 @@ function LOD() {
   // set the canvas on which loaded images will be drawn
   self.setCanvas = function() {
     self.tex.canvas = getElem('canvas', {
-      width: webgl.limits.textureSize,
-      height: webgl.limits.textureSize,
+      width: config.lodTextureSize,
+      height: config.lodTextureSize,
       id: 'lod-canvas',
     })
     self.tex.ctx = self.tex.canvas.getContext('2d');
+    self.tex.texture = world.getTexture(self.tex.canvas);
   }
 
   // initialize the array of tex coordinates available for writing
   self.setOpenTexCoords = function() {
-    var perDimension = webgl.limits.textureSize / config.lodCellSize;
+    var perDimension = config.lodTextureSize / config.lodCellSize;
     var openCoords = [];
     for (var x=0; x<perDimension; x++) {
       for (var y=0; y<perDimension; y++) {
@@ -740,106 +749,101 @@ function LOD() {
         });
       }
     }
-    self.tex.openCoords = openCoords;
+    self.state.openCoords = openCoords;
   }
 
-  // load additional cells nearest the camera; called every frame
+  // load high-res images nearest the camera; called every frame by world.render
   self.update = function() {
+    self.updateGridPosition();
+    self.loadNextImage();
+    self.tick();
+  }
+
+  self.updateGridPosition = function() {
+    // determine the user's current grid position
     var gridPos = {
       x: Math.floor(world.camera.position.x / self.grid.size.x),
       y: Math.floor(world.camera.position.y / self.grid.size.y),
     }
-    // user is in a new grid block; unload old images and load new
+    // user is in a new grid position; unload old images and load new
     if (gridPos.x !== self.gridPos.x || gridPos.y !== self.gridPos.y) {
       self.gridPos = gridPos;
-      self.neighborsRequested = false;
+      self.state.neighborsRequested = false;
       self.unloadGridNeighbors();
       var pos = [self.gridPos.x, self.gridPos.y];
-      var cellIndicesToLoad = getNested(self.grid.coords, pos, []);
-      self.loadQueue = cellIndicesToLoad;
+      self.state.loadQueue = getNested(self.grid.coords, pos, []);
     }
-    // load the next image on each frame tick
-    var cellIdx = self.loadQueue.shift();
+  }
+
+  // if there's a loadQueue, load the next image, else load neighbors
+  self.loadNextImage = function() {
+    var cellIdx = self.state.loadQueue.shift();
+    if (!Number.isInteger(cellIdx)) {
+      if (!self.state.neighborsRequested) self.loadGridNeighbors();
+      return;
+    }
     self.loadImage(cellIdx);
   }
 
+  // update the frame number and conditionally activate loaded images
+  self.tick = function() {
+    self.state.frame += 1;
+    if (self.state.cellsToActivate.length &&
+        self.state.frame % self.framesBetweenUpdates == 0) {
+      var toActivate = self.state.cellsToActivate;
+      self.state.cellsToActivate = [];
+      self.activateCells(toActivate);
+    }
+  }
+
+  // load a high-res image for cell at index `cellIdx`
   self.loadImage = function(cellIdx) {
-    // case when loadQueue is empty; load neighbors
-    if (!Number.isInteger(cellIdx)) {
-      if (!self.neighborsRequested) {
-        self.loadGridNeighbors();
-      }
-      return;
-    }
-    // case when loadQueue is not empty but image is already loaded
     if (self.cellIdxToImage[cellIdx]) {
-      self.addImageToCanvas(cellIdx);
-      return;
-    }
-    // load the image
-    var cell = data.cells[cellIdx];
-    var image = new Image;
-    image.onload = function(cellIdx) {
-      self.cellIdxToImage[cellIdx] = image;
-      self.addImageToCanvas(cellIdx);
-    }.bind(null, cellIdx)
-    image.src = config.thumbsUrl + cell.name + '.jpg';
-  }
-
-  self.addImageToCanvas = function(cellIdx) {
-    // get the size and offsets of the cell in the lod atlas
-    var image = self.cellIdxToImage[cellIdx];
-    var cell = data.cells[cellIdx];
-    self.activateCell(cell);
-    // store the image in the next available set of texture coords
-    var coords = self.tex.openCoords.shift();
-    if (!coords) return;
-    var gridKey = self.gridPos.x + '.' + self.gridPos.y;
-    self.tex.gridPosToCoords[gridKey] = self.tex.gridPosToCoords[gridKey]
-      ? self.tex.gridPosToCoords[gridKey]
-      : [];
-    self.tex.gridPosToCoords[gridKey].push(coords);
-    // draw the image onto the canvas
-    self.tex.ctx.drawImage(image,
-      0, 0, config.lodCellSize, config.lodCellSize,
-      coords.x, coords.y, config.lodCellSize, config.lodCellSize);
-  }
-
-  // load the next nearest grid of cell images
-  self.loadGridNeighbors = function() {
-    self.neighborsRequested = true;
-    for (var r=1; r<=self.maxRadius; r++) {
-      [r, -r].forEach(function(delta) {
-        ['x', 'y'].forEach(function(dimension) {
-          var blockToLoad = Object.assign({}, self.gridPos);
-          blockToLoad[dimension] += delta;
-          var coords = [blockToLoad.x, blockToLoad.y];
-          var cellIndicesToLoad = getNested(self.grid.coords, coords, []);
-          if (cellIndicesToLoad) {
-            self.loadQueue = self.loadQueue.concat(cellIndicesToLoad);
-          }
-        })
-      })
+      self.preactivateImage(cellIdx);
+    } else {
+      var image = new Image;
+      image.onload = function(cellIdx) {
+        self.cellIdxToImage[cellIdx] = image;
+        self.preactivateImage(cellIdx);
+      }.bind(null, cellIdx)
+      image.src = config.thumbsUrl + data.cells[cellIdx].name + '.jpg';
     }
   }
 
-  // free up the grid positions of images now distant from the camera
-  self.unloadGridNeighbors = function() {
-    Object.keys(self.tex.gridPosToCoords).forEach(function(pos) {
-      var split = pos.split('.'),
-          x = parseInt(split[0]),
-          y = parseInt(split[1]);
-      if (Math.abs(self.gridPos.x - x) >= self.maxRadius ||
-          Math.abs(self.gridPos.y - y) >= self.maxRadius) {
-        // remove the old grid position from the list of active grid positions
-        delete self.tex.gridPosToCoords[pos];
-        // free all of the cells previously assigned to the deleted grid position
-        var toUnload = self.tex.gridPosToCoords[pos];
-        self.tex.openCoords = self.tex.openCoords.concat(toUnload);
-      }
-    });
+  // add an image to the list of images ready to be activated
+  self.preactivateImage = function(cellIdx) {
+    self.state.cellsToActivate = self.state.cellsToActivate.concat(cellIdx);
   }
 
+  // activate all cells within a list of cell indices
+  self.activateCells = function(cellIndices) {
+    cellIndices.forEach(function(cellIdx) {
+      // find coordinates where this image will be stored in the lod texture
+      var coords = self.state.openCoords.shift();
+      if (!coords) { console.warn('TODO: lod texture full'); return; }
+      // store maps of current grid pos to coords & cellIdx to coords
+      coords.cellIdx = cellIdx;
+      var gridKey = self.gridPos.x + '.' + self.gridPos.y;
+      var gridStore = self.state.gridPosToCoords;
+      gridStore[gridKey] = gridStore[gridKey] ? gridStore[gridKey] : [];
+      gridStore[gridKey].push(coords);
+      self.state.cellIdxToCoords[cellIdx] = coords;
+      // draw the cell's image in the lod texture
+      self.tex.ctx.drawImage(self.cellIdxToImage[cellIdx],
+        0, 0, config.lodCellSize, config.lodCellSize,
+        coords.x, coords.y, config.lodCellSize, config.lodCellSize);
+      // mutate the individual cell's attribute buffers
+      self.activateCell(data.cells[cellIdx]);
+    })
+    // invalidate the lod texture and the geometry's mutated attribute buffers
+    self.tex.texture.needsUpdate = true;
+    var attrs = world.scene.children[0].children[0].geometry.attributes;
+    attrs.textureOffset.needsUpdate = true;
+    attrs.textureIndex.needsUpdate = true;
+    attrs.size.needsUpdate = true;
+  }
+
+  // mutate the cell's state and attribute buffers to load lod detail
   self.activateCell = function(cell) {
     cell.state = Object.assign({}, cell.state, {
       isLarge: true,
@@ -847,10 +851,60 @@ function LOD() {
       size: {
         w: config.lodCellSize,
         h: config.lodCellSize,
-        topPad: cell.state.size.topPad * self.tex.cellSizeScalar,
-        leftPad: cell.state.size.leftPad * self.tex.cellSizeScalar,
+        topPad: cell.state.size.topPad * self.cellSizeScalar,
+        leftPad: cell.state.size.leftPad * self.cellSizeScalar,
       }
     })
+    var posInTex = self.state.cellIdxToCoords[cell.idx];
+    var attrs = world.scene.children[0].children[0].geometry.attributes;
+    // set the texIdx to -1 so we read from the uniforms.lodTexture
+    attrs.textureIndex.array[cell.idx] = cell.state.texIdx;
+    // set the x then y texture offsets for this cell
+    attrs.textureOffset.array[(cell.idx * 2)] = posInTex.x / config.lodCellSize;
+    attrs.textureOffset.array[(cell.idx * 2) + 1] = posInTex.y / config.lodCellSize;
+    // set the updated lod cell size
+    attrs.size.array[cell.idx] = config.lodCellSize / config.lodTextureSize;
+  }
+
+  // load the next nearest grid of cell images
+  self.loadGridNeighbors = function() {
+    self.state.neighborsRequested = true;
+    for (var r=1; r<=self.maxRadius; r++) {
+      for (var x=-r; x<r; x++) {
+        for (var y=-r; y<r; y++) {
+          var blockToLoad = Object.assign({}, self.gridPos);
+          blockToLoad.x += x;
+          blockToLoad.y += y;
+          var coords = [blockToLoad.x, blockToLoad.y];
+          var cellIndicesToLoad = getNested(self.grid.coords, coords, []);
+          if (cellIndicesToLoad) {
+            self.state.loadQueue = self.state.loadQueue.concat(cellIndicesToLoad);
+          }
+        }
+      }
+    }
+  }
+
+  // free up the grid positions of images now distant from the camera
+  self.unloadGridNeighbors = function() {
+    Object.keys(self.state.gridPosToCoords).forEach(function(pos) {
+      var split = pos.split('.'),
+          x = parseInt(split[0]),
+          y = parseInt(split[1]);
+      if (Math.abs(self.gridPos.x - x) >= self.maxRadius ||
+          Math.abs(self.gridPos.y - y) >= self.maxRadius) {
+        // cache the texture coords for the grid key to be deleted
+        var toUnload = self.state.gridPosToCoords[pos];
+        // remove the old grid position from the list of active grid positions
+        delete self.state.gridPosToCoords[pos];
+        // free all cells previously assigned to the deleted grid position
+        self.state.openCoords = self.state.openCoords.concat(toUnload);
+        // delete unloaded cell keys in the cellIdxToCoords map
+        toUnload.forEach(function(coords) {
+          delete self.state.cellIdxToCoords[coords.cellIdx];
+        })
+      }
+    });
   }
 
   self.setCanvas();
