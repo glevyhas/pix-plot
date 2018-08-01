@@ -43,16 +43,16 @@
     uniform vec3 cameraPosition;
 
     // instance attributes
-    attribute vec3 position; // base x y z position for all points
-    attribute vec3 translation; // x y z position offsets for an instance
+    attribute vec3 position;      // base x y z position for all points
+    attribute vec3 translation;   // x y z position offsets for an instance
     attribute float textureIndex; // index of an instance's texture
     attribute vec2 textureOffset; // offset of the texture coords for an instance
-    attribute float size; // the size of each side of the current instance
+    attribute float size;         // size of each side of the current instance
 
     // varyings
-    varying float vTextureIndex; // cell texture idx (varyings can't be int)
-    varying vec2 vTextureOffset; // cell texture offset
-    varying vec2 vCellSize;      // cell size
+    varying float vTextureIndex;  // cell texture idx (varyings can't be int)
+    varying vec2 vTextureOffset;  // cell texture offset
+    varying vec2 vCellSize;       // cell size
 
     // function that returns the size of a point, scaled by the camera position
     float scalePoint(in vec3 pos, in vec3 cameraPosition) {
@@ -156,8 +156,8 @@
     <noscript>
       <span class='browser-message'>Sorry, your browser is not able to load a WebGL scene currently. Please enable JavaScript and try again.</span>
     </noscript>
-    <script type='text/javascript' src='https://cdnjs.cloudflare.com/ajax/libs/three.js/94/three.min.js'></script>
-    <script type='text/javascript' src='https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.4/lodash.min.js'></script>
+    <script type='text/javascript' src='assets/vendor/dist/three.min.js'></script>
+    <script type='text/javascript' src='assets/vendor/dist/lodash.min.js'></script>
     <script type='text/javascript' src='assets/js/object-assign-polyfill.js'></script>
     <script type='text/javascript' src='assets/vendor/dist/tween.min.js'></script>
     <script type='text/javascript' src='assets/vendor/dist/trackball-controls.min.js'></script>
