@@ -708,7 +708,7 @@ function LOD() {
   var self = this;
   self.gridPos = {x: null, y: null};
   self.cellIdxToImage = {};
-  self.maxRadius = 1; // max radius for neighboring block search
+  self.maxRadius = 5; // max radius for neighboring block search
   self.cellSizeScalar = config.lodCellSize / config.cellSize;
   self.framesBetweenUpdates = 60; // frames that elapse between texture updates
   self.tex = {
@@ -728,8 +728,8 @@ function LOD() {
   self.grid = {
     coords: {}, // set by data constructor
     size: {
-      x: config.spread.x * 100,
-      y: config.spread.y * 100,
+      x: config.spread.x * 30,
+      y: config.spread.y * 30,
     },
   };
 
