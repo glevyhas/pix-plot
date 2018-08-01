@@ -300,9 +300,17 @@ function Cell(obj) {
     }
   }
 
+  self.getGridCoords = function() {
+    return {
+      x: Math.floor(self.state.position.x / lod.grid.size.x),
+      y: Math.floor(self.state.position.y / lod.grid.size.y),
+    }
+  }
+
   self.indexInLOD = function() {
-    var gridX = Math.floor(self.state.position.x / lod.grid.size.x);
-    var gridY = Math.floor(self.state.position.y / lod.grid.size.y);
+    var gridCoords = self.getGridCoords(self);
+    var gridX = gridCoords.x;
+    var gridY = gridCoords.y;
     lod.grid.coords[gridX] = lod.grid.coords[gridX]
       ? lod.grid.coords[gridX]
       : {};
@@ -700,7 +708,7 @@ function LOD() {
   var self = this;
   self.gridPos = {x: null, y: null};
   self.cellIdxToImage = {};
-  self.maxRadius = 2; // max radius for neighboring block search
+  self.maxRadius = 1; // max radius for neighboring block search
   self.cellSizeScalar = config.lodCellSize / config.cellSize;
   self.framesBetweenUpdates = 60; // frames that elapse between texture updates
   self.tex = {
@@ -787,8 +795,9 @@ function LOD() {
   // update the frame number and conditionally activate loaded images
   self.tick = function() {
     self.state.frame += 1;
-    if (self.state.cellsToActivate.length &&
-        self.state.frame % self.framesBetweenUpdates == 0) {
+    if (self.state.frame % self.framesBetweenUpdates == 0 &&
+        world.camera.position.z > -450 &&
+        self.state.cellsToActivate.length) {
       var toActivate = self.state.cellsToActivate;
       self.state.cellsToActivate = [];
       self.activateCells(toActivate);
@@ -816,13 +825,15 @@ function LOD() {
 
   // activate all cells within a list of cell indices
   self.activateCells = function(cellIndices) {
+    // find and store the coords where each img will be stored in lod texture
     cellIndices.forEach(function(cellIdx) {
-      // find coordinates where this image will be stored in the lod texture
       var coords = self.state.openCoords.shift();
       if (!coords) { console.warn('TODO: lod texture full'); return; }
-      // store maps of current grid pos to coords & cellIdx to coords
       coords.cellIdx = cellIdx;
-      var gridKey = self.gridPos.x + '.' + self.gridPos.y;
+      // parse out the cell's grid coordinates and
+      var cell = data.cells[cellIdx];
+      var gridCoords = cell.getGridCoords();
+      var gridKey = gridCoords.x + '.' + gridCoords.y;
       var gridStore = self.state.gridPosToCoords;
       gridStore[gridKey] = gridStore[gridKey] ? gridStore[gridKey] : [];
       gridStore[gridKey].push(coords);
@@ -832,7 +843,7 @@ function LOD() {
         0, 0, config.lodCellSize, config.lodCellSize,
         coords.x, coords.y, config.lodCellSize, config.lodCellSize);
       // mutate the individual cell's attribute buffers
-      self.activateCell(data.cells[cellIdx]);
+      self.activateCell(cell);
     })
     // invalidate the lod texture and the geometry's mutated attribute buffers
     self.tex.texture.needsUpdate = true;
@@ -888,9 +899,9 @@ function LOD() {
   // load the next nearest grid of cell images
   self.loadGridNeighbors = function() {
     self.state.neighborsRequested = true;
-    for (var r=1; r<=self.maxRadius; r++) {
-      for (var x=-r; x<r; x++) {
-        for (var y=-r; y<r; y++) {
+    for (var x=-self.maxRadius*2; x<=self.maxRadius*2; x++) {
+      for (var y=-self.maxRadius; y<=self.maxRadius; y++) {
+        if (!(x==0 && y==0)) {
           var blockToLoad = Object.assign({}, self.gridPos);
           blockToLoad.x += x;
           blockToLoad.y += y;
@@ -909,13 +920,12 @@ function LOD() {
     Object.keys(self.state.gridPosToCoords).forEach(function(pos) {
       var split = pos.split('.'),
           x = parseInt(split[0]),
-          y = parseInt(split[1]);
-      if (Math.abs(self.gridPos.x - x) >= self.maxRadius ||
-          Math.abs(self.gridPos.y - y) >= self.maxRadius) {
+          y = parseInt(split[1]),
+          xDelta = Math.abs(self.gridPos.x - x),
+          yDelta = Math.abs(self.gridPos.y - y);
+      if ((xDelta + yDelta)/2 > self.maxRadius) {
         // cache the texture coords for the grid key to be deleted
         var toUnload = self.state.gridPosToCoords[pos];
-        // remove the old grid position from the list of active grid positions
-        delete self.state.gridPosToCoords[pos];
         // free all cells previously assigned to the deleted grid position
         self.state.openCoords = self.state.openCoords.concat(toUnload);
         // delete unloaded cell keys in the cellIdxToCoords map
@@ -923,6 +933,8 @@ function LOD() {
           delete self.state.cellIdxToCoords[coords.cellIdx];
           self.deactivateCell(data.cells[coords.cellIdx]);
         })
+        // remove the old grid position from the list of active grid positions
+        delete self.state.gridPosToCoords[pos];
       }
     });
   }
