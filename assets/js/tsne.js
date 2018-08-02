@@ -876,18 +876,24 @@ function LOD() {
 
   // use a cell's state to mutate its attribute buffers
   self.mutateCellBuffers = function(cell) {
-    var attrs = world.scene.children[0].children[0].geometry.attributes;
+    // determine the draw call (mesh) to which this cell belongs
+    var cellDrawCallIdx = Math.floor(cell.idx / config.cellsPerDrawCall);
+    var cellIdxInDrawCall = cell.idx % config.cellsPerDrawCall;
+    // find the buffer attributes that describe this cell to the GPU
+    var group = world.scene.children[0];
+    var attrs = group.children[cellDrawCallIdx].geometry.attributes;
+    // find this cell's position in the LOD texture
     var posInTex = {
       x: cell.state.posInTex.x / cell.state.size.fullCell,
       y: cell.state.posInTex.y / cell.state.size.fullCell,
     }
-    // set the texIdx to -1 so we read from the uniforms.lodTexture
-    attrs.textureIndex.array[cell.idx] = cell.state.texIdx;
+    // set the texIdx to -1 to read from the uniforms.lodTexture
+    attrs.textureIndex.array[cellIdxInDrawCall] = cell.state.texIdx;
     // set the x then y texture offsets for this cell
-    attrs.textureOffset.array[(cell.idx * 2)] = posInTex.x;
-    attrs.textureOffset.array[(cell.idx * 2) + 1] = posInTex.y;
+    attrs.textureOffset.array[(cellIdxInDrawCall * 2)] = posInTex.x;
+    attrs.textureOffset.array[(cellIdxInDrawCall * 2) + 1] = posInTex.y;
     // set the updated lod cell size
-    attrs.size.array[cell.idx] = cell.state.size.inTexture;
+    attrs.size.array[cellIdxInDrawCall] = cell.state.size.inTexture;
   }
 
   // restore a cell's buffer attributes to the default attributes
