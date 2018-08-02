@@ -55,13 +55,20 @@ Once Docker is installed, start a terminal, cd into the folder that contains thi
 # build the container
 docker build --tag pixplot --file Dockerfile .
 
-# process images
-docker run -v $(pwd)/output:/pixplot/output pixplot \
+# process images - use the `-v` flag to mount directories from outside
+# the container into the container
+docker run \
+  -v $(pwd)/output:/pixplot/output \
+  -v /Users/my_user/Desktop/my_images:/pixplot/images \
+  pixplot \
   bash -c "cd pixplot && python3.6 utils/process_images.py images/*.jpg"
 
 # run the web server
-docker run -v $(pwd)/output:/pixplot/output \
-  -p 5000:5000 pixplot bash -c "cd pixplot && python3.6 -m http.server 5000"
+docker run \
+  -v $(pwd)/output:/pixplot/output \
+  -p 5000:5000 \
+  pixplot \
+  bash -c "cd pixplot && python3.6 -m http.server 5000"
 ```
 
 Once the web server starts, you should be able to see your results on `localhost:5000`.
