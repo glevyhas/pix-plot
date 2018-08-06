@@ -62,7 +62,7 @@ function Data() {
       min: Number.POSITIVE_INFINITY,
       max: Number.NEGATIVE_INFINITY,
     },
-  }
+  };
 
   // Load the initial JSON data with cell information
   self.load = function() {
@@ -105,7 +105,7 @@ function Data() {
   self.onTextureLoad = function(texIdx) {
     self.loadedTextures += 1;
     if (self.loadedTextures == self.textureCount) {
-      world.plot();
+      world.init();
     }
   }
 
@@ -371,6 +371,7 @@ function World() {
   self.renderer = null;
   self.controls = null;
   self.stats = null;
+  self.center = {};
   self.raycaster = new THREE.Raycaster();
   self.mouse = new THREE.Vector2();
   self.lastMouse = new THREE.Vector2();
@@ -401,7 +402,6 @@ function World() {
     var windowSize = self.getWindowSize();
     var aspectRatio = windowSize.w / windowSize.h;
     var camera = new THREE.PerspectiveCamera(75, aspectRatio, 0.1, 100000);
-    camera.position.set(0, 1, -6000);
     return camera;
   }
 
@@ -458,6 +458,39 @@ function World() {
       self.renderer.setSize(windowSize.w, windowSize.h);
       self.controls.handleResize();
     });
+  }
+
+  /**
+  * Set the center point of the scene
+  **/
+
+  self.setCenter = function() {
+    self.center = {
+      x: (data.boundingBox.x.min + data.boundingBox.x.max) / 2,
+      y: (data.boundingBox.y.min + data.boundingBox.y.max) / 2,
+    }
+  }
+
+  /**
+  * Position the camera and controls in the center of the world
+  **/
+
+  self.centerControls = function() {
+    self.setCenter();
+    // position the camera in the plot's center
+    self.camera.position.set(self.center.x, self.center.y, -6000);
+    self.camera.lookAt(self.center.x, self.center.y, 0);
+    // position the controls in the plot's center
+    self.controls.target = new THREE.Vector3(self.center.x, self.center.y, 0);
+  }
+
+  /**
+  * Initialize the plotting
+  **/
+
+  self.init = function() {
+    self.centerControls();
+    self.plot();
   }
 
   /**
@@ -871,12 +904,12 @@ function LOD() {
   self.tick = function() {
     self.state.frame += 1;
     if (!(self.state.frame % self.framesBetweenUpdates == 0)) return;
-    if (world.camera.position.z > -450 && self.state.cellsToActivate.length) {
-      var toActivate = self.state.cellsToActivate;
-      self.state.cellsToActivate = [];
-      self.activateCells(toActivate);
-    } else {
-      self.unloadGridNeighbors();
+    if (world.camera.position.z > -450) {
+      if (self.state.cellsToActivate.length) {
+        var toActivate = self.state.cellsToActivate;
+        self.state.cellsToActivate = [];
+        self.activateCells(toActivate);
+      }
     }
   }
 
@@ -911,7 +944,7 @@ function LOD() {
       var gridCoords = cell.getGridCoords();
       var gridKey = gridCoords.x + '.' + gridCoords.y;
       var gridStore = self.state.gridPosToCoords;
-      gridStore[gridKey] = gridStore[gridKey] ? gridStore[gridKey] : [];
+      if (!gridStore[gridKey]) gridStore[gridKey] = [];
       gridStore[gridKey].push(coords);
       self.state.cellIdxToCoords[cellIdx] = coords;
       // draw the cell's image in the lod texture
