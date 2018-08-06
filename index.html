@@ -41,10 +41,12 @@
     uniform mat4 modelViewMatrix;
     uniform mat4 projectionMatrix;
     uniform vec3 cameraPosition;
+    uniform float time;
 
     // instance attributes
     attribute vec3 position;      // base x y z position for all points
     attribute vec3 translation;   // x y z position offsets for an instance
+    attribute vec3 target;        // x y z position to which we're transitioning
     attribute float textureIndex; // index of an instance's texture
     attribute vec2 textureOffset; // offset of the texture coords for an instance
     attribute float size;         // size of each side of the current instance
@@ -70,8 +72,10 @@
       vTextureOffset = textureOffset;
       vCellSize = vec2(size, size);
 
-      // set point position
-      vec3 pos = position + translation;
+      // set point position as a mixture between the position + target
+      vec3 currentPos = position + translation;
+      vec3 targetPos = position + target;
+      vec3 pos = mix(currentPos, targetPos, clamp(time, 0.0, 1.0));
       gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
 
       // use the unscaled point position and camera position to set point size
@@ -159,7 +163,7 @@
     <script type='text/javascript' src='assets/vendor/dist/three.min.js'></script>
     <script type='text/javascript' src='assets/vendor/dist/lodash.min.js'></script>
     <script type='text/javascript' src='assets/js/object-assign-polyfill.js'></script>
-    <script type='text/javascript' src='assets/vendor/dist/tween.min.js'></script>
+    <script type='text/javascript' src='assets/vendor/dist/tweenlite.min.js'></script>
     <script type='text/javascript' src='assets/vendor/dist/trackball-controls.min.js'></script>
     <script type='text/javascript' src='assets/vendor/dist/texture-loader.min.js'></script>
     <script type='text/javascript' src='assets/vendor/dist/stats.min.js'></script>

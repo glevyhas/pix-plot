@@ -22,6 +22,7 @@ function Config() {
   self.cellsPerAtlasSide = Math.pow(self.cellsPerAtlas, 0.5);
   self.cellsPerTex = self.cellsPerAtlas * self.atlasesPerTex;
   self.cellsPerDrawCall = null;
+  self.transitionDuration = 100;
 
   self.getCellsPerDrawCall = function() {
     // case where vertices per draw call is limiting factor
@@ -52,6 +53,16 @@ function Data() {
   self.textureProgress = {};
   self.textureCount = null;
   self.loadedTextures = 0;
+  self.boundingBox = {
+    x: {
+      min: Number.POSITIVE_INFINITY,
+      max: Number.NEGATIVE_INFINITY,
+    },
+    y: {
+      min: Number.POSITIVE_INFINITY,
+      max: Number.NEGATIVE_INFINITY,
+    },
+  }
 
   // Load the initial JSON data with cell information
   self.load = function() {
@@ -247,19 +258,23 @@ function Atlas(obj) {
 
 function Cell(obj) {
   var self = this;
-  self.idx = obj.idx;   // constant index among all cells
-  self.name = obj.name; // constant name for image (for searching on page load)
-  self.posInAtlas = {}; // constant position of cell in atlas
-  self.idxInAtlas = self.idx % config.cellsPerAtlas; // constant index of cell in atlas
+  self.idx = obj.idx;   // index among all cells
+  self.name = obj.name; // name for image (for searching on page load)
+  self.posInAtlas = {}; // position of cell in atlas
+  self.idxInAtlas = self.idx % config.cellsPerAtlas; // index of cell in atlas
+  self.drawCallIdx = Math.floor(self.idx / config.cellsPerDrawCall); // draw call index
+  self.idxInDrawCall = self.idx % config.cellsPerDrawCall; // index in draw call
   self.default = {
-    position: {}, // position of cell in the plot
-    size: {},     // size of the cell in its atlas
-    posInTex: {}, // position of the cell in its texture
-    texIdx: null, // texture index to use when drawing cell
+    position: {},   // position of cell in the plot
+    target: {},     // position to which we are transitioning
+    size: {},       // size of the cell in its atlas
+    posInTex: {},   // position of the cell in its texture
+    texIdx: null,   // texture index to use when drawing cell
     isLarge: false, // set to true when high-res image is loaded
   }
   self.state = {
     position: null,
+    target: null,
     size: null,
     posInTex: null,
     texIdx: null,
@@ -321,9 +336,20 @@ function Cell(obj) {
     obj.data.cells[self.idx] = self; // add this cell to window.data.cells
   }
 
+  self.updateParentBoundingBox = function() {
+    ['x', 'y'].forEach(function(dim) {
+      if (self.state.position[dim] > obj.data.boundingBox[dim].max) {
+        obj.data.boundingBox[dim].max = self.state.position[dim];
+      } else if (self.state.position[dim] < obj.data.boundingBox[dim].min) {
+        obj.data.boundingBox[dim].min = self.state.position[dim];
+      }
+    })
+  }
+
   self.posInAtlas = self.getPosInAtlas();
   self.default = {
     position: self.getPosition(),
+    target: self.getPosition(),
     size: self.getSize(),
     texIdx: obj.texIdx,
     posInTex: self.getPosInTex(),
@@ -331,6 +357,7 @@ function Cell(obj) {
   }
   self.state = Object.assign({}, self.default);
   self.indexInLOD();
+  self.updateParentBoundingBox();
 }
 
 /**
@@ -454,6 +481,7 @@ function World() {
       geometry.addAttribute('textureIndex', attrs.textureIndex);
       geometry.addAttribute('textureOffset', attrs.textureOffset);
       geometry.addAttribute('translation', attrs.translation);
+      geometry.addAttribute('target', attrs.target);
       var material = self.getShaderMaterial(attrs.textures);
       var mesh = new THREE.Points(geometry, material);
       mesh.frustumCulled = false;
@@ -481,6 +509,9 @@ function World() {
       it.translations[it.translationIterator++] = cell.position.x;
       it.translations[it.translationIterator++] = cell.position.y;
       it.translations[it.translationIterator++] = cell.position.z;
+      it.targets[it.targetIterator++] = cell.target.x;
+      it.targets[it.targetIterator++] = cell.target.y;
+      it.targets[it.targetIterator++] = cell.target.z;
     }
     // format the arrays into THREE attributes
     var BA = THREE.BufferAttribute;
@@ -491,12 +522,14 @@ function World() {
     var texIndexAttr = new IBA(it.texIndices, 1, 1);
     var texOffsetAttr = new IBA(it.texOffsets, 2, 1);
     var translationAttr = new IBA(it.translations, 3, 1);
+    var targetAttr = new IBA(it.targets, 3, 1);
     uvAttr.dynamic = true;
     positionAttr.dynamic = true;
     sizeAttr.dynamic = true;
     texIndexAttr.dynamic = true;
     texOffsetAttr.dynamic = true;
     translationAttr.dynamic = true;
+    targetAttr.dynamic = true;
     return {
       uv: uvAttr,
       size: sizeAttr,
@@ -504,6 +537,7 @@ function World() {
       textureIndex: texIndexAttr,
       textureOffset: texOffsetAttr,
       translation: translationAttr,
+      target: targetAttr,
       textures: self.getTextures({
         startIdx: texIndices.first,
         endIdx: texIndices.last,
@@ -520,10 +554,12 @@ function World() {
       texIndices: new Float32Array(n),
       texOffsets: new Float32Array(n * 2),
       translations: new Float32Array(n * 3),
+      targets: new Float32Array(n * 3),
       sizesIterator: 0,
       texIndexIterator: 0,
       texOffsetIterator: 0,
       translationIterator: 0,
+      targetIterator: 0,
     }
   }
 
@@ -576,6 +612,10 @@ function World() {
         lodTexture: {
           type: 't',
           value: lod.tex.texture,
+        },
+        time: {
+          type: 'f',
+          value: 0,
         }
       },
       vertexShader: find('#vertex-shader').textContent,
@@ -635,6 +675,42 @@ function World() {
   }
 
   /**
+  * Transition point positions
+  **/
+
+  self.transitionPositions = function() {
+    // animate the time uniform on each drawn mesh
+    var meshes = self.scene.children[0].children;
+    for (var i=0; i<meshes.length; i++) {
+      var time = meshes[i].material.uniforms.time;
+      TweenLite.to(time, config.transitionDuration, {value: 1});
+    }
+    // set the target locations of each point
+    // TODO: read from user-data
+    data.cells.forEach(function(cell) {
+      cell.state.target = Object.assign({}, {
+        x: Math.random() * 10000 - 5000,
+        y: Math.random() * 10000 - 5000,
+        z: Math.random() * 10000 - 5000,
+      })
+    })
+    // mutate the cell attribute buffers
+    var drawCalls = Math.floor(data.cells.length / config.cellsPerDrawCall) + 1;
+    for (var i=0; i<drawCalls; i++) {
+      var targetAttr = meshes[i].geometry.attributes.target;
+      var targetIterator = 0;
+      var start = i * config.cellsPerDrawCall;
+      var end = (i+1) * config.cellsPerDrawCall;
+      data.cells.slice(start, end).forEach(function(cell) {
+        targetAttr.array[targetIterator++] = cell.state.target.x;
+        targetAttr.array[targetIterator++] = cell.state.target.y;
+        targetAttr.array[targetIterator++] = cell.state.target.z;
+      })
+      targetAttr.needsUpdate = true;
+    }
+  }
+
+  /**
   * Initialize the render loop
   **/
 
@@ -644,7 +720,6 @@ function World() {
     self.renderer.render(self.scene, self.camera);
     self.controls.update();
     if (self.stats) self.stats.update();
-    TWEEN.update();
     lod.update();
   }
 
@@ -795,12 +870,13 @@ function LOD() {
   // update the frame number and conditionally activate loaded images
   self.tick = function() {
     self.state.frame += 1;
-    if (self.state.frame % self.framesBetweenUpdates == 0 &&
-        world.camera.position.z > -450 &&
-        self.state.cellsToActivate.length) {
+    if (!(self.state.frame % self.framesBetweenUpdates == 0)) return;
+    if (world.camera.position.z > -450 && self.state.cellsToActivate.length) {
       var toActivate = self.state.cellsToActivate;
       self.state.cellsToActivate = [];
       self.activateCells(toActivate);
+    } else {
+      self.unloadGridNeighbors();
     }
   }
 
@@ -876,24 +952,29 @@ function LOD() {
 
   // use a cell's state to mutate its attribute buffers
   self.mutateCellBuffers = function(cell) {
-    // determine the draw call (mesh) to which this cell belongs
-    var cellDrawCallIdx = Math.floor(cell.idx / config.cellsPerDrawCall);
-    var cellIdxInDrawCall = cell.idx % config.cellsPerDrawCall;
     // find the buffer attributes that describe this cell to the GPU
     var group = world.scene.children[0];
-    var attrs = group.children[cellDrawCallIdx].geometry.attributes;
+    var attrs = group.children[cell.drawCallIdx].geometry.attributes;
     // find this cell's position in the LOD texture
     var posInTex = {
       x: cell.state.posInTex.x / cell.state.size.fullCell,
       y: cell.state.posInTex.y / cell.state.size.fullCell,
     }
     // set the texIdx to -1 to read from the uniforms.lodTexture
-    attrs.textureIndex.array[cellIdxInDrawCall] = cell.state.texIdx;
+    attrs.textureIndex.array[cell.idxInDrawCall] = cell.state.texIdx;
     // set the x then y texture offsets for this cell
-    attrs.textureOffset.array[(cellIdxInDrawCall * 2)] = posInTex.x;
-    attrs.textureOffset.array[(cellIdxInDrawCall * 2) + 1] = posInTex.y;
+    attrs.textureOffset.array[(cell.idxInDrawCall * 2)] = posInTex.x;
+    attrs.textureOffset.array[(cell.idxInDrawCall * 2) + 1] = posInTex.y;
     // set the updated lod cell size
-    attrs.size.array[cellIdxInDrawCall] = cell.state.size.inTexture;
+    attrs.size.array[cell.idxInDrawCall] = cell.state.size.inTexture;
+    // set the cell's translation
+    attrs.translation.array[(cell.idxInDrawCall * 3)] = cell.state.position.x;
+    attrs.translation.array[(cell.idxInDrawCall * 3) + 1] = cell.state.position.y;
+    attrs.translation.array[(cell.idxInDrawCall * 3) + 2] = cell.state.position.z;
+    // set the cell's target translation
+    attrs.target.array[(cell.idxInDrawCall * 3)] = cell.state.target.x;
+    attrs.target.array[(cell.idxInDrawCall * 3) + 1] = cell.state.target.y;
+    attrs.target.array[(cell.idxInDrawCall * 3) + 2] = cell.state.target.z;
   }
 
   // restore a cell's buffer attributes to the default attributes
@@ -929,7 +1010,7 @@ function LOD() {
           y = parseInt(split[1]),
           xDelta = Math.abs(self.gridPos.x - x),
           yDelta = Math.abs(self.gridPos.y - y);
-      if ((xDelta + yDelta)/2 > self.maxRadius) {
+      if ((xDelta + yDelta) > self.maxRadius) {
         // cache the texture coords for the grid key to be deleted
         var toUnload = self.state.gridPosToCoords[pos];
         // free all cells previously assigned to the deleted grid position
