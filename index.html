@@ -42,6 +42,7 @@
     uniform mat4 projectionMatrix;
     uniform vec3 cameraPosition;
     uniform float time;
+    uniform float pointScale;
 
     // instance attributes
     attribute vec3 position;      // base x y z position for all points
@@ -62,7 +63,7 @@
       float yDelta = pow(pos[1] - cameraPosition[1], 2.0);
       float zDelta = pow(pos[2] - cameraPosition[2], 2.0);
       float delta  = pow(xDelta + yDelta + zDelta, 0.5);
-      float scaled = 10000.0 / delta;
+      float scaled = pointScale / delta;
       return scaled;
     }
 

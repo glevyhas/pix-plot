@@ -448,8 +448,9 @@ function World() {
   self.getRenderer = function() {
     var renderer = new THREE.WebGLRenderer({antialias: true});
     renderer.setPixelRatio(window.devicePixelRatio); // support retina displays
-    var windowSize = self.getWindowSize();
+    var windowSize = self.getWindowSize(); // determine the size of the window
     renderer.setSize(windowSize.w, windowSize.h); // set the renderer size
+    renderer.domElement.id = 'pixplot-canvas'; // give the canvas a unique id
     document.body.appendChild(renderer.domElement); // appends canvas to DOM
     return renderer;
   }
@@ -493,7 +494,15 @@ function World() {
       self.camera.updateProjectionMatrix();
       self.renderer.setSize(windowSize.w, windowSize.h);
       self.controls.handleResize();
+      self.setPointScalar();
     });
+  }
+
+  self.setPointScalar = function() {
+    var meshes = world.scene.children[0].children;
+    for (var i=0; i<meshes.length; i++) {
+      meshes[i].material.uniforms.pointScale.value = self.getPointScale();
+    }
   }
 
   /**
@@ -665,6 +674,11 @@ function World() {
     return tex;
   }
 
+  // Return an int specifying the scalar uniform for points
+  self.getPointScale = function() {
+    return window.innerHeight * 12;
+  }
+
   /**
   * Build a RawShaderMaterial. For a list of all types, see:
   *   https://github.com/mrdoob/three.js/wiki/Uniforms-types
@@ -685,6 +699,10 @@ function World() {
         time: {
           type: 'f',
           value: 0,
+        },
+        pointScale: {
+          type: 'f',
+          value: self.getPointScale(),
         }
       },
       vertexShader: find('#vertex-shader').textContent,
