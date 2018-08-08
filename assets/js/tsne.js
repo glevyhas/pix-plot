@@ -485,6 +485,7 @@ function World() {
 
   self.addEventListeners = function() {
     self.addResizeListener();
+    self.addLostContextListener();
   }
 
   self.addResizeListener = function() {
@@ -495,6 +496,16 @@ function World() {
       self.renderer.setSize(windowSize.w, windowSize.h);
       self.controls.handleResize();
       self.setPointScalar();
+    }, false);
+  }
+
+  // listen for loss of webgl context; to manually lose context:
+  // world.renderer.context.getExtension('WEBGL_lose_context').loseContext();
+  self.addLostContextListener = function() {
+    var elem = document.querySelector('#pixplot-canvas');
+    elem.addEventListener('webglcontextlost', function(e) {
+      e.preventDefault();
+      window.location.reload();
     });
   }
 
@@ -753,6 +764,7 @@ function World() {
   self.getStats = function() {
     if (!window.location.href.includes('stats=true')) return null;
     var stats = new Stats();
+    stats.domElement.id = 'stats';
     stats.domElement.style.position = 'absolute';
     stats.domElement.style.top = '65px';
     stats.domElement.style.right = '5px';
