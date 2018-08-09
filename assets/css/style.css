@@ -26,9 +26,9 @@ a {
   display: inline-block;
 }
 
-/***
+/**
 * Header
-***/
+**/
 
 .header {
   height: 60px;
@@ -148,7 +148,7 @@ nav h2 {
 * Loader
 **/
 
-.loader-scene {
+#loader-scene {
   position: absolute;
   top: 60px;
   right: 0;
@@ -156,125 +156,13 @@ nav h2 {
   left: 0;
   color: #fff;
   padding: 10%;
-  transition: transform 2s;
+  transition: transform 0.4s;
   z-index: 2;
   background: #000;
-
-  display: none;
 }
 
-.loader-scene.hidden {
+#loader-scene.hidden {
   transform: translateY(-100vh);
-}
-
-.welcome {
-  max-width: 700px;
-  margin: 0 auto;
-}
-
-/**
-* Loader icon
-**/
-
-.loader-container {
-  max-width: 70px;
-  margin: 30px auto;
-  text-align: center;
-}
-
-.loader-icon {
-  width: 70px;
-  height: 70px;
-}
-
-.block {
-  position: relative;
-  height: 20px;
-  width: 20px;
-  display: inline-block;
-  background: #eab755;
-  transition: all 0.8s;
-  animation: rot 5s linear infinite;
-  animation-fill-mode: forwards;
-}
-
-.block:nth-child(1) {
-  animation-delay: 3s;
-}
-
-.block:nth-child(2) {
-  animation-delay: 1.5s;
-  animation: rot 15s linear infinite;
-}
-
-.block:nth-child(3) {
-  animation-delay: 2s;
-}
-
-.block:nth-child(4) {
-  animation-delay: 0.2s;
-}
-
-.block:nth-child(5) {
-  animation-delay: 4s;
-}
-
-.block:nth-child(6) {
-  animation-delay: 2s;
-  animation: rot 7s linear infinite;
-}
-
-.block:nth-child(7) {
-  animation-delay: 0.4s;
-}
-
-.block:nth-child(8) {
-  animation-delay: 1.5s;
-  animation: rot 6s linear infinite;
-}
-
-.block:nth-child(9) {
-  animation-delay: 25s;
-  animation: rot 8s linear infinite;
-}
-
-@keyframes rot {
-  0% {
-    transform: none;
-  }
-  20% {
-    transform: rotateZ(-90deg) rotateY(180deg);
-  }
-  40% {
-    background: chocolate;
-    transform: none;
-  }
-  60% {
-    background: white
-  }
-  80% {
-    background: cornflowerblue;
-  }
-  90% {
-    transform: none;
-    background: #222;
-  }
-}
-
-@keyframes exit {
-  0% {
-    transform: translateX(0);
-    animation-iteration-count: 1;
-  }
-  1% {
-    transform: translateX(500vw);
-    animation-iteration-count: 1;
-  }
-}
-
-#progress {
-  margin-top: 5px;
-  transition: opacity 0.5s;
 }
 
 /**

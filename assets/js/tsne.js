@@ -96,18 +96,14 @@ function Data() {
 
   // When a texture's progress updates, update the aggregate progress
   self.onTextureProgress = function(texIdx, progress) {
-    self.textureProgress[texIdx] = progress;
-    var progressSum = valueSum(self.textureProgress);
-    var completeSum = self.textureCount * 100 * config.atlasesPerTex;
+    self.textureProgress[texIdx] = progress / self.textures[texIdx].atlasCount;
+    loader.updateProgress();
   }
 
   // When a texture loads, draw plot if all have loaded
   self.onTextureLoad = function(texIdx) {
     self.loadedTextures += 1;
-    if (self.loadedTextures == self.textureCount) {
-      lod.indexCells();
-      world.init();
-    }
+    loader.updateProgress();
   }
 
   // Get the number of atlases to include in texture at index `idx`
@@ -407,8 +403,8 @@ function World() {
   self.renderer = null;
   self.controls = null;
   self.stats = null;
+  self.raycaster = null;
   self.center = {};
-  self.raycaster = new THREE.Raycaster();
   self.mouse = new THREE.Vector2();
   self.lastMouse = new THREE.Vector2();
 
@@ -486,6 +482,7 @@ function World() {
   self.addEventListeners = function() {
     self.addResizeListener();
     self.addLostContextListener();
+    self.addCanvasListeners();
   }
 
   self.addResizeListener = function() {
@@ -502,17 +499,61 @@ function World() {
   // listen for loss of webgl context; to manually lose context:
   // world.renderer.context.getExtension('WEBGL_lose_context').loseContext();
   self.addLostContextListener = function() {
-    var elem = document.querySelector('#pixplot-canvas');
-    elem.addEventListener('webglcontextlost', function(e) {
+    var canvas = document.querySelector('#pixplot-canvas');
+    canvas.addEventListener('webglcontextlost', function(e) {
       e.preventDefault();
       window.location.reload();
     });
   }
 
+  // add event listeners for the canvas
+  self.addCanvasListeners = function() {
+    var canvas = document.querySelector('#pixplot-canvas');
+    canvas.addEventListener('mousemove', self.onMousemove, false)
+    canvas.addEventListener('mousedown', self.onMousedown, false)
+    canvas.addEventListener('mouseup', self.onMouseup, false)
+  }
+
+  /**
+  * Set the current mouse coordinates {-1:1}
+  * @param {Event} event - triggered on canvas mouse move
+  **/
+
+  self.onMousemove = function(event) {
+    self.mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+    self.mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+  }
+
+  /**
+  * Store the previous mouse position so that when the next
+  * click event registers we can tell whether the user
+  * is clicking or dragging.
+  * @param {Event} event - triggered on canvas mousedown
+  **/
+
+  self.onMousedown = function(event) {
+    self.lastMouse.copy(self.mouse);
+  }
+
+  /**
+  * Callback for mouseup events on the window. If the user
+  * clicked an image, zoom to that image.
+  * @param {Event} event - triggered on canvas mouseup
+  **/
+
+  self.onMouseup = function(event) {
+    var selected = self.raycaster.intersectObjects(self.scene.children[0].children);
+    console.log(selected)
+  }
+
+
+  // set the point size scalar as a uniform on all meshes
   self.setPointScalar = function() {
+    var scalar = self.getPointScale();
+    self.raycaster.params.Points.threshold = scalar;
     var meshes = world.scene.children[0].children;
     for (var i=0; i<meshes.length; i++) {
-      meshes[i].material.uniforms.pointScale.value = self.getPointScale();
+      meshes[i].material.uniforms.pointScale.value = scalar;
     }
   }
 
@@ -578,6 +619,7 @@ function World() {
     }
     self.scene.add(group);
     self.render();
+    setTimeout(loader.activateButton, 1000)
   }
 
   // Get all cells for plot as an array of items
@@ -774,6 +816,16 @@ function World() {
   }
 
   /**
+  * Get the raycaster for tracking intersections
+  **/
+
+  self.getRaycaster = function() {
+    var raycaster = new THREE.Raycaster();
+    raycaster.params.Points.threshold = self.getPointScale();
+    return raycaster;
+  }
+
+  /**
   * Transition point positions
   **/
 
@@ -827,6 +879,7 @@ function World() {
   self.renderer = self.getRenderer();
   self.controls = self.getControls();
   self.stats = self.getStats();
+  self.raycaster = self.getRaycaster();
   self.addEventListeners();
 }
 
@@ -985,9 +1038,12 @@ function LOD() {
     self.state.frame += 1;
     var toActivate = self.state.cellsToActivate;
     var isDrawFrame = self.state.frame % self.framesBetweenUpdates == 0;
-    if (isDrawFrame && toActivate.length && world.camera.position.z > -450) {
+    if (!toActivate.length || !isDrawFrame) return;
+    if (world.camera.position.z > -450) {
       self.state.cellsToActivate = [];
       self.activateCells(toActivate);
+    } else {
+      self.unloadGridNeighbors();
     }
   }
 
@@ -1018,7 +1074,6 @@ function LOD() {
       var cell = data.cells[cellIdx];
       if (!self.cellInRadius(cell)) return;
       self.addCellToTexture(cell);
-      cell.activate();
     })
     // invalidate the lod texture and the geometry's mutated attribute buffers
     self.tex.texture.needsUpdate = true;
@@ -1046,6 +1101,7 @@ function LOD() {
     self.tex.ctx.drawImage(self.cellIdxToImage[cell.idx],
       0, 0, config.lodCellSize, config.lodCellSize,
       coords.x, coords.y, config.lodCellSize, config.lodCellSize);
+    cell.activate();
   }
 
   // determine whether a cell is within the LOD's radius of focus
@@ -1099,6 +1155,50 @@ function LOD() {
 
   self.setCanvas();
   self.setOpenTexCoords();
+}
+
+/**
+* Handle load progress and welcome scene events
+**/
+
+function Loader() {
+  var self = this;
+  self.progressElem = document.querySelector('#progress');
+  self.loaderTextElem = document.querySelector('#loader-text');
+  self.loaderSceneElem = document.querySelector('#loader-scene');
+  self.buttonElem = document.querySelector('#enter-button');
+
+  self.updateProgress = function() {
+    var progressSum = valueSum(data.textureProgress);
+    var completeSum = progressSum / data.textureCount;
+    self.progressElem.textContent = completeSum + '%';
+    var texturesLoaded = data.loadedTextures == data.textureCount;
+    if (completeSum == 100 && texturesLoaded) {
+      self.loaderTextElem.textContent = ' * drawing geometries';
+      setTimeout(self.startWorld, 100);
+    }
+  }
+
+  self.activateButton = function() {
+    self.buttonElem.className += ' active';
+  }
+
+  self.hideWelcome = function() {
+    self.loaderSceneElem.className += ' hidden';
+  }
+
+  self.onButtonClick = function(e) {
+    if (e.target.className.indexOf('active') > -1) {
+      setTimeout(self.hideWelcome, 100)
+    }
+  }
+
+  self.startWorld = function() {
+    lod.indexCells();
+    world.init();
+  }
+
+  self.buttonElem.addEventListener('click', self.onButtonClick);
 }
 
 /**
@@ -1178,6 +1278,7 @@ function getNested(obj, keyArr, ifEmpty) {
 * Main
 **/
 
+var loader = new Loader();
 var webgl = new Webgl();
 var config = new Config();
 var world = new World();
