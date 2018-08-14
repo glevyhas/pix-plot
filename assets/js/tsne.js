@@ -476,6 +476,7 @@ function World() {
       self.camera.aspect = windowSize.w / windowSize.h;
       self.camera.updateProjectionMatrix();
       self.renderer.setSize(windowSize.w, windowSize.h);
+      selector.tex.setSize(windowSize.w, windowSize.h);
       self.controls.handleResize();
       self.setPointScalar();
     }, false);
@@ -548,13 +549,14 @@ function World() {
       geometry.addAttribute('translation', attrs.translation);
       geometry.addAttribute('target', attrs.target);
       geometry.addAttribute('color', attrs.color);
-      selector.geometries.push(geometry);
       var material = self.getShaderMaterial({
         firstTex: attrs.texStartIdx,
         textures: attrs.textures,
-        useColor: 1.0,
+        useColor: 0.0,
       });
       var mesh = new THREE.Points(geometry, material);
+      selector.geometries.push(geometry);
+      selector.meshes.push(mesh);
       mesh.frustumCulled = false;
       group.add(mesh);
     }
@@ -741,10 +743,13 @@ function World() {
     var useColor = obj.useColor;
     var firstTex = obj.firstTex;
     var textures = obj.textures;
-    // if the calling agent requested the color shader return it unprocessed
+    var fragShader = find('#fragment-shader').textContent;
+    // the calling agent requested the color shader, used for selecting
     if (useColor == 1.0) {
-      return find('#color-fragment-shader').textContent;
-    // else prepare and return the textured shader
+      fragShader = fragShader.replace('uniform sampler2D textures[N_TEXTURES];', '');
+      fragShader = fragShader.replace('TEXTURE_LOOKUP_TREE', '');
+      return fragShader;
+    // the calling agent requested the textured shader
     } else {
       // get the texture lookup tree
       var tree = self.getFragLeaf(0, 'textures[0]', true);
@@ -754,7 +759,7 @@ function World() {
       // add the conditional for the lod texture
       tree += ' else ' + self.getFragLeaf(i, 'lodTexture', false);
       // replace the text in the fragment shader
-      var fragShader = find('#fragment-shader').textContent;
+      fragShader = fragShader.replace('#define SELECTING\n', '');
       fragShader = fragShader.replace('N_TEXTURES', textures.length);
       fragShader = fragShader.replace('TEXTURE_LOOKUP_TREE', tree);
       return fragShader;
@@ -870,11 +875,13 @@ function Selector() {
   self.lastMouse = new THREE.Vector2();
   self.tex = null;
   self.mesh = null;
+  self.selected = null;
   self.geometries = [];
+  self.meshes = [];
 
   /**
   * Set the current mouse coordinates in client coordinates
-  * @param {Event} event - triggered on canvas mouse move
+  * @param {Event} event - triggered on canvas mousemove
   **/
 
   self.onMouseMove = function(e) {
@@ -882,7 +889,7 @@ function Selector() {
     self.mouse.y = e.clientY;
   }
 
-  // find the world coordinates of the last clicked position
+  // find the world coordinates of the last mouse position
   self.getMouseWorldCoords = function() {
     var vector = new THREE.Vector3();
     var camera = world.camera;
@@ -895,7 +902,38 @@ function Selector() {
     var distance = - camera.position.z / direction.z;
     var scaled = direction.multiplyScalar(distance);
     var coords = camera.position.clone().add(scaled);
-    console.log(coords)
+    console.log(' * selector is located at', coords);
+  }
+
+  // get the mesh in which to render picking elements
+  self.init = function() {
+    world.renderer.domElement.addEventListener('mousemove', self.onMouseMove);
+    for (var i=0; i<self.meshes.length; i++) {
+      var mesh = self.meshes[i].clone();
+      var material = world.getShaderMaterial({ useColor: 1.0, })
+      mesh.material = material;
+      self.scene.add(mesh);
+    }
+  }
+
+  // draw an offscreen world
+  self.render = function() {
+    world.renderer.render(self.scene, world.camera, self.tex);
+  }
+
+  self.select = function() {
+    if (!world) return;
+    self.render();
+    // create a pixel buffer in which to store the selected pixel
+    var pixelBuffer = new Uint8Array(4);
+    // read the texture color at the current mouse pixel
+    var x = self.mouse.x,
+        y = self.tex.height - self.mouse.y;
+    world.renderer.readRenderTargetPixels(self.tex, x, y, 1, 1, pixelBuffer);
+    var id = (pixelBuffer[0] << 16) | (pixelBuffer[1] << 8) | (pixelBuffer[2]);
+    // ids use id+1 as the id of null selections is 0
+    self.selected = id-1;
+    console.log(self.selected, self.mouse);
   }
 
   // get the texture on which off-screen rendering will happen
@@ -904,42 +942,6 @@ function Selector() {
     var tex = new THREE.WebGLRenderTarget(windowSize.w, windowSize.h);
     tex.texture.minFilter = THREE.LinearFilter;
     return tex;
-  };
-
-  // get the mesh in which to render picking elements
-  self.init = function() {
-    world.renderer.domElement.addEventListener('mousemove', self.onMouseMove);
-    // add the geometries to the mesh
-    var group = new THREE.Group();
-    for (var i=0; i<self.geometries.length; i++) {
-      var material = world.getShaderMaterial({
-        firstTex: null,
-        textures: null,
-        useColor: 1.0,
-      });
-      var mesh = new THREE.Points(self.geometries[i], material);
-      group.add(mesh);
-    }
-    self.scene.add(group);
-  }
-
-  self.select = function() {
-    if (!world) return;
-    // draw an offscreen world
-    world.renderer.render(self.scene, world.camera, self.tex);
-    // create a pixel buffer in which to store the selected pixel
-    var pixelBuffer = new Uint8Array(4);
-    // read the texture color at the current mouse pixel
-    world.renderer.readRenderTargetPixels(
-      self.tex,
-      self.mouse.x,
-      self.tex.height - self.mouse.y,
-      1,
-      1,
-      pixelBuffer,
-    );
-    var id = (pixelBuffer[0] << 16) | (pixelBuffer[1] << 8) | (pixelBuffer[2]);
-    console.log('user is hovering', id-1);
   }
 
   self.tex = self.getTexture();

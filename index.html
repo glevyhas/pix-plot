@@ -36,6 +36,7 @@
 
     #version 100
     #define SHADER_NAME instancedVertex
+    #define SELECTING
 
     // set float precision
     precision highp float;
@@ -105,12 +106,15 @@
 
     #version 100
     #define SHADER_NAME instancedFragment
+    #define SELECTING
 
     precision highp float;
 
     // textures contains an array of sampler2Ds
-    uniform sampler2D textures[N_TEXTURES];
-    uniform sampler2D lodTexture;
+    #ifndef SELECTING
+      uniform sampler2D textures[N_TEXTURES];
+      uniform sampler2D lodTexture;
+    #endif
     uniform float useColor;
 
     // identify the uv values as a varying attribute
@@ -124,35 +128,10 @@
         gl_FragColor = vec4(vColor, 1.0);
       } else {
         int textureIndex = int(vTextureIndex);
-        vec2 uv = vTextureOffset + vec2( gl_PointCoord.x, gl_PointCoord.y );
+        vec2 uv = vTextureOffset + vec2(gl_PointCoord.x, gl_PointCoord.y);
         vec2 scaledUv = uv * vCellSize;
         TEXTURE_LOOKUP_TREE
       }
-    }
-    </script>
-
-    <script type='x-shader/x-fragment' id='color-fragment-shader'>
-    /**
-    * The color shader is a second fragment shader used to give
-    * each cell in the canvas a unique color. The output of
-    * this shader isn't rendered for users, but is used to
-    * enable "GPU picking". In short, GPU picking involves rendering
-    * each element in a scene in a unique color on the GPU, watching
-    * the mouse move on the CPU, and fetching the color of the object
-    * on which the user's mouse is hovering. Given that color, one
-    * can determine which object the mouse is hovering on.
-    **/
-
-    #version 100
-    #define SHADER_NAME colorFragment
-
-    precision highp float;
-
-    // identify the cell's unique color
-    varying vec3 vColor;
-
-    void main() {
-      gl_FragColor = vec4(vColor, 1.0);
     }
     </script>
 
