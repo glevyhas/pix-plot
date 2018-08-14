@@ -34,6 +34,9 @@
     *   https://threejs.org/docs/#api/renderers/webgl/WebGLProgram
     **/
 
+    #version 100
+    #define SHADER_NAME instancedVertex
+
     // set float precision
     precision highp float;
 
@@ -43,6 +46,7 @@
     uniform vec3 cameraPosition;
     uniform float time;
     uniform float pointScale;
+    uniform float useColor;
 
     // instance attributes
     attribute vec3 position;      // base x y z position for all points
@@ -51,11 +55,13 @@
     attribute float textureIndex; // index of an instance's texture
     attribute vec2 textureOffset; // offset of the texture coords for an instance
     attribute float size;         // size of each side of the current instance
+    attribute vec3 color;         // unique color for cell; used for raycasting
 
     // varyings
     varying float vTextureIndex;  // cell texture idx (varyings can't be int)
     varying vec2 vTextureOffset;  // cell texture offset
     varying vec2 vCellSize;       // cell size
+    varying vec3 vColor;          // cell color
 
     // function that returns the size of a point, scaled by the camera position
     float scalePoint(in vec3 pos, in vec3 cameraPosition) {
@@ -72,6 +78,7 @@
       vTextureIndex = textureIndex;
       vTextureOffset = textureOffset;
       vCellSize = vec2(size, size);
+      vColor = color;
 
       // set point position as a mixture between the position + target
       vec3 currentPos = position + translation;
@@ -96,22 +103,56 @@
     * throw a warning but won't prevent shader compiling.
     **/
 
+    #version 100
+    #define SHADER_NAME instancedFragment
+
     precision highp float;
 
     // textures contains an array of sampler2Ds
     uniform sampler2D textures[N_TEXTURES];
     uniform sampler2D lodTexture;
+    uniform float useColor;
 
     // identify the uv values as a varying attribute
-    varying float vTextureIndex; // set index of each object's texture
-    varying vec2 vTextureOffset; // instance uv offsets
-    varying vec2 vCellSize; // the size of the current instance
+    varying float vTextureIndex; // cell's texture index
+    varying vec2 vTextureOffset; // cell's uv offsets in the texture
+    varying vec2 vCellSize;      // cell's size
+    varying vec3 vColor;         // cell's color
 
     void main() {
-      int textureIndex = int(vTextureIndex);
-      vec2 uv = vTextureOffset + vec2( gl_PointCoord.x, gl_PointCoord.y );
-      vec2 scaledUv = uv * vCellSize;
-      TEXTURE_LOOKUP_TREE
+      if (useColor == 1.) {
+        gl_FragColor = vec4(vColor, 1.0);
+      } else {
+        int textureIndex = int(vTextureIndex);
+        vec2 uv = vTextureOffset + vec2( gl_PointCoord.x, gl_PointCoord.y );
+        vec2 scaledUv = uv * vCellSize;
+        TEXTURE_LOOKUP_TREE
+      }
+    }
+    </script>
+
+    <script type='x-shader/x-fragment' id='color-fragment-shader'>
+    /**
+    * The color shader is a second fragment shader used to give
+    * each cell in the canvas a unique color. The output of
+    * this shader isn't rendered for users, but is used to
+    * enable "GPU picking". In short, GPU picking involves rendering
+    * each element in a scene in a unique color on the GPU, watching
+    * the mouse move on the CPU, and fetching the color of the object
+    * on which the user's mouse is hovering. Given that color, one
+    * can determine which object the mouse is hovering on.
+    **/
+
+    #version 100
+    #define SHADER_NAME colorFragment
+
+    precision highp float;
+
+    // identify the cell's unique color
+    varying vec3 vColor;
+
+    void main() {
+      gl_FragColor = vec4(vColor, 1.0);
     }
     </script>
 

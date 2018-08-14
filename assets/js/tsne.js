@@ -64,7 +64,7 @@ function Data() {
     },
   };
 
-  // Load the initial JSON data with cell information
+  // Load JSON with cell data
   self.load = function() {
     get(self.root + self.file, function(data) {
       var json = JSON.parse(data);
@@ -113,7 +113,6 @@ function Data() {
       : self.atlasCount % config.atlasesPerTex;
   }
 
-  // main
   self.load();
 }
 
@@ -213,7 +212,7 @@ function Atlas(obj) {
 
   self.load = function() {
     self.image = new Image;
-    self.image.onload = function(url) { self.onLoad(self); }
+    self.image.onload = function() { self.onLoad(self); }
     var xhr = new XMLHttpRequest();
     xhr.onprogress = function(e) {
       var progress = parseInt((e.loaded / e.total) * 100);
@@ -282,7 +281,7 @@ function Cell(obj) {
     return {
       x: obj.x,
       y: obj.y,
-      z: 1,
+      z: 0,
     }
   }
 
@@ -403,10 +402,8 @@ function World() {
   self.renderer = null;
   self.controls = null;
   self.stats = null;
-  self.raycaster = null;
+  self.color = new THREE.Color();
   self.center = {};
-  self.mouse = new THREE.Vector2();
-  self.lastMouse = new THREE.Vector2();
 
   /**
   * Return a scene object with a background color
@@ -431,7 +428,7 @@ function World() {
   **/
 
   self.getCamera = function() {
-    var windowSize = self.getWindowSize();
+    var windowSize = getWindowSize();
     var aspectRatio = windowSize.w / windowSize.h;
     var camera = new THREE.PerspectiveCamera(75, aspectRatio, 0.1, 100000);
     return camera;
@@ -444,22 +441,11 @@ function World() {
   self.getRenderer = function() {
     var renderer = new THREE.WebGLRenderer({antialias: true});
     renderer.setPixelRatio(window.devicePixelRatio); // support retina displays
-    var windowSize = self.getWindowSize(); // determine the size of the window
+    var windowSize = getWindowSize(); // determine the size of the window
     renderer.setSize(windowSize.w, windowSize.h); // set the renderer size
     renderer.domElement.id = 'pixplot-canvas'; // give the canvas a unique id
     document.body.appendChild(renderer.domElement); // appends canvas to DOM
     return renderer;
-  }
-
-  /**
-  * Get the H,W to use for rendering
-  **/
-
-  self.getWindowSize = function() {
-    return {
-      w: window.innerWidth,
-      h: window.innerHeight,
-    }
   }
 
   /**
@@ -482,12 +468,11 @@ function World() {
   self.addEventListeners = function() {
     self.addResizeListener();
     self.addLostContextListener();
-    self.addCanvasListeners();
   }
 
   self.addResizeListener = function() {
     window.addEventListener('resize', function() {
-      var windowSize = self.getWindowSize();
+      var windowSize = getWindowSize();
       self.camera.aspect = windowSize.w / windowSize.h;
       self.camera.updateProjectionMatrix();
       self.renderer.setSize(windowSize.w, windowSize.h);
@@ -499,59 +484,19 @@ function World() {
   // listen for loss of webgl context; to manually lose context:
   // world.renderer.context.getExtension('WEBGL_lose_context').loseContext();
   self.addLostContextListener = function() {
-    var canvas = document.querySelector('#pixplot-canvas');
+    var canvas = self.renderer.domElement;
     canvas.addEventListener('webglcontextlost', function(e) {
       e.preventDefault();
       window.location.reload();
     });
   }
 
-  // add event listeners for the canvas
-  self.addCanvasListeners = function() {
-    var canvas = document.querySelector('#pixplot-canvas');
-    canvas.addEventListener('mousemove', self.onMousemove, false)
-    canvas.addEventListener('mousedown', self.onMousedown, false)
-    canvas.addEventListener('mouseup', self.onMouseup, false)
-  }
-
-  /**
-  * Set the current mouse coordinates {-1:1}
-  * @param {Event} event - triggered on canvas mouse move
-  **/
-
-  self.onMousemove = function(event) {
-    self.mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
-    self.mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
-  }
-
-  /**
-  * Store the previous mouse position so that when the next
-  * click event registers we can tell whether the user
-  * is clicking or dragging.
-  * @param {Event} event - triggered on canvas mousedown
-  **/
-
-  self.onMousedown = function(event) {
-    self.lastMouse.copy(self.mouse);
-  }
-
-  /**
-  * Callback for mouseup events on the window. If the user
-  * clicked an image, zoom to that image.
-  * @param {Event} event - triggered on canvas mouseup
-  **/
-
-  self.onMouseup = function(event) {
-    var selected = self.raycaster.intersectObjects(self.scene.children[0].children);
-    console.log(selected)
-  }
-
-
   // set the point size scalar as a uniform on all meshes
   self.setPointScalar = function() {
+    // handle case of drag before scene renders
+    if (!self.scene || !self.scene.children.length) return;
     var scalar = self.getPointScale();
-    self.raycaster.params.Points.threshold = scalar;
-    var meshes = world.scene.children[0].children;
+    var meshes = self.scene.children[0].children;
     for (var i=0; i<meshes.length; i++) {
       meshes[i].material.uniforms.pointScale.value = scalar;
     }
@@ -582,15 +527,6 @@ function World() {
   }
 
   /**
-  * Initialize the plotting
-  **/
-
-  self.init = function() {
-    self.centerControls();
-    self.plot();
-  }
-
-  /**
   * Draw each of the vertices
   **/
 
@@ -604,7 +540,6 @@ function World() {
       var groupCells = cells.slice(start, end);
       var attrs = self.getGroupAttributes(groupCells);
       var geometry = new THREE.InstancedBufferGeometry();
-      self.setFragmentShader(attrs.texStartIdx, attrs.textures.length);
       geometry.addAttribute('uv', attrs.uv);
       geometry.addAttribute('position', attrs.position);
       geometry.addAttribute('size', attrs.size);
@@ -612,13 +547,20 @@ function World() {
       geometry.addAttribute('textureOffset', attrs.textureOffset);
       geometry.addAttribute('translation', attrs.translation);
       geometry.addAttribute('target', attrs.target);
-      var material = self.getShaderMaterial(attrs.textures);
+      geometry.addAttribute('color', attrs.color);
+      selector.geometries.push(geometry);
+      var material = self.getShaderMaterial({
+        firstTex: attrs.texStartIdx,
+        textures: attrs.textures,
+        useColor: 1.0,
+      });
       var mesh = new THREE.Points(geometry, material);
       mesh.frustumCulled = false;
       group.add(mesh);
     }
     self.scene.add(group);
     self.render();
+    selector.init();
     setTimeout(loader.activateButton, 1000)
   }
 
@@ -633,6 +575,7 @@ function World() {
     var texIndices = self.getTexIndices(cells);
     for (var i=0; i<cells.length; i++) {
       var cell = cells[i].state;
+      var rgb = self.color.setHex(cells[i].idx + 1); // use 1-based ids for colors
       it.texIndices[it.texIndexIterator++] = cell.texIdx;
       it.sizes[it.sizesIterator++] = cell.size.inTexture;
       it.texOffsets[it.texOffsetIterator++] = cell.posInTex.x / cell.size.fullCell;
@@ -643,6 +586,9 @@ function World() {
       it.targets[it.targetIterator++] = cell.target.x;
       it.targets[it.targetIterator++] = cell.target.y;
       it.targets[it.targetIterator++] = cell.target.z;
+      it.colors[it.colorIterator++] = rgb.r;
+      it.colors[it.colorIterator++] = rgb.g;
+      it.colors[it.colorIterator++] = rgb.b;
     }
     // format the arrays into THREE attributes
     var BA = THREE.BufferAttribute;
@@ -654,9 +600,9 @@ function World() {
     var texOffsetAttr = new IBA(it.texOffsets, 2, 1);
     var translationAttr = new IBA(it.translations, 3, 1);
     var targetAttr = new IBA(it.targets, 3, 1);
+    var colorAttr = new IBA(it.colors, 3, 1);
     uvAttr.dynamic = true;
     positionAttr.dynamic = true;
-    sizeAttr.dynamic = true;
     texIndexAttr.dynamic = true;
     texOffsetAttr.dynamic = true;
     translationAttr.dynamic = true;
@@ -669,6 +615,7 @@ function World() {
       textureOffset: texOffsetAttr,
       translation: translationAttr,
       target: targetAttr,
+      color: colorAttr,
       textures: self.getTextures({
         startIdx: texIndices.first,
         endIdx: texIndices.last,
@@ -686,11 +633,13 @@ function World() {
       texOffsets: new Float32Array(n * 2),
       translations: new Float32Array(n * 3),
       targets: new Float32Array(n * 3),
+      colors: new Float32Array(n * 3),
       sizesIterator: 0,
       texIndexIterator: 0,
       texOffsetIterator: 0,
       translationIterator: 0,
       targetIterator: 0,
+      colorIterator: 0,
     }
   }
 
@@ -735,15 +684,24 @@ function World() {
   /**
   * Build a RawShaderMaterial. For a list of all types, see:
   *   https://github.com/mrdoob/three.js/wiki/Uniforms-types
+  *
+  * @params:
+  *   {obj}
+  *     textures {arr}: array of textures to use in fragment shader
+  *     useColor {float}: 0/1 determines whether to use color in frag shader
+  *     firstTex {int}: the index position of the first texture in `textures`
+  *       within data.textures
   **/
 
-  self.getShaderMaterial = function(textures) {
+  self.getShaderMaterial = function(obj) {
+    var vertex = find('#vertex-shader').textContent;
+    var fragment = self.getFragmentShader(obj);
+    // set the uniforms and the shaders to use
     return new THREE.RawShaderMaterial({
       uniforms: {
-        // array of sampler2D values
         textures: {
           type: 'tv',
-          value: textures,
+          value: obj.textures,
         },
         lodTexture: {
           type: 't',
@@ -756,38 +714,58 @@ function World() {
         pointScale: {
           type: 'f',
           value: self.getPointScale(),
+        },
+        useColor: {
+          type: 'f',
+          value: obj.useColor,
         }
       },
-      vertexShader: find('#vertex-shader').textContent,
-      fragmentShader: find('#fragment-shader').textContent,
+      vertexShader: vertex,
+      fragmentShader: fragment,
     });
   }
 
   /**
-  * Set the interior content of the fragment shader
+  * Return the color fragment shader or prepare and return
+  * the texture fragment shader.
+  *
+  * @params:
+  *   {obj}
+  *     textures {arr}: array of textures to use in fragment shader
+  *     useColor {float}: 0/1 determines whether to use color in frag shader
+  *     firstTex {int}: the index position of the first texture in `textures`
+  *       within data.textures
   **/
 
-  self.setFragmentShader = function(startTexIdx, textureCount) {
-    // get the texture lookup tree
-    var tree = self.getFragShaderTex(0, 'textures[0]', true);
-    for (var i=startTexIdx; i<startTexIdx + textureCount-1; i++) {
-      tree += ' else ' + self.getFragShaderTex(i, 'textures[' + i + ']', true);
+  self.getFragmentShader = function(obj) {
+    var useColor = obj.useColor;
+    var firstTex = obj.firstTex;
+    var textures = obj.textures;
+    // if the calling agent requested the color shader return it unprocessed
+    if (useColor == 1.0) {
+      return find('#color-fragment-shader').textContent;
+    // else prepare and return the textured shader
+    } else {
+      // get the texture lookup tree
+      var tree = self.getFragLeaf(0, 'textures[0]', true);
+      for (var i=firstTex; i<firstTex + textures.length-1; i++) {
+        tree += ' else ' + self.getFragLeaf(i, 'textures[' + i + ']', true);
+      }
+      // add the conditional for the lod texture
+      tree += ' else ' + self.getFragLeaf(i, 'lodTexture', false);
+      // replace the text in the fragment shader
+      var fragShader = find('#fragment-shader').textContent;
+      fragShader = fragShader.replace('N_TEXTURES', textures.length);
+      fragShader = fragShader.replace('TEXTURE_LOOKUP_TREE', tree);
+      return fragShader;
     }
-    // add the conditional for the lod texture
-    tree += ' else ' + self.getFragShaderTex(i, 'lodTexture', false);
-    // replace the text in the fragment shader
-    var fragShader = find('#fragment-shader').textContent;
-    fragShader = fragShader.replace('N_TEXTURES', textureCount);
-    fragShader = fragShader.replace('TEXTURE_LOOKUP_TREE', tree);
-    window.fragShader = fragShader;
-    find('#fragment-shader').textContent = fragShader;
   }
 
   /**
   * Get the leaf component of a texture lookup tree
   **/
 
-  self.getFragShaderTex = function(texIdx, texture, includeIf) {
+  self.getFragLeaf = function(texIdx, texture, includeIf) {
     var ws = '        '; // whitespace (purely aesthetic)
     var start = includeIf
       ? 'if (textureIndex == ' + texIdx + ') {\n'
@@ -813,16 +791,6 @@ function World() {
     stats.domElement.style.left = 'initial';
     document.body.appendChild(stats.domElement);
     return stats;
-  }
-
-  /**
-  * Get the raycaster for tracking intersections
-  **/
-
-  self.getRaycaster = function() {
-    var raycaster = new THREE.Raycaster();
-    raycaster.params.Points.threshold = self.getPointScale();
-    return raycaster;
   }
 
   /**
@@ -867,11 +835,20 @@ function World() {
 
   self.render = function() {
     requestAnimationFrame(self.render);
-    self.raycaster.setFromCamera(self.mouse, self.camera);
     self.renderer.render(self.scene, self.camera);
     self.controls.update();
+    selector.select();
     if (self.stats) self.stats.update();
     lod.update();
+  }
+
+  /**
+  * Initialize the plotting
+  **/
+
+  self.init = function() {
+    self.centerControls();
+    self.plot();
   }
 
   self.scene = self.getScene();
@@ -879,52 +856,93 @@ function World() {
   self.renderer = self.getRenderer();
   self.controls = self.getControls();
   self.stats = self.getStats();
-  self.raycaster = self.getRaycaster();
   self.addEventListeners();
 }
 
 /**
-* Assess WebGL parameters
+* Create mouse event handler
 **/
 
-function Webgl() {
+function Selector() {
   var self = this;
-  self.gl = null;
-  self.limits = null;
+  self.scene = new THREE.Scene();
+  self.mouse = new THREE.Vector2();
+  self.lastMouse = new THREE.Vector2();
+  self.tex = null;
+  self.mesh = null;
+  self.geometries = [];
 
   /**
-  * Get a WebGL context, or display an error if WebGL is not available
+  * Set the current mouse coordinates in client coordinates
+  * @param {Event} event - triggered on canvas mouse move
   **/
 
-  self.setGl = function() {
-    self.gl = getElem('canvas').getContext('webgl');
-    if (!self.gl) find('#webgl-not-available').style.display = 'block';
+  self.onMouseMove = function(e) {
+    self.mouse.x = e.clientX;
+    self.mouse.y = e.clientY;
   }
 
-  /**
-  * Get the limits of the user's WebGL context
-  **/
+  // find the world coordinates of the last clicked position
+  self.getMouseWorldCoords = function() {
+    var vector = new THREE.Vector3();
+    var camera = world.camera;
+    var mouse = new THREE.Vector2();
+    mouse.x = (self.mouse.x / window.innerWidth) * 2 - 1;
+    mouse.y = (self.mouse.y /  window.innerHeight) * 2 + 1;
+    vector.set(mouse.x, mouse.y, 0.5);
+    vector.unproject(camera);
+    var direction = vector.sub(camera.position).normalize();
+    var distance = - camera.position.z / direction.z;
+    var scaled = direction.multiplyScalar(distance);
+    var coords = camera.position.clone().add(scaled);
+    console.log(coords)
+  }
 
-  self.setLimits = function() {
-    // fetch all browser extensions as a map for O(1) lookups
-    var extensions = self.gl.getSupportedExtensions().reduce(function(obj, i) {
-      obj[i] = true; return obj;
-    }, {})
-    // assess support for 32-bit indices in gl.drawElements calls
-    var maxIndex = 2**16 - 1;
-    ['', 'MOZ_', 'WEBKIT_'].forEach(function(ext) {
-      if (extensions[ext + 'OES_element_index_uint']) maxIndex = 2**32 - 1;
-    })
-    self.limits = {
-      textureSize: self.gl.getParameter(self.gl.MAX_TEXTURE_SIZE),
-      textureCount: self.gl.getParameter(self.gl.MAX_TEXTURE_IMAGE_UNITS),
-      vShaderTextures: self.gl.getParameter(self.gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS),
-      indexedElements: maxIndex,
+  // get the texture on which off-screen rendering will happen
+  self.getTexture = function() {
+    var windowSize = getWindowSize();
+    var tex = new THREE.WebGLRenderTarget(windowSize.w, windowSize.h);
+    tex.texture.minFilter = THREE.LinearFilter;
+    return tex;
+  };
+
+  // get the mesh in which to render picking elements
+  self.init = function() {
+    world.renderer.domElement.addEventListener('mousemove', self.onMouseMove);
+    // add the geometries to the mesh
+    var group = new THREE.Group();
+    for (var i=0; i<self.geometries.length; i++) {
+      var material = world.getShaderMaterial({
+        firstTex: null,
+        textures: null,
+        useColor: 1.0,
+      });
+      var mesh = new THREE.Points(self.geometries[i], material);
+      group.add(mesh);
     }
+    self.scene.add(group);
   }
 
-  self.setGl();
-  self.setLimits();
+  self.select = function() {
+    if (!world) return;
+    // draw an offscreen world
+    world.renderer.render(self.scene, world.camera, self.tex);
+    // create a pixel buffer in which to store the selected pixel
+    var pixelBuffer = new Uint8Array(4);
+    // read the texture color at the current mouse pixel
+    world.renderer.readRenderTargetPixels(
+      self.tex,
+      self.mouse.x,
+      self.tex.height - self.mouse.y,
+      1,
+      1,
+      pixelBuffer,
+    );
+    var id = (pixelBuffer[0] << 16) | (pixelBuffer[1] << 8) | (pixelBuffer[2]);
+    console.log('user is hovering', id-1);
+  }
+
+  self.tex = self.getTexture();
 }
 
 /**
@@ -1202,6 +1220,50 @@ function Loader() {
 }
 
 /**
+* Assess WebGL parameters
+**/
+
+function Webgl() {
+  var self = this;
+  self.gl = null;
+  self.limits = null;
+
+  /**
+  * Get a WebGL context, or display an error if WebGL is not available
+  **/
+
+  self.setGl = function() {
+    self.gl = getElem('canvas').getContext('webgl');
+    if (!self.gl) find('#webgl-not-available').style.display = 'block';
+  }
+
+  /**
+  * Get the limits of the user's WebGL context
+  **/
+
+  self.setLimits = function() {
+    // fetch all browser extensions as a map for O(1) lookups
+    var extensions = self.gl.getSupportedExtensions().reduce(function(obj, i) {
+      obj[i] = true; return obj;
+    }, {})
+    // assess support for 32-bit indices in gl.drawElements calls
+    var maxIndex = 2**16 - 1;
+    ['', 'MOZ_', 'WEBKIT_'].forEach(function(ext) {
+      if (extensions[ext + 'OES_element_index_uint']) maxIndex = 2**32 - 1;
+    })
+    self.limits = {
+      textureSize: self.gl.getParameter(self.gl.MAX_TEXTURE_SIZE),
+      textureCount: self.gl.getParameter(self.gl.MAX_TEXTURE_IMAGE_UNITS),
+      vShaderTextures: self.gl.getParameter(self.gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS),
+      indexedElements: maxIndex,
+    }
+  }
+
+  self.setGl();
+  self.setLimits();
+}
+
+/**
 * Make an XHR get request for data
 *
 * @param {str} url: the url of the data to fetch
@@ -1275,12 +1337,24 @@ function getNested(obj, keyArr, ifEmpty) {
 }
 
 /**
+* Get the H,W to use for rendering
+**/
+
+function getWindowSize() {
+  return {
+    w: window.innerWidth,
+    h: window.innerHeight,
+  }
+}
+
+/**
 * Main
 **/
 
 var loader = new Loader();
 var webgl = new Webgl();
 var config = new Config();
+var selector = new Selector();
 var world = new World();
 var lod = new LOD();
 var data = new Data();
