@@ -165,6 +165,16 @@ nav h2 {
   transform: translateY(-100vh);
 }
 
+#loader-text {
+  margin: 20px auto;
+  text-align: center;
+}
+
+.welcome {
+  max-width: 700px;
+  margin: 0 auto;
+}
+
 /**
 * Enter button
 **/
