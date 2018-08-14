@@ -22,7 +22,8 @@ function Config() {
   self.cellsPerAtlasSide = Math.pow(self.cellsPerAtlas, 0.5);
   self.cellsPerTex = self.cellsPerAtlas * self.atlasesPerTex;
   self.cellsPerDrawCall = null;
-  self.transitionDuration = 100;
+  self.transitionDuration = 10;
+  self.flyDuration = 3.5;
 
   self.getCellsPerDrawCall = function() {
     // case where vertices per draw call is limiting factor
@@ -472,14 +473,20 @@ function World() {
 
   self.addResizeListener = function() {
     window.addEventListener('resize', function() {
-      var windowSize = getWindowSize();
-      self.camera.aspect = windowSize.w / windowSize.h;
-      self.camera.updateProjectionMatrix();
-      self.renderer.setSize(windowSize.w, windowSize.h);
-      selector.tex.setSize(windowSize.w, windowSize.h);
-      self.controls.handleResize();
-      self.setPointScalar();
+      if (self.resizeTimeout) window.clearTimeout(self.resizeTimeout);
+      self.resizeTimeout = window.setTimeout(self.handleResize, 300);
     }, false);
+  }
+
+  self.handleResize = function() {
+    var windowSize = getWindowSize();
+    self.camera.aspect = windowSize.w / windowSize.h;
+    self.camera.updateProjectionMatrix();
+    self.renderer.setSize(windowSize.w, windowSize.h);
+    selector.tex.setSize(windowSize.w, windowSize.h);
+    self.controls.handleResize();
+    self.setPointScalar();
+    delete self.resizeTimeout;
   }
 
   // listen for loss of webgl context; to manually lose context:
@@ -835,6 +842,41 @@ function World() {
   }
 
   /**
+  * Fly the camera to a set of x,y,z coords
+  **/
+
+  self.flyTo = function(obj) {
+    var target = {
+      x: obj.x,
+      y: obj.y,
+      z: obj.z - 700,
+    }
+    // slerp between the camera's current and desired future positions
+    var quaternion = self.camera.quaternion.clone();
+    var newCamera = self.camera.clone();
+    newCamera.position.set(target.x, target.y, target.z);
+    // also slerp the controls
+    var newControls = new THREE.TrackballControls(newCamera);
+    newControls.target.set(obj.x, obj.y, obj.z);
+    newControls.update();
+    // transition between the start and end quaternions
+    var slerp = THREE.Quaternion.slerp,
+        frame = 0;
+    TweenLite.to(self.camera.position, config.flyDuration, {
+      x: target.x,
+      y: target.y,
+      z: target.z,
+      onUpdate: function() {
+        slerp(quaternion, newCamera.quaternion, self.camera.quaternion, ++frame);
+      },
+      onComplete: function() {
+        self.controls.target = new THREE.Vector3(obj.x, obj.y, obj.z);
+      },
+      ease: Power3.easeInOut,
+    });
+  }
+
+  /**
   * Initialize the render loop
   **/
 
@@ -933,7 +975,6 @@ function Selector() {
     var id = (pixelBuffer[0] << 16) | (pixelBuffer[1] << 8) | (pixelBuffer[2]);
     // ids use id+1 as the id of null selections is 0
     self.selected = id-1;
-    console.log(self.selected, self.mouse);
   }
 
   // get the texture on which off-screen rendering will happen
