@@ -156,13 +156,13 @@ nav h2 {
   left: 0;
   color: #fff;
   padding: 10%;
-  transition: transform 0.4s;
+  transition: transform 2s;
   z-index: 2;
   background: #000;
 }
 
 #loader-scene.hidden {
-  transform: translateY(-100vh);
+  transform: translateY(-1000vh);
 }
 
 #loader-text {
