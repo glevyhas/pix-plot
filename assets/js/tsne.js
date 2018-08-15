@@ -329,7 +329,7 @@ function Cell(obj) {
     })
   }
 
-  // mutate the cell's state and attribute buffers to load lod detail
+  // make the cell active in LOD by mutating its state
   self.activate = function() {
     self.state = Object.assign({}, self.state, {
       isLarge: true,
@@ -347,6 +347,17 @@ function Cell(obj) {
         fullCell: config.lodCellSize,
       },
     })
+    self.mutateBuffers();
+  }
+
+  // deactivate the cell in LOD by mutating its state
+  self.deactivate = function() {
+    var position = Object.assign({}, self.state.position);
+    var target = Object.assign({}, self.state.target);
+    self.state = Object.assign({}, self.default, {
+      position: position,
+      target: target,
+    });
     self.mutateBuffers();
   }
 
@@ -412,7 +423,7 @@ function World() {
 
   self.getScene = function() {
     var scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x777777);
+    scene.background = new THREE.Color(0x000000);
     return scene;
   }
 
@@ -568,9 +579,11 @@ function World() {
       group.add(mesh);
     }
     self.scene.add(group);
-    self.render();
-    selector.init();
-    setTimeout(loader.activateButton, 1000)
+    setTimeout(loader.activateButton, 1000);
+    requestAnimationFrame(function() {
+      self.render();
+      selector.init();
+    })
   }
 
   // Get all cells for plot as an array of items
@@ -790,6 +803,18 @@ function World() {
   }
 
   /**
+  * Set the needsUpdate flag to true on each attribute in `attrs`
+  **/
+
+  self.attrsNeedUpdate = function(attrs) {
+    self.scene.children[0].children.forEach(function(mesh) {
+      attrs.forEach(function(attr) {
+        mesh.geometry.attributes[attr].needsUpdate = true;
+      })
+    })
+  }
+
+  /**
   * Conditionally display render stats
   **/
 
@@ -849,7 +874,7 @@ function World() {
     var target = {
       x: obj.x,
       y: obj.y,
-      z: obj.z - 700,
+      z: obj.z - 400,
     }
     // slerp between the camera's current and desired future positions
     var quaternion = self.camera.quaternion.clone();
@@ -872,7 +897,7 @@ function World() {
       onComplete: function() {
         self.controls.target = new THREE.Vector3(obj.x, obj.y, obj.z);
       },
-      ease: Power3.easeInOut,
+      ease: Power4.easeInOut,
     });
   }
 
@@ -994,11 +1019,12 @@ function Selector() {
 
 function LOD() {
   var self = this;
-  self.gridPos = {x: null, y: null};
+  self.gridPos = {x: null, y: null}; // grid coords of current camera position
   self.cellIdxToImage = {};
   self.cellSizeScalar = config.lodCellSize / config.cellSize;
-  self.radius = 4; // max radius to use when fetching neighboring grid blocks
-  self.framesBetweenUpdates = 60; // frames that elapse between texture updates
+  self.framesBetweenUpdates = 40; // frames that elapse between texture updates
+  self.minZ = -500; // minimum cameraZ to trigger texture updates
+  self.radius = 8;
   self.tex = {
     canvas: null,
     ctx: null,
@@ -1016,8 +1042,8 @@ function LOD() {
   self.grid = {
     coords: {}, // set by Data constructor
     size: {
-      x: config.spread.x * 30,
-      y: config.spread.y * 30,
+      x: config.spread.x * 10,
+      y: config.spread.y * 10,
     },
   };
 
@@ -1076,15 +1102,16 @@ function LOD() {
     if (self.gridPos.x !== x || self.gridPos.y !== y) {
       self.gridPos = {x: x, y: y};
       self.state.neighborsRequested = false;
-      self.unloadGridNeighbors();
-      self.state.loadQueue = getNested(self.grid.coords, [x, y], []);
+      self.unload();
+      if (camPos.z < self.minZ) {
+        self.state.loadQueue = getNested(self.grid.coords, [x, y], []);
+      }
     }
   }
 
   // if there's a loadQueue, load the next image, else load neighbors
   self.loadNextImage = function() {
-    // it's important not to mutate self.state.loadQueue, as doing
-    // so may delete elements from self.grid.coords
+    // dom't mutate loadQueue, as that deletes items from self.grid.coords
     var cellIdx = self.state.loadQueue[0];
     self.state.loadQueue = self.state.loadQueue.slice(1);
     if (Number.isInteger(cellIdx)) {
@@ -1097,34 +1124,27 @@ function LOD() {
   // update the frame number and conditionally activate loaded images
   self.tick = function() {
     self.state.frame += 1;
-    var toActivate = self.state.cellsToActivate;
     var isDrawFrame = self.state.frame % self.framesBetweenUpdates == 0;
-    if (!toActivate.length || !isDrawFrame) return;
-    if (world.camera.position.z > -450) {
-      self.state.cellsToActivate = [];
-      self.activateCells(toActivate);
+    if (!self.state.cellsToActivate.length || !isDrawFrame) return;
+    if (world.camera.position.z > self.minZ) {
+      self.activateCells(self.state.cellsToActivate);
     } else {
-      self.unloadGridNeighbors();
+      self.unload();
     }
   }
 
   // load a high-res image for cell at index `cellIdx`
   self.loadImage = function(cellIdx) {
     if (self.cellIdxToImage[cellIdx]) {
-      self.preactivateCell(cellIdx);
+      self.state.cellsToActivate = self.state.cellsToActivate.concat(cellIdx);
     } else {
       var image = new Image;
       image.onload = function(cellIdx) {
         self.cellIdxToImage[cellIdx] = image;
-        self.preactivateCell(cellIdx);
+        self.state.cellsToActivate = self.state.cellsToActivate.concat(cellIdx);
       }.bind(null, cellIdx);
       image.src = config.thumbsUrl + data.cells[cellIdx].name + '.jpg';
     }
-  }
-
-  // add an image to the list of images ready to be activated
-  self.preactivateCell = function(cellIdx) {
-    self.state.cellsToActivate = self.state.cellsToActivate.concat(cellIdx);
   }
 
   // activate all cells within a list of cell indices
@@ -1132,22 +1152,24 @@ function LOD() {
     // find and store the coords where each img will be stored in lod texture
     cellIndices.forEach(function(cellIdx) {
       // if this cell is too far from the camera, return
-      var cell = data.cells[cellIdx];
-      if (!self.cellInRadius(cell)) return;
-      self.addCellToTexture(cell);
+      var cell = data.cells[cellIdx],
+          xDelta = Math.abs(cell.gridCoords.x - self.gridPos.x),
+          yDelta = Math.abs(cell.gridCoords.y - self.gridPos.y);
+      if (xDelta < self.radius * 2 || yDelta < self.radius) {
+        self.addCellToLodTexture(cell);
+      }
     })
     // invalidate the lod texture and the geometry's mutated attribute buffers
     self.tex.texture.needsUpdate = true;
-    var attrs = world.scene.children[0].children[0].geometry.attributes;
-    attrs.textureOffset.needsUpdate = true;
-    attrs.textureIndex.needsUpdate = true;
-    attrs.size.needsUpdate = true;
+    world.attrsNeedUpdate(['textureOffset', 'textureIndex', 'size']);
+    // indicate we've loaded all cells
+    self.state.cellsToActivate = [];
   }
 
   // add a cell to the LOD texture
-  self.addCellToTexture = function(cell) {
+  self.addCellToLodTexture = function(cell) {
     var coords = self.state.openCoords.shift();
-    if (!coords) { console.warn('TODO: lod texture full'); return; }
+    if (!coords) { console.log('TODO: lod texture full'); return; }
     // store the cell's index among cells with its coords data
     coords.cellIdx = cell.idx;
     var gridKey = cell.gridCoords.x + '.' + cell.gridCoords.y;
@@ -1165,12 +1187,6 @@ function LOD() {
     cell.activate();
   }
 
-  // determine whether a cell is within the LOD's radius of focus
-  self.cellInRadius = function(cell) {
-    return Math.abs(cell.gridCoords.x - self.gridPos.x) < self.radius*2 ||
-           Math.abs(cell.gridCoords.y - self.gridPos.y) < self.radius;
-  }
-
   // load the next nearest grid of cell images
   self.loadGridNeighbors = function() {
     self.state.neighborsRequested = true;
@@ -1185,33 +1201,41 @@ function LOD() {
           self.state.loadQueue = self.state.loadQueue.concat(cellIndices);
         };
       }
-    }
+    };
   }
 
-  // free up the grid positions of images now distant from the camera
-  self.unloadGridNeighbors = function() {
-    Object.keys(self.state.gridPosToCoords).forEach(function(pos) {
-      var split = pos.split('.'),
+  // free up the high-res textures for images now distant from the camera
+  self.unload = function() {
+    Object.keys(self.state.gridPosToCoords).forEach(function(gridPos) {
+      var split = gridPos.split('.'),
           x = parseInt(split[0]),
           y = parseInt(split[1]),
           xDelta = Math.abs(self.gridPos.x - x),
           yDelta = Math.abs(self.gridPos.y - y);
       if ((xDelta + yDelta) > self.radius) {
-        // cache the texture coords for the grid key to be deleted
-        var toUnload = self.state.gridPosToCoords[pos];
-        // free all cells previously assigned to the deleted grid position
-        self.state.openCoords = self.state.openCoords.concat(toUnload);
-        // delete unloaded cell keys in the cellIdxToCoords map
-        toUnload.forEach(function(coords) {
-          var cell = data.cells[coords.cellIdx];
-          cell.state = Object.assign({}, cell.state, cell.default);
-          cell.mutateBuffers();
-          delete self.state.cellIdxToCoords[coords.cellIdx];
-        })
-        // remove the old grid position from the list of active grid positions
-        delete self.state.gridPosToCoords[pos];
+        self.unloadGridPos(gridPos);
       }
     });
+  }
+
+  self.unloadGridPos = function(gridPos) {
+    // cache the texture coords for the grid key to be deleted
+    var toUnload = self.state.gridPosToCoords[gridPos];
+    // delete unloaded cell keys in the cellIdxToCoords map
+    toUnload.forEach(function(coords) {
+      data.cells[coords.cellIdx].deactivate();
+      delete self.state.cellIdxToCoords[coords.cellIdx];
+    })
+    // remove the old grid position from the list of active grid positions
+    delete self.state.gridPosToCoords[gridPos];
+    // free all cells previously assigned to the deleted grid position
+    self.state.openCoords = self.state.openCoords.concat(toUnload);
+  }
+
+  // clear the LOD state entirely
+  self.clear = function() {
+    Object.keys(self.state.gridPosToCoords).forEach(self.unloadGridPos);
+    world.attrsNeedUpdate(['textureOffset', 'textureIndex', 'size']);
   }
 
   self.setCanvas();
