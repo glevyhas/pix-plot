@@ -426,6 +426,9 @@ function World() {
   self.stats = null;
   self.color = new THREE.Color();
   self.center = {};
+  self.state = {
+    flying: false,
+  }
 
   /**
   * Return a scene object with a background color
@@ -881,6 +884,22 @@ function World() {
   **/
 
   self.flyTo = function(obj) {
+    self.fly({
+      x: world.center.x,
+      y: world.center.y,
+      z: -2000,
+    })
+    setTimeout(function() {
+      self.fly({
+        x: obj.x,
+        y: obj.y,
+        z: obj.z,
+      })
+    }, (config.flyDuration * 1000) + 100)
+  }
+
+  self.fly = function(obj) {
+    self.state.flying = true;
     var target = {
       x: obj.x,
       y: obj.y,
@@ -906,8 +925,9 @@ function World() {
       },
       onComplete: function() {
         self.controls.target = new THREE.Vector3(obj.x, obj.y, obj.z);
+        self.state.flying = false;
       },
-      ease: Power4.easeInOut,
+      ease: obj.ease || Power4.easeInOut,
     });
   }
 
@@ -1098,11 +1118,11 @@ function LOD() {
 
   // load high-res images nearest the camera; called every frame by world.render
   self.update = function() {
-    if (self.state.run) {
-      self.updateGridPosition();
-      self.loadNextImage();
-      self.tick();
-    }
+    if (!self.state.run) return;
+    if (world.state.flying) return;
+    self.updateGridPosition();
+    self.loadNextImage();
+    self.tick();
   }
 
   self.updateGridPosition = function() {
@@ -1148,12 +1168,16 @@ function LOD() {
   // load a high-res image for cell at index `cellIdx`
   self.loadImage = function(cellIdx) {
     if (self.cellIdxToImage[cellIdx]) {
-      self.state.cellsToActivate = self.state.cellsToActivate.concat(cellIdx);
+      if (!self.state.cellIdxToCoords[cellIdx]) {
+        self.state.cellsToActivate = self.state.cellsToActivate.concat(cellIdx);
+      }
     } else {
       var image = new Image;
       image.onload = function(cellIdx) {
         self.cellIdxToImage[cellIdx] = image;
-        self.state.cellsToActivate = self.state.cellsToActivate.concat(cellIdx);
+        if (!self.state.cellIdxToCoords[cellIdx]) {
+          self.state.cellsToActivate = self.state.cellsToActivate.concat(cellIdx);
+        }
       }.bind(null, cellIdx);
       image.src = config.thumbsUrl + data.cells[cellIdx].name + '.jpg';
     }
@@ -1168,8 +1192,11 @@ function LOD() {
       var cell = data.cells[cellIdx];
           xDelta = Math.abs(cell.gridCoords.x - self.gridPos.x),
           yDelta = Math.abs(cell.gridCoords.y - self.gridPos.y);
-      if (cell.state.isLarge) {console.log('TODO: cell being loaded twice'); return;};
+      // don't load the cell if it's already been loaded
+      if (lod.state.cellIdxToCoords[cell.idx]) return;
+      // don't load the cell if it's too far from the camera
       if ((xDelta > self.radius * 2) || (yDelta > self.radius)) return;
+      // return if there are no open coordinates in the LOD texture
       var coords = self.state.openCoords.shift();
       if (!coords) { console.log('TODO: lod texture full'); return; }
       textureNeedsUpdate = true;
@@ -1229,10 +1256,13 @@ function LOD() {
         ];
         var cellIndices = getNested(self.grid.coords, coords, []);
         if (cellIndices) {
+          var cellIndices = cellIndices.filter(function(cellIdx) {
+            return !self.state.cellIdxToCoords[cellIdx];
+          })
           self.state.loadQueue = self.state.loadQueue.concat(cellIndices);
-        };
+        }
       }
-    };
+    }
   }
 
   // free up the high-res textures for images now distant from the camera
