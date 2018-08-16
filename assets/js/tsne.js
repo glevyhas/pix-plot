@@ -7,8 +7,8 @@ function Config() {
   self.dataUrl = 'output/'; // path to location where data lives
   self.thumbsUrl = self.dataUrl + 'thumbs/128px/'
   self.spread = {
-    x: 1,
-    y: 1,
+    x: 5,
+    y: 5,
     z: 1,
   }; // scale for positioning items on x,y axes
   self.cellSize = 32;
@@ -48,7 +48,6 @@ function Data() {
   self.centroids = null;
   self.positions = null;
   self.images = [];
-  self.atlases = [];
   self.textures = [];
   self.cells = [];
   self.textureProgress = {};
@@ -89,9 +88,9 @@ function Data() {
 
   // Get an array of the position data to pass to the texture at idx `idx`
   self.getTexturePositions = function(texIdx) {
-    var chunk = config.cellsPerAtlas * config.atlasesPerTex;
-    var start = chunk * texIdx;
-    var end = chunk * (texIdx + 1);
+    var chunk = config.cellsPerAtlas * config.atlasesPerTex,
+        start = chunk * texIdx,
+        end = chunk * (texIdx + 1);
     return self.positions.slice(start, end);
   }
 
@@ -160,8 +159,8 @@ function Texture(obj) {
 
   // Get an array of the position data for the atlas at position `idx`
   self.getAtlasPositions = function(atlasIdx) {
-    var start = config.cellsPerAtlas * atlasIdx;
-    var end = config.cellsPerAtlas * (atlasIdx + 1);
+    var start = config.cellsPerAtlas * atlasIdx,
+        end = config.cellsPerAtlas * (atlasIdx + 1);
     return self.positions.slice(start, end);
   }
 
@@ -172,16 +171,27 @@ function Texture(obj) {
     self.onProgress(self.idx, textureProgress);
   }
 
-  // When an atlas loads, check to see if we can build a texture
+  // Add each cell from the loaded atlas to the texture's canvas
   self.onAtlasLoad = function(atlas) {
     // Add the loaded atlas file the texture's canvas
-    var texSize = config.textureSize;
-    var idx = atlas.idx % config.atlasesPerTex;
-    var x = (idx * config.atlasSize) % texSize;
-    var y = Math.floor((idx * config.atlasSize) / texSize) * config.atlasSize;
-    self.ctx.drawImage(atlas.image, x, y, config.atlasSize, config.atlasSize);
-    self.loadedAtlases += 1;
-    if (self.loadedAtlases == self.atlasCount) {
+    var atlasSize = config.atlasSize,
+        textureSize = config.textureSize,
+        idx = atlas.idx % config.atlasesPerTex;
+    // Get x and y offsets of this atlas within the canvas texture
+    var atlasX = (idx * atlasSize) % textureSize,
+        atlasY = Math.floor((idx * atlasSize) / textureSize) * atlasSize;
+    // Add each cell from the atlas (source) to the canvas (destination)
+    atlas.cells.forEach(function(cell) {
+      var sX = cell.posInAtlas.x + cell.state.size.leftPad,
+          sY = cell.posInAtlas.y + cell.state.size.topPad,
+          sW = cell.state.size.w,
+          sH = cell.state.size.h,
+          dX = sX + atlasX,
+          dY = sY + atlasY;
+      self.ctx.drawImage(atlas.image, sX, sY, sW, sH, dX, dY, sW, sH);
+    })
+    // If all atlases are loaded, build the texture
+    if (++self.loadedAtlases == self.atlasCount) {
       self.onLoad(self.idx);
     }
   }
@@ -290,8 +300,8 @@ function Cell(obj) {
     return {
       w: obj.w,
       h: obj.h,
-      topPad: (config.cellSize - obj.w) / 2,
-      leftPad: (config.cellSize - obj.h) / 2,
+      topPad: (config.cellSize - obj.h) / 2,
+      leftPad: (config.cellSize - obj.w) / 2,
       fullCell: config.cellSize,
       inTexture: config.cellSize / config.textureSize,
     }
@@ -352,8 +362,8 @@ function Cell(obj) {
 
   // deactivate the cell in LOD by mutating its state
   self.deactivate = function() {
-    var position = Object.assign({}, self.state.position);
-    var target = Object.assign({}, self.state.target);
+    var position = Object.assign({}, self.state.position),
+        target = Object.assign({}, self.state.target);
     self.state = Object.assign({}, self.default, {
       position: position,
       target: target,
@@ -364,8 +374,8 @@ function Cell(obj) {
   // use the cell's state to mutate its attribute buffers
   self.mutateBuffers = function() {
     // find the buffer attributes that describe this cell to the GPU
-    var group = world.scene.children[0];
-    var attrs = group.children[self.drawCallIdx].geometry.attributes;
+    var group = world.scene.children[0],
+        attrs = group.children[self.drawCallIdx].geometry.attributes;
     // find this cell's position in the LOD texture
     var posInTex = {
       x: self.state.posInTex.x / self.state.size.fullCell,
@@ -760,10 +770,10 @@ function World() {
   **/
 
   self.getFragmentShader = function(obj) {
-    var useColor = obj.useColor;
-    var firstTex = obj.firstTex;
-    var textures = obj.textures;
-    var fragShader = find('#fragment-shader').textContent;
+    var useColor = obj.useColor,
+        firstTex = obj.firstTex,
+        textures = obj.textures,
+        fragShader = find('#fragment-shader').textContent;
     // the calling agent requested the color shader, used for selecting
     if (useColor == 1.0) {
       fragShader = fragShader.replace('uniform sampler2D textures[N_TEXTURES];', '');
@@ -991,10 +1001,9 @@ function Selector() {
   self.select = function() {
     if (!world) return;
     self.render();
-    // create a pixel buffer in which to store the selected pixel
-    var pixelBuffer = new Uint8Array(4);
     // read the texture color at the current mouse pixel
-    var x = self.mouse.x,
+    var pixelBuffer = new Uint8Array(4),
+        x = self.mouse.x,
         y = self.tex.height - self.mouse.y;
     world.renderer.readRenderTargetPixels(self.tex, x, y, 1, 1, pixelBuffer);
     var id = (pixelBuffer[0] << 16) | (pixelBuffer[1] << 8) | (pixelBuffer[2]);
@@ -1024,7 +1033,7 @@ function LOD() {
   self.cellSizeScalar = config.lodCellSize / config.cellSize;
   self.framesBetweenUpdates = 40; // frames that elapse between texture updates
   self.minZ = -500; // minimum cameraZ to trigger texture updates
-  self.radius = 8;
+  self.radius = 1;
   self.tex = {
     canvas: null,
     ctx: null,
@@ -1038,6 +1047,7 @@ function LOD() {
     cellIdxToCoords: {},
     cellsToActivate: [],
     frame: 0,
+    run: true,
   };
   self.grid = {
     coords: {}, // set by Data constructor
@@ -1060,8 +1070,8 @@ function LOD() {
 
   // initialize the array of tex coordinates available for writing
   self.setOpenTexCoords = function() {
-    var perDimension = config.lodTextureSize / config.lodCellSize;
-    var openCoords = [];
+    var perDimension = config.lodTextureSize / config.lodCellSize,
+        openCoords = [];
     for (var y=0; y<perDimension; y++) {
       for (var x=0; x<perDimension; x++) {
         openCoords.push({
@@ -1088,16 +1098,18 @@ function LOD() {
 
   // load high-res images nearest the camera; called every frame by world.render
   self.update = function() {
-    self.updateGridPosition();
-    self.loadNextImage();
-    self.tick();
+    if (self.state.run) {
+      self.updateGridPosition();
+      self.loadNextImage();
+      self.tick();
+    }
   }
 
   self.updateGridPosition = function() {
     // determine the user's current grid position
-    var camPos = world.camera.position;
-    var x = Math.floor(camPos.x / self.grid.size.x);
-    var y = Math.floor(camPos.y / self.grid.size.y);
+    var camPos = world.camera.position,
+        x = Math.floor(camPos.x / self.grid.size.x),
+        y = Math.floor(camPos.y / self.grid.size.y);
     // user is in a new grid position; unload old images and load new
     if (self.gridPos.x !== x || self.gridPos.y !== y) {
       self.gridPos = {x: x, y: y};
@@ -1110,8 +1122,8 @@ function LOD() {
   }
 
   // if there's a loadQueue, load the next image, else load neighbors
+  // nb: don't mutate loadQueue, as that deletes items from self.grid.coords
   self.loadNextImage = function() {
-    // dom't mutate loadQueue, as that deletes items from self.grid.coords
     var cellIdx = self.state.loadQueue[0];
     self.state.loadQueue = self.state.loadQueue.slice(1);
     if (Number.isInteger(cellIdx)) {
@@ -1125,9 +1137,9 @@ function LOD() {
   self.tick = function() {
     self.state.frame += 1;
     var isDrawFrame = self.state.frame % self.framesBetweenUpdates == 0;
-    if (!self.state.cellsToActivate.length || !isDrawFrame) return;
+    if (!isDrawFrame || !self.state.cellsToActivate.length) return;
     if (world.camera.position.z > self.minZ) {
-      self.activateCells(self.state.cellsToActivate);
+      self.addCellsToLodTexture();
     } else {
       self.unload();
     }
@@ -1147,43 +1159,62 @@ function LOD() {
     }
   }
 
-  // activate all cells within a list of cell indices
-  self.activateCells = function(cellIndices) {
+  // add each cell in cellsToActivate to the LOD texture
+  self.addCellsToLodTexture = function(cell) {
+    var textureNeedsUpdate = false;
     // find and store the coords where each img will be stored in lod texture
-    cellIndices.forEach(function(cellIdx) {
-      // if this cell is too far from the camera, return
-      var cell = data.cells[cellIdx],
+    self.state.cellsToActivate.forEach(function(cellIdx) {
+      // check to ensure cell is sufficiently close to camera
+      var cell = data.cells[cellIdx];
           xDelta = Math.abs(cell.gridCoords.x - self.gridPos.x),
           yDelta = Math.abs(cell.gridCoords.y - self.gridPos.y);
-      if (xDelta < self.radius * 2 || yDelta < self.radius) {
-        self.addCellToLodTexture(cell);
-      }
+      if (cell.state.isLarge) {console.log('TODO: cell being loaded twice'); return;};
+      if ((xDelta > self.radius * 2) || (yDelta > self.radius)) return;
+      var coords = self.state.openCoords.shift();
+      if (!coords) { console.log('TODO: lod texture full'); return; }
+      textureNeedsUpdate = true;
+      self.addCellToLodTexture(cell, coords);
     })
-    // invalidate the lod texture and the geometry's mutated attribute buffers
-    self.tex.texture.needsUpdate = true;
-    world.attrsNeedUpdate(['textureOffset', 'textureIndex', 'size']);
     // indicate we've loaded all cells
     self.state.cellsToActivate = [];
+    // only update the texture and attributes if the lod tex changed
+    if (textureNeedsUpdate) {
+      self.tex.texture.needsUpdate = true;
+      world.attrsNeedUpdate(['textureOffset', 'textureIndex', 'size']);
+    }
   }
 
-  // add a cell to the LOD texture
-  self.addCellToLodTexture = function(cell) {
-    var coords = self.state.openCoords.shift();
-    if (!coords) { console.log('TODO: lod texture full'); return; }
-    // store the cell's index among cells with its coords data
+  // add a new cell to the LOD texture at position `coords`
+  self.addCellToLodTexture = function(cell, coords) {
+    var gridKey = cell.gridCoords.x + '.' + cell.gridCoords.y,
+        gridStore = self.state.gridPosToCoords;
+    // store the cell's index with its coords data
     coords.cellIdx = cell.idx;
-    var gridKey = cell.gridCoords.x + '.' + cell.gridCoords.y;
     // initialize this grid key in the grid position to coords map
-    if (!self.state.gridPosToCoords[gridKey]) {
-      self.state.gridPosToCoords[gridKey] = [];
-    }
+    if (!gridStore[gridKey]) gridStore[gridKey] = [];
     // add the cell data to the data stores
     self.state.gridPosToCoords[gridKey].push(coords);
     self.state.cellIdxToCoords[cell.idx] = coords;
     // draw the cell's image in the lod texture
-    self.tex.ctx.drawImage(self.cellIdxToImage[cell.idx],
-      0, 0, config.lodCellSize, config.lodCellSize,
-      coords.x, coords.y, config.lodCellSize, config.lodCellSize);
+    var img = self.cellIdxToImage[cell.idx],
+        cellSize = Object.assign({}, cell.state.size),
+        topPad = cellSize.topPad * self.cellSizeScalar,
+        leftPad = cellSize.leftPad * self.cellSizeScalar,
+        // rectangle to clear for this cell in LOD texture
+        lodCellSize = config.lodCellSize,
+        x = coords.x,
+        y = coords.y,
+        // cell to draw: source and target coordinates
+        sX = 0,
+        sY = 0,
+        sW = lodCellSize - (2*leftPad),
+        sH = lodCellSize - (2*topPad),
+        dX = x + leftPad,
+        dY = y + topPad,
+        dW = sW,
+        dH = sH;
+    self.tex.ctx.clearRect(x, y, lodCellSize, lodCellSize);
+    self.tex.ctx.drawImage(img, sX, sY, sW, sH, dX, dY, dW, dH);
     cell.activate();
   }
 
