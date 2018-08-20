@@ -41,7 +41,6 @@
     // set float precision
     precision highp float;
 
-    // specify geometry and camera uniforms
     uniform mat4 modelViewMatrix;
     uniform mat4 projectionMatrix;
     uniform vec3 cameraPosition;
@@ -49,7 +48,6 @@
     uniform float pointScale;
     uniform float useColor;
 
-    // instance attributes
     attribute vec3 position;      // base x y z position for all points
     attribute vec3 translation;   // x y z position offsets for an instance
     attribute vec3 target;        // x y z position to which we're transitioning
@@ -58,7 +56,6 @@
     attribute float size;         // size of each side of the current instance
     attribute vec3 color;         // unique color for cell; used for raycasting
 
-    // varyings
     varying float vTextureIndex;  // cell texture idx (varyings can't be int)
     varying vec2 vTextureOffset;  // cell texture offset
     varying vec2 vCellSize;       // cell size
@@ -117,7 +114,6 @@
     #endif
     uniform float useColor;
 
-    // identify the uv values as a varying attribute
     varying float vTextureIndex; // cell's texture index
     varying vec2 vTextureOffset; // cell's uv offsets in the texture
     varying vec2 vCellSize;      // cell's size
