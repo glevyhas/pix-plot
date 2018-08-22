@@ -22,7 +22,7 @@ function Config() {
   self.cellsPerAtlasSide = Math.pow(self.cellsPerAtlas, 0.5);
   self.cellsPerTex = self.cellsPerAtlas * self.atlasesPerTex;
   self.cellsPerDrawCall = null;
-  self.transitionDuration = 10;
+  self.transitionDuration = 3.5;
   self.flyDuration = 3.5;
 
   self.getCellsPerDrawCall = function() {
@@ -72,6 +72,7 @@ function Data() {
       self.positions = json.positions;
       self.atlasCount = json.atlas_counts['32px'];
       self.textureCount = Math.ceil(self.atlasCount / config.atlasesPerTex);
+      self.gridSideCells = Math.ceil(Math.pow(self.positions.length, 0.5));
       // load each texture for this data set
       for (var i=0; i<self.textureCount; i++) {
         self.textures.push(new Texture({
@@ -267,32 +268,32 @@ function Cell(obj) {
   var self = this;
   self.idx = obj.idx;   // index among all cells
   self.name = obj.name; // name for image (for searching on page load)
+  self.layouts = {};    // contains one key for each layout position
   self.posInAtlas = {}; // position of cell in atlas
   self.idxInAtlas = self.idx % config.cellsPerAtlas; // index of cell in atlas
   self.drawCallIdx = Math.floor(self.idx / config.cellsPerDrawCall); // draw call index
   self.idxInDrawCall = self.idx % config.cellsPerDrawCall; // index in draw call
-  self.default = {
-    position: {},   // position of cell in the plot
-    target: {},     // position to which we are transitioning
-    size: {},       // size of the cell in its atlas
-    posInTex: {},   // position of the cell in its texture
-    texIdx: null,   // texture index to use when drawing cell
-    isLarge: false, // set to true when high-res image is loaded
-  }
-  self.state = {
-    position: null,
-    target: null,
-    size: null,
-    posInTex: null,
-    texIdx: null,
-    isLarge: null,
-  }
+  self.default = {};    // stores default size and texture attrs
+  self.state = {};      // stores all current state values (position, texture...)
 
-  self.getPosition = function() {
+  self.getLayouts = function() {
+    // perSide: number of cells to include in each row/col of the grid layout
+    var perSide = obj.data.gridSideCells,
+        x = self.idx % perSide,
+        y = Math.floor(self.idx / perSide),
+        scalar = config.cellSize * 0.9,
+        center = (scalar * obj.data.gridSideCells)/2;
     return {
-      x: obj.x,
-      y: obj.y,
-      z: 0,
+      grid: {
+        x: (x * scalar) - center,
+        y: (y * scalar) - center,
+        z: 1,
+      },
+      scatter: {
+        x: obj.x,
+        y: obj.y,
+        z: 0,
+      },
     }
   }
 
@@ -322,6 +323,7 @@ function Cell(obj) {
     }
   }
 
+  // get the grid coords for the LOD texture
   self.getGridCoords = function() {
     return {
       x: Math.floor(self.state.position.x / lod.grid.size.x),
@@ -357,56 +359,79 @@ function Cell(obj) {
         fullCell: config.lodCellSize,
       },
     })
-    self.mutateBuffers();
+    // mutate the cell buffer attributes
+    var attrs = ['textureIndex', 'textureOffset', 'size'];
+    for (var i=0; i<attrs.length; i++) {
+      self.mutateBuffer(attrs[i]);
+    }
   }
 
   // deactivate the cell in LOD by mutating its state
   self.deactivate = function() {
-    var position = Object.assign({}, self.state.position),
-        target = Object.assign({}, self.state.target);
+    // pass in the current position and target in case they've changed
+    var lastState = Object.assign({}, self.state);
     self.state = Object.assign({}, self.default, {
-      position: position,
-      target: target,
+      position: lastState.position,
+      target: lastState.target,
     });
-    self.mutateBuffers();
+    // mutate the cell buffer attributes
+    var attrs = ['textureIndex', 'textureOffset', 'size'];
+    for (var i=0; i<attrs.length; i++) {
+      self.mutateBuffer(attrs[i]);
+    }
   }
 
-  // use the cell's state to mutate its attribute buffers
-  self.mutateBuffers = function() {
+  self.mutateBuffer = function(attr) {
     // find the buffer attributes that describe this cell to the GPU
     var group = world.scene.children[0],
         attrs = group.children[self.drawCallIdx].geometry.attributes;
-    // find this cell's position in the LOD texture
-    var posInTex = {
-      x: self.state.posInTex.x / self.state.size.fullCell,
-      y: self.state.posInTex.y / self.state.size.fullCell,
+
+    switch(attr) {
+      case 'textureIndex':
+        // set the texIdx to -1 to read from the uniforms.lodTexture
+        attrs.textureIndex.array[self.idxInDrawCall] = self.state.texIdx;
+        return;
+
+      case 'textureOffset':
+        // find cell's position in the LOD texture then set x, y tex offsets
+        var x = self.state.posInTex.x / self.state.size.fullCell,
+            y = self.state.posInTex.y / self.state.size.fullCell;
+        // set the x then y texture offsets for this cell
+        attrs.textureOffset.array[(self.idxInDrawCall * 2)] = x;
+        attrs.textureOffset.array[(self.idxInDrawCall * 2) + 1] = y;
+        return;
+
+      case 'size':
+        // set the updated lod cell size
+        attrs.size.array[self.idxInDrawCall] = self.state.size.inTexture;
+        return;
+
+      case 'translation':
+        // set the cell's translation
+        attrs.translation.array[(self.idxInDrawCall * 3)] = self.state.position.x;
+        attrs.translation.array[(self.idxInDrawCall * 3) + 1] = self.state.position.y;
+        attrs.translation.array[(self.idxInDrawCall * 3) + 2] = self.state.position.z;
+        return;
+
+      case 'target':
+        // set the cell's target translation
+        attrs.target.array[(self.idxInDrawCall * 3)] = self.state.target.x;
+        attrs.target.array[(self.idxInDrawCall * 3) + 1] = self.state.target.y;
+        attrs.target.array[(self.idxInDrawCall * 3) + 2] = self.state.target.z;
+        return;
     }
-    // set the texIdx to -1 to read from the uniforms.lodTexture
-    attrs.textureIndex.array[self.idxInDrawCall] = self.state.texIdx;
-    // set the x then y texture offsets for this cell
-    attrs.textureOffset.array[(self.idxInDrawCall * 2)] = posInTex.x;
-    attrs.textureOffset.array[(self.idxInDrawCall * 2) + 1] = posInTex.y;
-    // set the updated lod cell size
-    attrs.size.array[self.idxInDrawCall] = self.state.size.inTexture;
-    // set the cell's translation
-    attrs.translation.array[(self.idxInDrawCall * 3)] = self.state.position.x;
-    attrs.translation.array[(self.idxInDrawCall * 3) + 1] = self.state.position.y;
-    attrs.translation.array[(self.idxInDrawCall * 3) + 2] = self.state.position.z;
-    // set the cell's target translation
-    attrs.target.array[(self.idxInDrawCall * 3)] = self.state.target.x;
-    attrs.target.array[(self.idxInDrawCall * 3) + 1] = self.state.target.y;
-    attrs.target.array[(self.idxInDrawCall * 3) + 2] = self.state.target.z;
   }
 
   self.posInAtlas = self.getPosInAtlas();
+  self.layouts = self.getLayouts();
   self.default = {
-    position: self.getPosition(),
-    target: self.getPosition(),
+    position: self.layouts.scatter,
+    target: self.layouts.scatter,
     size: self.getSize(),
     texIdx: obj.texIdx,
     posInTex: self.getPosInTex(),
     isLarge: false,
-  }
+  };
   self.state = Object.assign({}, self.default);
   self.gridCoords = self.getGridCoords();
   self.updateParentBoundingBox();
@@ -493,7 +518,12 @@ function World() {
   self.addEventListeners = function() {
     self.addResizeListener();
     self.addLostContextListener();
+    self.addLayoutListeners();
   }
+
+  /**
+  * Resize event listeners
+  **/
 
   self.addResizeListener = function() {
     window.addEventListener('resize', function() {
@@ -513,6 +543,21 @@ function World() {
     delete self.resizeTimeout;
   }
 
+  // set the point size scalar as a uniform on all meshes
+  self.setPointScalar = function() {
+    // handle case of drag before scene renders
+    if (!self.scene || !self.scene.children.length) return;
+    var scalar = self.getPointScale();
+    var meshes = self.scene.children[0].children;
+    for (var i=0; i<meshes.length; i++) {
+      meshes[i].material.uniforms.pointScale.value = scalar;
+    }
+  }
+
+  /**
+  * Lost context event listener
+  **/
+
   // listen for loss of webgl context; to manually lose context:
   // world.renderer.context.getExtension('WEBGL_lose_context').loseContext();
   self.addLostContextListener = function() {
@@ -523,15 +568,23 @@ function World() {
     });
   }
 
-  // set the point size scalar as a uniform on all meshes
-  self.setPointScalar = function() {
-    // handle case of drag before scene renders
-    if (!self.scene || !self.scene.children.length) return;
-    var scalar = self.getPointScale();
-    var meshes = self.scene.children[0].children;
-    for (var i=0; i<meshes.length; i++) {
-      meshes[i].material.uniforms.pointScale.value = scalar;
+  /**
+  * Layout transition event listeners
+  **/
+
+  self.addLayoutListeners = function() {
+    find('#grid-icon').addEventListener('click',  self.onLayoutButtonClick);
+    find('#scatter-icon').addEventListener('click',  self.onLayoutButtonClick);
+  }
+
+  self.onLayoutButtonClick = function(e) {
+    var elems = document.querySelectorAll('.layout-icons img');
+    for (var i=0; i<elems.length; i++) {
+      elems[i].className = elems[i].className.replace(' active', '');
     }
+    e.target.className += ' active';
+    var layout = e.target.id.includes('grid') ? 'grid' : 'scatter';
+    self.transitionLayout(layout);
   }
 
   /**
@@ -847,36 +900,66 @@ function World() {
   * Transition point positions
   **/
 
-  self.transitionPositions = function() {
-    // animate the time uniform on each drawn mesh
+  self.transitionLayout = function(layout) {
+    // select the layout to use; must be on Cell.layouts
+    layout = layout ? layout : 'grid';
+    // set the target locations of each point
+    data.cells.forEach(function(cell) {
+      cell.state.target = Object.assign({}, cell.layouts[layout]);
+    })
+    // iterate over each mesh to be updated
     var meshes = self.scene.children[0].children;
     for (var i=0; i<meshes.length; i++) {
-      var time = meshes[i].material.uniforms.time;
-      TweenLite.to(time, config.transitionDuration, {value: 1});
-    }
-    // set the target locations of each point
-    // TODO: read from user-data
-    data.cells.forEach(function(cell) {
-      cell.state.target = Object.assign({}, {
-        x: Math.random() * 10000 - 5000,
-        y: Math.random() * 10000 - 5000,
-        z: Math.random() * 10000 - 5000,
+      var mesh = meshes[i],
+          time = mesh.material.uniforms.time,
+          attr = mesh.geometry.attributes.target,
+          iter = 0,
+          start = i * config.cellsPerDrawCall, // start and end cells
+          end = (i+1) * config.cellsPerDrawCall,
+          cells = data.cells.slice(start, end);
+      // transition the time attribute on the mesh
+      TweenLite.to(
+        time,
+        config.transitionDuration, {
+          value: 1,
+          ease: Power2.easeInOut,
+        });
+      // update the target positional attribute
+      cells.forEach(function(cell) {
+        attr.array[iter++] = cell.state.target.x;
+        attr.array[iter++] = cell.state.target.y;
+        attr.array[iter++] = cell.state.target.z;
       })
+      attr.needsUpdate = true;
+      // set the cell's new position to enable future transitions
+      setTimeout(self.onTransitionComplete.bind(null, {
+        mesh: mesh,
+        cells: cells,
+      }), config.transitionDuration * 1000);
+    }
+  }
+
+  // reset the cell translation buffers, update cell state
+  // and reset the time uniforms after a positional transition completes
+  self.onTransitionComplete = function(obj) {
+    var attr = obj.mesh.geometry.attributes.translation,
+        iter = 0;
+    obj.cells.forEach(function(cell) {
+      cell.state.position = {
+        x: cell.state.target.x,
+        y: cell.state.target.y,
+        z: cell.state.target.z,
+      }
+      attr.array[iter++] = cell.state.position.x;
+      attr.array[iter++] = cell.state.position.y;
+      attr.array[iter++] = cell.state.position.z;
     })
-    // mutate the cell attribute buffers
-    var drawCalls = Math.floor(data.cells.length / config.cellsPerDrawCall) + 1;
-    for (var i=0; i<drawCalls; i++) {
-      var targetAttr = meshes[i].geometry.attributes.target;
-      var targetIterator = 0;
-      var start = i * config.cellsPerDrawCall;
-      var end = (i+1) * config.cellsPerDrawCall;
-      data.cells.slice(start, end).forEach(function(cell) {
-        targetAttr.array[targetIterator++] = cell.state.target.x;
-        targetAttr.array[targetIterator++] = cell.state.target.y;
-        targetAttr.array[targetIterator++] = cell.state.target.z;
-      })
-      targetAttr.needsUpdate = true;
-    }
+    // update the positional attribute and time uniform on the mesh
+    attr.needsUpdate = true;
+    obj.mesh.material.uniforms.time = {
+      type: 'f',
+      value: 0,
+    };
   }
 
   /**
@@ -887,7 +970,7 @@ function World() {
     self.fly({
       x: world.center.x,
       y: world.center.y,
-      z: -2000,
+      z: -3000,
     })
     setTimeout(function() {
       self.fly({
@@ -903,7 +986,7 @@ function World() {
     var target = {
       x: obj.x,
       y: obj.y,
-      z: obj.z - 400,
+      z: obj.z - 1,
     }
     // slerp between the camera's current and desired future positions
     var quaternion = self.camera.quaternion.clone();
@@ -962,19 +1045,20 @@ function World() {
 }
 
 /**
-* Create mouse event handler
+* Create mouse event handler using gpu picking
 **/
 
 function Selector() {
   var self = this;
   self.scene = new THREE.Scene();
   self.mouse = new THREE.Vector2();
-  self.lastMouse = new THREE.Vector2();
+  self.mouseDown = new THREE.Vector2();
   self.tex = null;
   self.mesh = null;
   self.selected = null;
   self.geometries = [];
   self.meshes = [];
+  self.modal = false;
 
   /**
   * Set the current mouse coordinates in client coordinates
@@ -984,6 +1068,70 @@ function Selector() {
   self.onMouseMove = function(e) {
     self.mouse.x = e.clientX;
     self.mouse.y = e.clientY;
+  }
+
+  // on canvas mousedown store the coords where user moused down
+  self.onMouseDown = function(e) {
+    self.mouseDown.x = e.clientX;
+    self.mouseDown.y = e.clientY;
+  }
+
+  // on canvas click, show detailed modal with clicked image
+  self.onMouseUp = function(e) {
+    // if click hit background, close the modal
+    if (e.target.className == 'modal-image-sizer' ||
+        e.target.className == 'modal-content' ||
+        e.target.className == 'backdrop') {
+      self.closeModal();
+      return;
+    }
+    // if mouseup isn't in the last mouse position, user is dragging
+    // if the click wasn't on the canvas, quit
+    if (e.clientX !== self.mouseDown.x || e.clientY !== self.mouseDown.y ||
+        self.selected == -1 || e.target.id !== 'pixplot-canvas') {
+      return;
+    }
+    self.showModal(self.selected);
+  }
+
+  // called via self.onClick; shows the full-size selected image
+  self.showModal = function(selected) {
+    // select elements that will be updated
+    var img = find('#selected-image'),
+        title = find('#image-title'),
+        text = find('#image-text'),
+        template = find('#tag-template'),
+        tags = find('#meta-tags'),
+        modal = find('#selected-image-modal'),
+        meta = find('#selected-image-meta');
+    // fetch data for the selected record
+    var filename = data.cells[selected].name + '.json';
+    get(config.dataUrl + '/metadata/' + filename, function(data) {
+      data = JSON.parse(data);
+      var image = new Image();
+      image.onload = function() {
+        // compile the template and remove whitespace for FF formatting
+        var compiled = _.template(template.textContent)({tags: data.tags});
+        compiled = compiled.replace(/\s\s+/g, '');
+        // set metadata attributes
+        img.src = data.src ? data.src : '';
+        title.textContent = data.title ? data.title : '';
+        text.textContent = data.text ? data.text : '';
+        tags.innerHTML = compiled ? compiled : '';
+        if (data.src)   modal.style.display = 'block';
+        if (data.title || data.text || data.tags) meta.style.display = 'block';
+      }
+      // set or get the image src and load the image
+      if (!data.src) data.src = config.dataUrl + 'originals/' + data.filename;
+      image.src = data.src;
+    });
+  }
+
+  self.closeModal = function() {
+    var modal = find('#selected-image-modal'),
+        meta = find('#selected-image-meta');
+    modal.style.display = 'none';
+    meta.style.display = 'none';
   }
 
   // find the world coordinates of the last mouse position
@@ -1005,6 +1153,8 @@ function Selector() {
   // get the mesh in which to render picking elements
   self.init = function() {
     world.renderer.domElement.addEventListener('mousemove', self.onMouseMove);
+    world.renderer.domElement.addEventListener('mousedown', self.onMouseDown);
+    document.body.addEventListener('mouseup', self.onMouseUp);
     for (var i=0; i<self.meshes.length; i++) {
       var mesh = self.meshes[i].clone();
       var material = world.getShaderMaterial({ useColor: 1.0, })

@@ -71,6 +71,13 @@
       return scaled;
     }
 
+    float scalePointZ(in vec3 pos, in vec3 cameraPosition) {
+      float zDelta = pow(pos[2] - cameraPosition[2], 2.0);
+      float delta  = pow(zDelta, 0.5);
+      float scaled = pointScale / delta;
+      return scaled;
+    }
+
     void main() {
       // pass varyings to fragment shader
       vTextureIndex = textureIndex;
@@ -85,7 +92,7 @@
       gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
 
       // use the unscaled point position and camera position to set point size
-      gl_PointSize = scalePoint(pos, cameraPosition);
+      gl_PointSize = scalePointZ(pos, cameraPosition);
     }
     </script>
 
@@ -130,12 +137,23 @@
       }
     }
     </script>
-
+    <!-- Header -->
     <header class='header'>
       <img class='logo' src='assets/images/dhlab-logo.svg' alt='DHLab logo' />
       <div class='app-name'>PixPlot</div>
       <div class='tagline'>Image fields in a Local Collection</div>
+      <div class='header-controls'>
+        <div class='layout-icons'>
+          <img id='grid-icon'
+            src='assets/images/icons/grid-layout-icon.svg'
+            class='button'>
+          <img id='scatter-icon'
+            src='assets/images/icons/scatter-layout-icon.svg'
+            class='button active'>
+        </div>
+      </div>
     </header>
+    <!-- Loader -->
     <div id='loader-scene'>
       <p class='welcome'>This page visualizes a large image collection within an interactive WebGL scene. Each image was processed with an <a href='https://www.cs.unc.edu/~wliu/papers/GoogLeNet.pdf' target='_blank'>Inception</a> Convolutional Neural Network, trained on <a href='http://image-net.org/challenges/LSVRC/2012/' target='_blank'>ImageNet 2012</a>, and projected into a two-dimensional manifold with the <a href='https://github.com/lmcinnes/umap' target='_blank'>UMAP</a> algorithm such that similar images appear proximate to one another.</p>
       <div class='loader-container'>
@@ -146,11 +164,12 @@
       </div>
       <button id='enter-button'>Enter</button>
     </div>
+    <!-- Hotspot Navigation -->
     <nav>
       <div class='nav-inner'>
         <h2>Hotspots</h2>
         <div id='hotspots'></div>
-        <script type='text/html' id='hotsplot-template'>
+        <script type='text/html' id='hotspot-template'>
           <% _.forEach(hotspots, function(hotspot) { %>
             <div class='hotspot'>
               <div class='background-image'
@@ -161,6 +180,44 @@
         </script>
       </div>
     </nav>
+    <!-- Selected Image -->
+    <div id='selected-image-modal'>
+      <div class='backdrop'></div>
+      <div class='modal-image-sizer'>
+        <div class='modal-content'>
+          <div id='close-modal'></div>
+          <img id='selected-image' />
+          <div class='icons'>
+            <img src='assets/images/icons/eye-icon.png' class='eye-icon' />
+            <img src='assets/images/icons/download-icon.png' class='download-icon' />
+            <img src='assets/images/icons/copyright-icon.png' class='copyright-icon' />
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Selected Image Metadata -->
+    <div id='selected-image-meta'>
+      <div class='meta-content'>
+        <div class='meta-left'>
+          <div id='image-title'>Full Image Title Here</div>
+          <div id='image-text'>There are many variations of passages of Lorem Ipsum available, but the majority have suffered alteration in some form, by injected humour, or randomised words which don't look even slightly believable. If you are going to use a passage of Lorem Ipsum, you need to be sure there isn't anything embarrassing hidden in the middle of text.</div>
+        </div>
+        <div class='meta-right'>
+          <script type='text/html' id='tag-template'>
+            <% _.forEach(tags, function(tag) { %>
+              <div class='meta-tag'><%- tag %></div>
+            <% }); %>
+          </script>
+          <div id='meta-tags'></div>
+          <div class='meta-input-container'>
+            <input id='meta-input' placeholder='New tags' />
+            <div id='meta-input-add'>Add</div>
+            <div class='pencil-icon'></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Webgl / Noscript Warnings -->
     <div id='webgl-not-available'>
       <span class='browser-message'>Sorry, your browser is not able to load a WebGL scene currently. Please check your browser settings and try again.</span>
     </div>
