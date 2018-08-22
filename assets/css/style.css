@@ -89,6 +89,31 @@ a {
 }
 
 /**
+* Header Controls
+**/
+
+.header-controls {
+  display: inline-block;
+  float: right;
+  margin: 0 50px;
+}
+
+.layout-icons {
+  margin: 20px 40px 0;
+}
+
+.layout-icons img {
+  width: 21px;
+  margin: 0 8px;
+  opacity: 0.45;
+  cursor: pointer;
+}
+
+.layout-icons img.active {
+  opacity: 1;
+}
+
+/**
 * Nav
 **/
 
@@ -117,6 +142,7 @@ nav.hidden {
   max-height: 100%;
   overflow: auto;
   padding: 10px;
+  background: #222;
 }
 
 nav h2 {
@@ -157,7 +183,7 @@ nav h2 {
   color: #fff;
   padding: 10%;
   transition: transform 2s;
-  z-index: 2;
+  z-index: 3;
   background: #000;
 }
 
@@ -218,4 +244,194 @@ noscript {
   color: #fff;
   padding: 12px 17px;
   font-size: 17px;
+}
+
+/**
+* Selected Image modal
+**/
+
+#selected-image-modal {
+  position: absolute;
+  top: 60px;
+  left: 100px;
+  right: 0;
+  bottom: 0;
+  text-align: center;
+  height: 100%;
+}
+
+.backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #000;
+  opacity: 0.7;
+}
+
+.modal-image-sizer {
+  position: absolute;
+  top: 40px;
+  left: 0;
+  bottom: 260px;
+  right: 0;
+}
+
+.modal-content {
+  display: inline-block;
+  height: 100%;
+  transition: transform 0.5s;
+}
+
+#selected-image {
+  max-height: 100%;
+  padding: 25px;
+  background: #333;
+  box-sizing: border-box;
+}
+
+/**
+* Selected Image Actions
+**/
+
+.icons {
+  display: inline-block;
+  width: 50px;
+  position: relative;
+  bottom: 20px;
+}
+
+.icons * {
+  height: 32px;
+  background: #cecbcb;
+  padding: 6px;
+  box-sizing: border-box;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/**
+* Selected Image Meta
+**/
+
+#selected-image-meta {
+  position: absolute;
+  bottom: 0;
+  left: 100px;
+  right: 0;
+  z-index: 2;
+}
+
+.meta-content {
+  padding: 24px 40px;
+  background: #353535;
+  color: #f9f9f9;
+  transition: transform 0.3s;
+}
+
+#image-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+  font-size: 16px;
+}
+
+#image-text {
+  font-size: 13px;
+  font-weight: 300;
+  max-height: 71px;
+  overflow: auto;
+  padding-right: 15px;
+}
+
+.meta-left {
+  width: 50%;
+  display: inline-block;
+  padding-right: 100px;
+}
+
+.meta-right {
+  display: inline-block;
+  vertical-align: top;
+  max-width: 40%;
+}
+
+@media (max-width: 1250px) {
+  .meta-left: {
+    width: 40%;
+  }
+
+  .meta-right {
+    width: 30%;
+  }
+}
+
+@media (max-width: 800px) {
+  .meta-left {
+    width: 100%;
+  }
+
+  .meta-right {
+    width: 100%;
+  }
+}
+
+/**
+* Metadata tags
+**/
+
+#meta-tags {
+  margin: 0 -2px 10px;
+}
+
+.meta-tag {
+  display: inline-block;
+  padding: 2px 6px;
+  margin: 2px;
+  background: #555;
+  border-radius: 5px;
+  font-size: 13px;
+  font-weight: 300;
+}
+
+/**
+* Metadata input
+**/
+
+.meta-input-container {
+  width: 250px;
+}
+
+.meta-input-container * {
+  vertical-align: top;
+}
+
+#meta-input {
+  background: #d8d8d8;
+  border: none;
+  padding: 6px;
+  font-size: 14px;
+}
+
+#meta-input::placeholder {
+  color: #888;
+  opacity: 1;
+}
+
+#meta-input-add {
+  background: #666;
+  display: inline-block;
+  padding: 0.55em 10px;
+  margin-left: -4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+/**
+* Show / Hide Selected Image
+**/
+
+#selected-image-modal,
+#selected-image-meta {
+  display: none;
 }

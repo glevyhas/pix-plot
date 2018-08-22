@@ -281,7 +281,7 @@ function Cell(obj) {
     var perSide = obj.data.gridSideCells,
         x = self.idx % perSide,
         y = Math.floor(self.idx / perSide),
-        scalar = config.cellSize * 0.9,
+        scalar = config.cellSize * 0.7,
         center = (scalar * obj.data.gridSideCells)/2;
     return {
       grid: {
@@ -795,7 +795,7 @@ function World() {
           type: 't',
           value: lod.tex.texture,
         },
-        time: {
+        transitionPercent: {
           type: 'f',
           value: 0,
         },
@@ -806,7 +806,7 @@ function World() {
         useColor: {
           type: 'f',
           value: obj.useColor,
-        }
+        },
       },
       vertexShader: vertex,
       fragmentShader: fragment,
@@ -911,15 +911,15 @@ function World() {
     var meshes = self.scene.children[0].children;
     for (var i=0; i<meshes.length; i++) {
       var mesh = meshes[i],
-          time = mesh.material.uniforms.time,
+          percent = mesh.material.uniforms.transitionPercent,
           attr = mesh.geometry.attributes.target,
           iter = 0,
           start = i * config.cellsPerDrawCall, // start and end cells
           end = (i+1) * config.cellsPerDrawCall,
           cells = data.cells.slice(start, end);
-      // transition the time attribute on the mesh
+      // transition the transitionPercent attribute on the mesh
       TweenLite.to(
-        time,
+        percent,
         config.transitionDuration, {
           value: 1,
           ease: Power2.easeInOut,
@@ -956,7 +956,7 @@ function World() {
     })
     // update the positional attribute and time uniform on the mesh
     attr.needsUpdate = true;
-    obj.mesh.material.uniforms.time = {
+    obj.mesh.material.uniforms.transitionPercent = {
       type: 'f',
       value: 0,
     };
@@ -1055,7 +1055,6 @@ function Selector() {
   self.mouseDown = new THREE.Vector2();
   self.tex = null;
   self.mesh = null;
-  self.selected = null;
   self.geometries = [];
   self.meshes = [];
   self.modal = false;
@@ -1078,6 +1077,7 @@ function Selector() {
 
   // on canvas click, show detailed modal with clicked image
   self.onMouseUp = function(e) {
+    var selected = self.select();
     // if click hit background, close the modal
     if (e.target.className == 'modal-image-sizer' ||
         e.target.className == 'modal-content' ||
@@ -1088,10 +1088,10 @@ function Selector() {
     // if mouseup isn't in the last mouse position, user is dragging
     // if the click wasn't on the canvas, quit
     if (e.clientX !== self.mouseDown.x || e.clientY !== self.mouseDown.y ||
-        self.selected == -1 || e.target.id !== 'pixplot-canvas') {
+        selected == -1 || e.target.id !== 'pixplot-canvas') {
       return;
     }
-    self.showModal(self.selected);
+    self.showModal(selected);
   }
 
   // called via self.onClick; shows the full-size selected image
@@ -1136,17 +1136,17 @@ function Selector() {
 
   // find the world coordinates of the last mouse position
   self.getMouseWorldCoords = function() {
-    var vector = new THREE.Vector3();
-    var camera = world.camera;
-    var mouse = new THREE.Vector2();
+    var vector = new THREE.Vector3(),
+        camera = world.camera,
+        mouse = new THREE.Vector2();
     mouse.x = (self.mouse.x / window.innerWidth) * 2 - 1;
     mouse.y = (self.mouse.y /  window.innerHeight) * 2 + 1;
     vector.set(mouse.x, mouse.y, 0.5);
     vector.unproject(camera);
-    var direction = vector.sub(camera.position).normalize();
-    var distance = - camera.position.z / direction.z;
-    var scaled = direction.multiplyScalar(distance);
-    var coords = camera.position.clone().add(scaled);
+    var direction = vector.sub(camera.position).normalize(),
+        distance = - camera.position.z / direction.z,
+        scaled = direction.multiplyScalar(distance),
+        coords = camera.position.clone().add(scaled);
     console.log(' * selector is located at', coords);
   }
 
@@ -1168,17 +1168,21 @@ function Selector() {
     world.renderer.render(self.scene, world.camera, self.tex);
   }
 
-  self.select = function() {
+  self.select = function(obj) {
     if (!world) return;
     self.render();
+    var mouse = {
+      x: obj && obj.x ? obj.x : self.mouse.x,
+      y: obj && obj.x ? obj.y : self.mouse.y,
+    }
     // read the texture color at the current mouse pixel
     var pixelBuffer = new Uint8Array(4),
-        x = self.mouse.x,
-        y = self.tex.height - self.mouse.y;
+        x = mouse.x,
+        y = self.tex.height - mouse.y;
     world.renderer.readRenderTargetPixels(self.tex, x, y, 1, 1, pixelBuffer);
-    var id = (pixelBuffer[0] << 16) | (pixelBuffer[1] << 8) | (pixelBuffer[2]);
-    // ids use id+1 as the id of null selections is 0
-    self.selected = id-1;
+    var id = (pixelBuffer[0] << 16) | (pixelBuffer[1] << 8) | (pixelBuffer[2]),
+        selected = id-1; // ids use id+1 as the id of null selections is 0
+    return selected;
   }
 
   // get the texture on which off-screen rendering will happen

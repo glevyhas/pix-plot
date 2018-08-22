@@ -1,0 +1,17 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns='http://www.w3.org/2000/svg'
+	xmlns:xlink='http://www.w3.org/1999/xlink' x='0px' y='0px'
+	viewBox='0 0 341.3 341.3'
+	style='enable-background:new 0 0 341.3 341.3;'
+	xml:space='preserve'>
+	<style>
+		rect {fill: #aaa}
+	</style>
+	<rect x='92.7' y='12.7' width='78' height='78'/>
+	<rect x='118.7' y='201' width='78' height='78'/>
+	<rect x='243.7' y='12.7' width='78' height='78'/>
+	<rect x='18' y='250' width='78' height='78'/>
+	<rect x='254.7' y='135.7' width='78' height='78'/>
+	<rect x='45' y='119.7' width='78' height='78'/>
+	<rect x='232.7' y='250' width='78' height='78'/>
+</svg>
