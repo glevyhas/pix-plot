@@ -303,8 +303,6 @@ Cell.prototype.getDefaultState = function(obj) {
   };
 }
 
-
-
 Cell.prototype.getPosInAtlas = function() {
   var self = this;
   var perSide = config.cellsPerAtlasSide;
@@ -347,8 +345,6 @@ Cell.prototype.getSize = function(obj) {
     inTexture: config.cellSize / config.textureSize,
   }
 }
-
-
 
 Cell.prototype.getPosInTex = function(obj) {
   var self = this;
@@ -481,6 +477,7 @@ function World() {
   self.center = {};
   self.state = {
     flying: false,
+    transitioning: false,
   }
 
   /**
@@ -606,6 +603,7 @@ function World() {
   }
 
   self.onLayoutButtonClick = function(e) {
+    if (self.state.transitioning) return;
     var elems = document.querySelectorAll('.layout-icons img');
     for (var i=0; i<elems.length; i++) {
       elems[i].className = elems[i].className.replace(' active', '');
@@ -936,6 +934,7 @@ function World() {
   **/
 
   self.transitionLayout = function(layout) {
+    self.state.transitioning = true;
     // select the layout to use; must be on Cell.layouts
     layout = layout ? layout : 'grid';
     // set the target locations of each point
@@ -995,6 +994,7 @@ function World() {
       type: 'f',
       value: 0,
     };
+    self.state.transitioning = false;
   }
 
   /**
