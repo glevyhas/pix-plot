@@ -2,6 +2,7 @@
 * Config
 **/
 
+// Use self as alias for this for context-invariant introspection
 function Config() {
   var self = this;
   self.dataUrl = 'output/'; // path to location where data lives
@@ -24,17 +25,19 @@ function Config() {
   self.cellsPerDrawCall = null;
   self.transitionDuration = 3.5;
   self.flyDuration = 3.5;
-
-  self.getCellsPerDrawCall = function() {
-    // case where vertices per draw call is limiting factor
-    var vertexLimited = webgl.limits.indexedElements;
-    // case where textures are limiting factor (-1 to fit high res tex in calls)
-    var textureLimited = (webgl.limits.textureCount - 1) * self.cellsPerTex;
-    return Math.min(vertexLimited, textureLimited);
-  }
-
   self.cellsPerDrawCall = self.getCellsPerDrawCall();
 }
+
+// Determine how many cells can be drawn in each draw call
+Config.prototype.getCellsPerDrawCall = function() {
+  var self = this;
+  return Math.min(
+    // case where items per draw call limits
+    webgl.limits.indexedElements,
+    // case where textures are limiting factor (-1 to fit high res tex in calls)
+    (webgl.limits.textureCount - 1) * self.cellsPerTex,
+  );
+};
 
 /**
 * Data
@@ -63,58 +66,62 @@ function Data() {
       max: Number.NEGATIVE_INFINITY,
     },
   };
-
-  // Load JSON with cell data
-  self.load = function() {
-    get(self.root + self.file, function(data) {
-      var json = JSON.parse(data);
-      self.centroids = json.centroids;
-      self.positions = json.positions;
-      self.atlasCount = json.atlas_counts['32px'];
-      self.textureCount = Math.ceil(self.atlasCount / config.atlasesPerTex);
-      self.gridSideCells = Math.ceil(Math.pow(self.positions.length, 0.5));
-      // load each texture for this data set
-      for (var i=0; i<self.textureCount; i++) {
-        self.textures.push(new Texture({
-          data: self,
-          idx: i,
-          positions: self.getTexturePositions(i),
-          onProgress: self.onTextureProgress,
-          onLoad: self.onTextureLoad,
-          atlasCount: self.getAtlasCount(i),
-        }))
-      }
-    })
-  }
-
-  // Get an array of the position data to pass to the texture at idx `idx`
-  self.getTexturePositions = function(texIdx) {
-    var chunk = config.cellsPerAtlas * config.atlasesPerTex,
-        start = chunk * texIdx,
-        end = chunk * (texIdx + 1);
-    return self.positions.slice(start, end);
-  }
-
-  // When a texture's progress updates, update the aggregate progress
-  self.onTextureProgress = function(texIdx, progress) {
-    self.textureProgress[texIdx] = progress / self.textures[texIdx].atlasCount;
-    loader.updateProgress();
-  }
-
-  // When a texture loads, draw plot if all have loaded
-  self.onTextureLoad = function(texIdx) {
-    self.loadedTextures += 1;
-    loader.updateProgress();
-  }
-
-  // Get the number of atlases to include in texture at index `idx`
-  self.getAtlasCount = function(texIdx) {
-    return self.atlasCount / config.atlasesPerTex > (texIdx + 1)
-      ? config.atlasesPerTex
-      : self.atlasCount % config.atlasesPerTex;
-  }
-
   self.load();
+}
+
+// Get an array of the position data to pass to the texture at idx `idx`
+Data.prototype.getTexturePositions = function(texIdx) {
+  var self = this;
+  var chunk = config.cellsPerAtlas * config.atlasesPerTex,
+      start = chunk * texIdx,
+      end = chunk * (texIdx + 1);
+  return self.positions.slice(start, end);
+}
+
+// When a texture's progress updates, update the aggregate progress
+Data.prototype.onTextureProgress = function(texIdx, progress) {
+  var self = this;
+  self.textureProgress[texIdx] = progress / self.textures[texIdx].atlasCount;
+  loader.updateProgress();
+}
+
+// When a texture loads, draw plot if all have loaded
+Data.prototype.onTextureLoad = function(texIdx) {
+  var self = this;
+  self.loadedTextures += 1;
+  loader.updateProgress();
+}
+
+// Get the number of atlases to include in texture at index `idx`
+Data.prototype.getAtlasCount = function(texIdx) {
+  var self = this;
+  return self.atlasCount / config.atlasesPerTex > (texIdx + 1)
+    ? config.atlasesPerTex
+    : self.atlasCount % config.atlasesPerTex;
+}
+
+// Load json data with chart element positions
+Data.prototype.load = function() {
+  var self = this;
+  get(self.root + self.file, function(data) {
+    var json = JSON.parse(data);
+    self.centroids = json.centroids;
+    self.positions = json.positions;
+    self.atlasCount = json.atlas_counts['32px'];
+    self.textureCount = Math.ceil(self.atlasCount / config.atlasesPerTex);
+    self.gridSideCells = Math.ceil(Math.pow(self.positions.length, 0.5));
+    // load each texture for this data set
+    for (var i=0; i<self.textureCount; i++) {
+      self.textures.push(new Texture({
+        data: self,
+        idx: i,
+        positions: self.getTexturePositions(i),
+        onProgress: self.onTextureProgress.bind(self),
+        onLoad: self.onTextureLoad.bind(self),
+        atlasCount: self.getAtlasCount(i),
+      }));
+    };
+  })
 }
 
 /**
@@ -133,71 +140,74 @@ function Texture(obj) {
   self.loadedAtlases = 0;
   self.canvas = null;
   self.ctx = null;
-
-  self.setCanvas = function() {
-    self.canvas = getElem('canvas', {
-      width: config.textureSize,
-      height: config.textureSize,
-      id: 'texture-' + self.idx,
-    })
-    self.ctx = self.canvas.getContext('2d');
-  }
-
-  self.load = function() {
-    self.setCanvas();
-    for (var i=0; i<self.atlasCount; i++) {
-      self.atlases.push(new Atlas({
-        data: obj.data,
-        idx: (config.atlasesPerTex * self.idx) + i,
-        positions: self.getAtlasPositions(i),
-        size: config.atlasSize,
-        texIdx: self.idx,
-        onProgress: self.onAtlasProgress,
-        onLoad: self.onAtlasLoad,
-      }))
-    }
-  }
-
-  // Get an array of the position data for the atlas at position `idx`
-  self.getAtlasPositions = function(atlasIdx) {
-    var start = config.cellsPerAtlas * atlasIdx,
-        end = config.cellsPerAtlas * (atlasIdx + 1);
-    return self.positions.slice(start, end);
-  }
-
-  // Log the load progress of each atlas file
-  self.onAtlasProgress = function(idx, progress) {
-    self.atlasProgress[idx] = progress;
-    var textureProgress = valueSum(self.atlasProgress);
-    self.onProgress(self.idx, textureProgress);
-  }
-
-  // Add each cell from the loaded atlas to the texture's canvas
-  self.onAtlasLoad = function(atlas) {
-    // Add the loaded atlas file the texture's canvas
-    var atlasSize = config.atlasSize,
-        textureSize = config.textureSize,
-        idx = atlas.idx % config.atlasesPerTex;
-    // Get x and y offsets of this atlas within the canvas texture
-    var atlasX = (idx * atlasSize) % textureSize,
-        atlasY = Math.floor((idx * atlasSize) / textureSize) * atlasSize;
-    // Add each cell from the atlas (source) to the canvas (destination)
-    atlas.cells.forEach(function(cell) {
-      var sX = cell.posInAtlas.x + cell.state.size.leftPad,
-          sY = cell.posInAtlas.y + cell.state.size.topPad,
-          sW = cell.state.size.w,
-          sH = cell.state.size.h,
-          dX = sX + atlasX,
-          dY = sY + atlasY;
-      self.ctx.drawImage(atlas.image, sX, sY, sW, sH, dX, dY, sW, sH);
-    })
-    // If all atlases are loaded, build the texture
-    if (++self.loadedAtlases == self.atlasCount) {
-      self.onLoad(self.idx);
-    }
-  }
-
   self.load();
+}
+
+Texture.prototype.setCanvas = function() {
+  var self = this;
+  self.canvas = getElem('canvas', {
+    width: config.textureSize,
+    height: config.textureSize,
+    id: 'texture-' + self.idx,
+  })
+  self.ctx = self.canvas.getContext('2d');
+}
+
+Texture.prototype.load = function() {
+  var self = this;
+  self.setCanvas();
+  for (var i=0; i<self.atlasCount; i++) {
+    self.atlases.push(new Atlas({
+      idx: (config.atlasesPerTex * self.idx) + i,
+      positions: self.getAtlasPositions(i),
+      size: config.atlasSize,
+      texIdx: self.idx,
+      onProgress: self.onAtlasProgress.bind(self),
+      onLoad: self.onAtlasLoad.bind(self),
+    }))
+  }
+}
+
+// Get an array of the position data for the atlas at position `idx`
+Texture.prototype.getAtlasPositions = function(atlasIdx) {
+  var self = this;
+  var start = config.cellsPerAtlas * atlasIdx,
+      end = config.cellsPerAtlas * (atlasIdx + 1);
+  return self.positions.slice(start, end);
+}
+
+// Log the load progress of each atlas file
+Texture.prototype.onAtlasProgress = function(idx, progress) {
+  var self = this;
+  self.atlasProgress[idx] = progress;
+  var textureProgress = valueSum(self.atlasProgress);
+  self.onProgress(self.idx, textureProgress);
+}
+
+// Add each cell from the loaded atlas to the texture's canvas
+Texture.prototype.onAtlasLoad = function(atlas) {
+  var self = this;
+  // Add the loaded atlas file the texture's canvas
+  var atlasSize = config.atlasSize,
+      textureSize = config.textureSize,
+      idx = atlas.idx % config.atlasesPerTex;
+  // Get x and y offsets of this atlas within the canvas texture
+  var atlasX = (idx * atlasSize) % textureSize,
+      atlasY = Math.floor((idx * atlasSize) / textureSize) * atlasSize;
+  // Add each cell from the atlas (source) to the canvas (destination)
+  atlas.cells.forEach(function(cell) {
+    var sX = cell.posInAtlas.x + cell.state.size.leftPad,
+        sY = cell.posInAtlas.y + cell.state.size.topPad,
+        sW = cell.state.size.w,
+        sH = cell.state.size.h,
+        dX = sX + atlasX,
+        dY = sY + atlasY;
+    self.ctx.drawImage(atlas.image, sX, sY, sW, sH, dX, dY, sW, sH);
+  })
+  // If all atlases are loaded, build the texture
+  if (++self.loadedAtlases == self.atlasCount) {
+    self.onLoad(self.idx);
+  }
 }
 
 /**
@@ -221,43 +231,43 @@ function Atlas(obj) {
     x: (self.idxInTex % config.atlasesPerTexSide) * config.atlasSize,
     y: Math.floor(self.idxInTex / config.atlasesPerTexSide) * config.atlasSize,
   }
-
-  self.load = function() {
-    self.image = new Image;
-    self.image.onload = function() { self.onLoad(self); }
-    var xhr = new XMLHttpRequest();
-    xhr.onprogress = function(e) {
-      var progress = parseInt((e.loaded / e.total) * 100);
-      self.onProgress(self.idx, progress);
-    };
-    xhr.onload = function(e) { self.image.src = self.url; };
-    xhr.open('GET', self.url, true);
-    xhr.responseType = 'arraybuffer';
-    xhr.send();
-  }
-
-  self.setCells = function() {
-    // find the index position of the first cell among all cells
-    var start = (self.texIdx * config.cellsPerTex) +
-                (self.idx * config.cellsPerAtlas);
-    for (var i=0; i<self.positions.length; i++) {
-      var cellData = self.positions[i];
-      self.cells.push(new Cell({
-        data: obj.data,
-        idx: start + i,
-        name: cellData[0],
-        x: cellData[1] * config.spread.x,
-        y: cellData[2] * config.spread.y,
-        w: cellData[3],
-        h: cellData[4],
-        atlasPosInTex: self.posInTex,
-        texIdx: self.texIdx,
-      }))
-    }
-  }
-
   self.setCells();
   self.load();
+}
+
+Atlas.prototype.load = function() {
+  var self = this;
+  self.image = new Image;
+  self.image.onload = function() { self.onLoad(self); }
+  var xhr = new XMLHttpRequest();
+  xhr.onprogress = function(e) {
+    var progress = parseInt((e.loaded / e.total) * 100);
+    self.onProgress(self.idx, progress);
+  };
+  xhr.onload = function(e) { self.image.src = self.url; };
+  xhr.open('GET', self.url, true);
+  xhr.responseType = 'arraybuffer';
+  xhr.send();
+}
+
+Atlas.prototype.setCells = function() {
+  var self = this;
+  // find the index position of the first cell among all cells
+  var start = (self.texIdx * config.cellsPerTex) +
+              (self.idx * config.cellsPerAtlas);
+  for (var i=0; i<self.positions.length; i++) {
+    var cellData = self.positions[i];
+    self.cells.push(new Cell({
+      idx: start + i,
+      name: cellData[0],
+      x: cellData[1] * config.spread.x,
+      y: cellData[2] * config.spread.y,
+      w: cellData[3],
+      h: cellData[4],
+      atlasPosInTex: self.posInTex,
+      texIdx: self.texIdx,
+    }))
+  }
 }
 
 /**
@@ -268,174 +278,192 @@ function Cell(obj) {
   var self = this;
   self.idx = obj.idx;   // index among all cells
   self.name = obj.name; // name for image (for searching on page load)
-  self.layouts = {};    // contains one key for each layout position
   self.posInAtlas = {}; // position of cell in atlas
   self.idxInAtlas = self.idx % config.cellsPerAtlas; // index of cell in atlas
-  self.drawCallIdx = Math.floor(self.idx / config.cellsPerDrawCall); // draw call index
   self.idxInDrawCall = self.idx % config.cellsPerDrawCall; // index in draw call
-  self.default = {};    // stores default size and texture attrs
-  self.state = {};      // stores all current state values (position, texture...)
-
-  self.getLayouts = function() {
-    // perSide: number of cells to include in each row/col of the grid layout
-    var perSide = obj.data.gridSideCells,
-        x = self.idx % perSide,
-        y = Math.floor(self.idx / perSide),
-        scalar = config.cellSize * 0.7,
-        center = (scalar * obj.data.gridSideCells)/2;
-    return {
-      grid: {
-        x: (x * scalar) - center,
-        y: (y * scalar) - center,
-        z: 1,
-      },
-      scatter: {
-        x: obj.x,
-        y: obj.y,
-        z: 0,
-      },
-    }
-  }
-
-  self.getSize = function() {
-    return {
-      w: obj.w,
-      h: obj.h,
-      topPad: (config.cellSize - obj.h) / 2,
-      leftPad: (config.cellSize - obj.w) / 2,
-      fullCell: config.cellSize,
-      inTexture: config.cellSize / config.textureSize,
-    }
-  }
-
-  self.getPosInAtlas = function() {
-    var perSide = config.cellsPerAtlasSide;
-    return {
-      x: (self.idxInAtlas % perSide) * config.cellSize,
-      y: Math.floor(self.idxInAtlas / perSide) * config.cellSize,
-    }
-  }
-
-  self.getPosInTex = function() {
-    return {
-      x: self.posInAtlas.x + obj.atlasPosInTex.x,
-      y: self.posInAtlas.y + obj.atlasPosInTex.y,
-    }
-  }
-
-  // get the grid coords for the LOD texture
-  self.getGridCoords = function() {
-    return {
-      x: Math.floor(self.state.position.x / lod.grid.size.x),
-      y: Math.floor(self.state.position.y / lod.grid.size.y),
-    }
-  }
-
-  self.updateParentBoundingBox = function() {
-    ['x', 'y'].forEach(function(dim) {
-      if (self.state.position[dim] > obj.data.boundingBox[dim].max) {
-        obj.data.boundingBox[dim].max = self.state.position[dim];
-      } else if (self.state.position[dim] < obj.data.boundingBox[dim].min) {
-        obj.data.boundingBox[dim].min = self.state.position[dim];
-      }
-    })
-  }
-
-  // make the cell active in LOD by mutating its state
-  self.activate = function() {
-    self.state = Object.assign({}, self.state, {
-      isLarge: true,
-      texIdx: -1,
-      posInTex: {
-        x: lod.state.cellIdxToCoords[self.idx].x,
-        y: lod.state.cellIdxToCoords[self.idx].y,
-      },
-      size: {
-        w: config.lodCellSize,
-        h: config.lodCellSize,
-        topPad: self.state.size.topPad * lod.cellSizeScalar,
-        leftPad: self.state.size.leftPad * lod.cellSizeScalar,
-        inTexture: config.lodCellSize / config.lodTextureSize,
-        fullCell: config.lodCellSize,
-      },
-    })
-    // mutate the cell buffer attributes
-    var attrs = ['textureIndex', 'textureOffset', 'size'];
-    for (var i=0; i<attrs.length; i++) {
-      self.mutateBuffer(attrs[i]);
-    }
-  }
-
-  // deactivate the cell in LOD by mutating its state
-  self.deactivate = function() {
-    // pass in the current position and target in case they've changed
-    var lastState = Object.assign({}, self.state);
-    self.state = Object.assign({}, self.default, {
-      position: lastState.position,
-      target: lastState.target,
-    });
-    // mutate the cell buffer attributes
-    var attrs = ['textureIndex', 'textureOffset', 'size'];
-    for (var i=0; i<attrs.length; i++) {
-      self.mutateBuffer(attrs[i]);
-    }
-  }
-
-  self.mutateBuffer = function(attr) {
-    // find the buffer attributes that describe this cell to the GPU
-    var group = world.scene.children[0],
-        attrs = group.children[self.drawCallIdx].geometry.attributes;
-
-    switch(attr) {
-      case 'textureIndex':
-        // set the texIdx to -1 to read from the uniforms.lodTexture
-        attrs.textureIndex.array[self.idxInDrawCall] = self.state.texIdx;
-        return;
-
-      case 'textureOffset':
-        // find cell's position in the LOD texture then set x, y tex offsets
-        var x = self.state.posInTex.x / self.state.size.fullCell,
-            y = self.state.posInTex.y / self.state.size.fullCell;
-        // set the x then y texture offsets for this cell
-        attrs.textureOffset.array[(self.idxInDrawCall * 2)] = x;
-        attrs.textureOffset.array[(self.idxInDrawCall * 2) + 1] = y;
-        return;
-
-      case 'size':
-        // set the updated lod cell size
-        attrs.size.array[self.idxInDrawCall] = self.state.size.inTexture;
-        return;
-
-      case 'translation':
-        // set the cell's translation
-        attrs.translation.array[(self.idxInDrawCall * 3)] = self.state.position.x;
-        attrs.translation.array[(self.idxInDrawCall * 3) + 1] = self.state.position.y;
-        attrs.translation.array[(self.idxInDrawCall * 3) + 2] = self.state.position.z;
-        return;
-
-      case 'target':
-        // set the cell's target translation
-        attrs.target.array[(self.idxInDrawCall * 3)] = self.state.target.x;
-        attrs.target.array[(self.idxInDrawCall * 3) + 1] = self.state.target.y;
-        attrs.target.array[(self.idxInDrawCall * 3) + 2] = self.state.target.z;
-        return;
-    }
-  }
-
+  self.drawCallIdx = Math.floor(self.idx / config.cellsPerDrawCall); // draw call index
   self.posInAtlas = self.getPosInAtlas();
-  self.layouts = self.getLayouts();
-  self.default = {
-    position: self.layouts.scatter,
-    target: self.layouts.scatter,
-    size: self.getSize(),
-    texIdx: obj.texIdx,
-    posInTex: self.getPosInTex(),
-    isLarge: false,
-  };
+  self.layouts = self.getLayouts(obj);
+  self.default = self.getDefaultState(obj);
   self.state = Object.assign({}, self.default);
   self.gridCoords = self.getGridCoords();
-  self.updateParentBoundingBox();
-  obj.data.cells[self.idx] = self; // augment window.data.cells
+  self.updateParentBoundingBox(obj);
+  data.cells[self.idx] = self; // augment window.data.cells
+}
+
+Cell.prototype.getDefaultState = function(obj) {
+  var self = this;
+  return {
+    position: self.layouts.scatter,
+    target: self.layouts.scatter,
+    size: self.getSize(obj),
+    texIdx: obj.texIdx,
+    posInTex: self.getPosInTex(obj),
+    isLarge: false,
+  };
+}
+
+
+
+Cell.prototype.getPosInAtlas = function() {
+  var self = this;
+  var perSide = config.cellsPerAtlasSide;
+  return {
+    x: (self.idxInAtlas % perSide) * config.cellSize,
+    y: Math.floor(self.idxInAtlas / perSide) * config.cellSize,
+  }
+}
+
+Cell.prototype.getLayouts = function(obj) {
+  var self = this;
+  // perSide: number of cells to include in each row/col of the grid layout
+  var perSide = data.gridSideCells,
+      x = self.idx % perSide,
+      y = Math.floor(self.idx / perSide),
+      scalar = config.cellSize * 0.7,
+      center = (scalar * perSide)/2;
+  return {
+    grid: {
+      x: (x * scalar) - center,
+      y: (y * scalar) - center,
+      z: 1,
+    },
+    scatter: {
+      x: obj.x,
+      y: obj.y,
+      z: 0,
+    },
+  }
+}
+
+Cell.prototype.getSize = function(obj) {
+  var self = this;
+  return {
+    w: obj.w,
+    h: obj.h,
+    topPad: (config.cellSize - obj.h) / 2,
+    leftPad: (config.cellSize - obj.w) / 2,
+    fullCell: config.cellSize,
+    inTexture: config.cellSize / config.textureSize,
+  }
+}
+
+
+
+Cell.prototype.getPosInTex = function(obj) {
+  var self = this;
+  return {
+    x: self.posInAtlas.x + obj.atlasPosInTex.x,
+    y: self.posInAtlas.y + obj.atlasPosInTex.y,
+  }
+}
+
+// get the grid coords for the LOD texture
+Cell.prototype.getGridCoords = function() {
+  var self = this;
+  return {
+    x: Math.floor(self.state.position.x / lod.grid.size.x),
+    y: Math.floor(self.state.position.y / lod.grid.size.y),
+  }
+}
+
+Cell.prototype.updateParentBoundingBox = function(obj) {
+  var self = this;
+  ['x', 'y'].forEach(function(dim) {
+    if (self.state.position[dim] > data.boundingBox[dim].max) {
+      data.boundingBox[dim].max = self.state.position[dim];
+    } else if (self.state.position[dim] < data.boundingBox[dim].min) {
+      data.boundingBox[dim].min = self.state.position[dim];
+    }
+  })
+}
+
+/**
+* Cell activation / deactivation
+**/
+
+// make the cell active in LOD by mutating its state
+Cell.prototype.activate = function() {
+  var self = this;
+  self.state = Object.assign({}, self.state, {
+    isLarge: true,
+    texIdx: -1,
+    posInTex: {
+      x: lod.state.cellIdxToCoords[self.idx].x,
+      y: lod.state.cellIdxToCoords[self.idx].y,
+    },
+    size: {
+      w: config.lodCellSize,
+      h: config.lodCellSize,
+      topPad: self.state.size.topPad * lod.cellSizeScalar,
+      leftPad: self.state.size.leftPad * lod.cellSizeScalar,
+      inTexture: config.lodCellSize / config.lodTextureSize,
+      fullCell: config.lodCellSize,
+    },
+  })
+  // mutate the cell buffer attributes
+  var attrs = ['textureIndex', 'textureOffset', 'size'];
+  for (var i=0; i<attrs.length; i++) {
+    self.mutateBuffer(attrs[i]);
+  }
+}
+
+// deactivate the cell in LOD by mutating its state
+Cell.prototype.deactivate = function() {
+  var self = this;
+  // pass in the current position and target in case they've changed
+  var lastState = Object.assign({}, self.state);
+  self.state = Object.assign({}, self.default, {
+    position: lastState.position,
+    target: lastState.target,
+  });
+  // mutate the cell buffer attributes
+  var attrs = ['textureIndex', 'textureOffset', 'size'];
+  for (var i=0; i<attrs.length; i++) {
+    self.mutateBuffer(attrs[i]);
+  }
+}
+
+Cell.prototype.mutateBuffer = function(attr) {
+  var self = this;
+  // find the buffer attributes that describe this cell to the GPU
+  var group = world.scene.children[0],
+      attrs = group.children[self.drawCallIdx].geometry.attributes;
+
+  switch(attr) {
+    case 'textureIndex':
+      // set the texIdx to -1 to read from the uniforms.lodTexture
+      attrs.textureIndex.array[self.idxInDrawCall] = self.state.texIdx;
+      return;
+
+    case 'textureOffset':
+      // find cell's position in the LOD texture then set x, y tex offsets
+      var x = self.state.posInTex.x / self.state.size.fullCell,
+          y = self.state.posInTex.y / self.state.size.fullCell;
+      // set the x then y texture offsets for this cell
+      attrs.textureOffset.array[(self.idxInDrawCall * 2)] = x;
+      attrs.textureOffset.array[(self.idxInDrawCall * 2) + 1] = y;
+      return;
+
+    case 'size':
+      // set the updated lod cell size
+      attrs.size.array[self.idxInDrawCall] = self.state.size.inTexture;
+      return;
+
+    case 'translation':
+      // set the cell's translation
+      attrs.translation.array[(self.idxInDrawCall * 3)] = self.state.position.x;
+      attrs.translation.array[(self.idxInDrawCall * 3) + 1] = self.state.position.y;
+      attrs.translation.array[(self.idxInDrawCall * 3) + 2] = self.state.position.z;
+      return;
+
+    case 'target':
+      // set the cell's target translation
+      attrs.target.array[(self.idxInDrawCall * 3)] = self.state.target.x;
+      attrs.target.array[(self.idxInDrawCall * 3) + 1] = self.state.target.y;
+      attrs.target.array[(self.idxInDrawCall * 3) + 2] = self.state.target.z;
+      return;
+  }
 }
 
 /**
@@ -629,6 +657,7 @@ function World() {
       geometry.addAttribute('position', attrs.position);
       geometry.addAttribute('size', attrs.size);
       geometry.addAttribute('textureIndex', attrs.textureIndex);
+      geometry.addAttribute('textureSize', attrs.textureSize);
       geometry.addAttribute('textureOffset', attrs.textureOffset);
       geometry.addAttribute('translation', attrs.translation);
       geometry.addAttribute('target', attrs.target);
@@ -664,8 +693,10 @@ function World() {
     for (var i=0; i<cells.length; i++) {
       var cell = cells[i].state;
       var rgb = self.color.setHex(cells[i].idx + 1); // use 1-based ids for colors
-      it.texIndices[it.texIndexIterator++] = cell.texIdx;
       it.sizes[it.sizesIterator++] = cell.size.inTexture;
+      it.texIndices[it.texIndexIterator++] = cell.texIdx;
+      it.texSizes[it.texSizeIterator++] = cell.size.w / cell.size.fullCell;
+      it.texSizes[it.texSizeIterator++] = cell.size.h / cell.size.fullCell;
       it.texOffsets[it.texOffsetIterator++] = cell.posInTex.x / cell.size.fullCell;
       it.texOffsets[it.texOffsetIterator++] = cell.posInTex.y / cell.size.fullCell;
       it.translations[it.translationIterator++] = cell.position.x;
@@ -685,6 +716,7 @@ function World() {
     var positionAttr = new BA(new Float32Array([0, 0, 0]), 3);
     var sizeAttr = new IBA(it.sizes, 1, 1);
     var texIndexAttr = new IBA(it.texIndices, 1, 1);
+    var texSizeAttr = new IBA(it.texSizes, 2, 1);
     var texOffsetAttr = new IBA(it.texOffsets, 2, 1);
     var translationAttr = new IBA(it.translations, 3, 1);
     var targetAttr = new IBA(it.targets, 3, 1);
@@ -692,6 +724,7 @@ function World() {
     uvAttr.dynamic = true;
     positionAttr.dynamic = true;
     texIndexAttr.dynamic = true;
+    texSizeAttr.dynamic = true;
     texOffsetAttr.dynamic = true;
     translationAttr.dynamic = true;
     targetAttr.dynamic = true;
@@ -699,6 +732,7 @@ function World() {
       uv: uvAttr,
       size: sizeAttr,
       position: positionAttr,
+      textureSize: texSizeAttr,
       textureIndex: texIndexAttr,
       textureOffset: texOffsetAttr,
       translation: translationAttr,
@@ -718,11 +752,13 @@ function World() {
     return {
       sizes: new Float32Array(n),
       texIndices: new Float32Array(n),
+      texSizes: new Float32Array(n * 2),
       texOffsets: new Float32Array(n * 2),
       translations: new Float32Array(n * 3),
       targets: new Float32Array(n * 3),
       colors: new Float32Array(n * 3),
       sizesIterator: 0,
+      texSizeIterator: 0,
       texIndexIterator: 0,
       texOffsetIterator: 0,
       translationIterator: 0,
@@ -863,7 +899,6 @@ function World() {
       : '{\n';
     return start +
       ws + 'vec4 color = texture2D(' + texture + ', scaledUv);\n' +
-      ws + 'if (color.a < 0.5) { discard; }\n' +
       ws + 'gl_FragColor = color;\n ' +
       ws.substring(3) + '}'
   }

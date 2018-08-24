@@ -51,6 +51,7 @@
     attribute vec3 position;      // base x y z position for all points
     attribute vec3 translation;   // x y z position offsets for an instance
     attribute vec3 target;        // x y z position to which we're transitioning
+    attribute vec2 textureSize;   // w h percents of the cell's texture size
     attribute float textureIndex; // index of an instance's texture
     attribute vec2 textureOffset; // offset of the texture coords for an instance
     attribute float size;         // size of each side of the current instance
@@ -58,6 +59,7 @@
 
     varying float vTextureIndex;  // cell texture idx (varyings can't be int)
     varying vec2 vTextureOffset;  // cell texture offset
+    varying vec2 vTextureSize;    // cell texture size (in w h percents)
     varying vec2 vCellSize;       // cell size
     varying vec3 vColor;          // cell color
 
@@ -81,6 +83,7 @@
     void main() {
       // pass varyings to fragment shader
       vTextureIndex = textureIndex;
+      vTextureSize = textureSize;
       vTextureOffset = textureOffset;
       vCellSize = vec2(size, size);
       vColor = color;
@@ -122,11 +125,25 @@
     uniform float useColor;
 
     varying float vTextureIndex; // cell's texture index
+    varying vec2 vTextureSize;   // cell's texture w, h {0:1}
     varying vec2 vTextureOffset; // cell's uv offsets in the texture
     varying vec2 vCellSize;      // cell's size
     varying vec3 vColor;         // cell's color
 
     void main() {
+      // width and height margins for texture size
+      float wMargin = (1.0 - vTextureSize[0]) / 2.0;
+      float hMargin = (1.0 - vTextureSize[1]) / 2.0;
+      if (
+        gl_PointCoord.x < wMargin ||
+        gl_PointCoord.x > (vTextureSize[0] + wMargin)) {
+        discard;
+      } else if (
+        gl_PointCoord.y < hMargin ||
+        gl_PointCoord.y > (vTextureSize[1] + hMargin)) {
+        discard;
+      }
+
       if (useColor == 1.) {
         gl_FragColor = vec4(vColor, 1.0);
       } else {
