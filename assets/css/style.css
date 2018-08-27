@@ -94,12 +94,21 @@ a {
 
 .header-controls {
   display: inline-block;
-  float: right;
-  margin: 0 50px;
+  position: absolute;
+  right: 0;
+  width: 400px;
+}
+
+.filter-icons {
+  position: relative;
+  top: 18px;
+  display: inline-block;
 }
 
 .layout-icons {
   margin: 20px 40px 0;
+  display: inline-block;
+  float: right;
 }
 
 .layout-icons img {

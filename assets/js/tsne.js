@@ -6,7 +6,7 @@
 function Config() {
   var self = this;
   self.dataUrl = 'output/'; // path to location where data lives
-  self.thumbsUrl = self.dataUrl + 'thumbs/128px/'
+  self.thumbsUrl = self.dataUrl + 'thumbs/128px/';
   self.spread = {
     x: 5,
     y: 5,
@@ -278,6 +278,7 @@ function Cell(obj) {
   var self = this;
   self.idx = obj.idx;   // index among all cells
   self.name = obj.name; // name for image (for searching on page load)
+  self.gridCoords = {}; // x, y pos of the cell in the lod grid (set by lod)
   self.posInAtlas = {}; // position of cell in atlas
   self.idxInAtlas = self.idx % config.cellsPerAtlas; // index of cell in atlas
   self.idxInDrawCall = self.idx % config.cellsPerDrawCall; // index in draw call
@@ -286,7 +287,6 @@ function Cell(obj) {
   self.layouts = self.getLayouts(obj);
   self.default = self.getDefaultState(obj);
   self.state = Object.assign({}, self.default);
-  self.gridCoords = self.getGridCoords();
   self.updateParentBoundingBox(obj);
   data.cells[self.idx] = self; // augment window.data.cells
 }
@@ -660,11 +660,13 @@ function World() {
       geometry.addAttribute('translation', attrs.translation);
       geometry.addAttribute('target', attrs.target);
       geometry.addAttribute('color', attrs.color);
+      geometry.addAttribute('opacity', attrs.opacity);
       var material = self.getShaderMaterial({
         firstTex: attrs.texStartIdx,
         textures: attrs.textures,
         useColor: 0.0,
       });
+      material.transparent = true;
       var mesh = new THREE.Points(geometry, material);
       selector.geometries.push(geometry);
       selector.meshes.push(mesh);
@@ -706,6 +708,7 @@ function World() {
       it.colors[it.colorIterator++] = rgb.r;
       it.colors[it.colorIterator++] = rgb.g;
       it.colors[it.colorIterator++] = rgb.b;
+      it.opacities[it.opacityIterator++] = 1.0;
     }
     // format the arrays into THREE attributes
     var BA = THREE.BufferAttribute;
@@ -719,6 +722,7 @@ function World() {
     var translationAttr = new IBA(it.translations, 3, 1);
     var targetAttr = new IBA(it.targets, 3, 1);
     var colorAttr = new IBA(it.colors, 3, 1);
+    var opacityAttr = new IBA(it.opacities, 1, 1);
     uvAttr.dynamic = true;
     positionAttr.dynamic = true;
     texIndexAttr.dynamic = true;
@@ -726,6 +730,7 @@ function World() {
     texOffsetAttr.dynamic = true;
     translationAttr.dynamic = true;
     targetAttr.dynamic = true;
+    opacityAttr.dynamic = true;
     return {
       uv: uvAttr,
       size: sizeAttr,
@@ -736,6 +741,7 @@ function World() {
       translation: translationAttr,
       target: targetAttr,
       color: colorAttr,
+      opacity: opacityAttr,
       textures: self.getTextures({
         startIdx: texIndices.first,
         endIdx: texIndices.last,
@@ -755,6 +761,7 @@ function World() {
       translations: new Float32Array(n * 3),
       targets: new Float32Array(n * 3),
       colors: new Float32Array(n * 3),
+      opacities: new Float32Array(n),
       sizesIterator: 0,
       texSizeIterator: 0,
       texIndexIterator: 0,
@@ -762,6 +769,7 @@ function World() {
       translationIterator: 0,
       targetIterator: 0,
       colorIterator: 0,
+      opacityIterator: 0,
     }
   }
 
@@ -896,8 +904,8 @@ function World() {
       ? 'if (textureIndex == ' + texIdx + ') {\n'
       : '{\n';
     return start +
-      ws + 'vec4 color = texture2D(' + texture + ', scaledUv);\n' +
-      ws + 'gl_FragColor = color;\n ' +
+      ws + 'gl_FragColor = texture2D(' + texture + ', scaledUv);\n' +
+      ws + 'gl_FragColor.a = vOpacity;\n ' +
       ws.substring(3) + '}'
   }
 
@@ -995,6 +1003,9 @@ function World() {
       value: 0,
     };
     self.state.transitioning = false;
+    // index cell locations in LOD mechanism
+    lod.clear();
+    lod.indexCells();
   }
 
   /**
@@ -1296,6 +1307,7 @@ function LOD() {
   self.indexCells = function() {
     var coords = {};
     data.cells.forEach(function(cell) {
+      cell.gridCoords = cell.getGridCoords();
       var x = cell.gridCoords.x,
           y = cell.gridCoords.y;
       if (!coords[x]) coords[x] = {};
@@ -1307,8 +1319,8 @@ function LOD() {
 
   // load high-res images nearest the camera; called every frame by world.render
   self.update = function() {
-    if (!self.state.run) return;
-    if (world.state.flying) return;
+    if (!self.state.run ||
+        world.state.flying) return;
     self.updateGridPosition();
     self.loadNextImage();
     self.tick();
@@ -1382,7 +1394,7 @@ function LOD() {
           xDelta = Math.abs(cell.gridCoords.x - self.gridPos.x),
           yDelta = Math.abs(cell.gridCoords.y - self.gridPos.y);
       // don't load the cell if it's already been loaded
-      if (lod.state.cellIdxToCoords[cell.idx]) return;
+      if (self.state.cellIdxToCoords[cell.idx]) return;
       // don't load the cell if it's too far from the camera
       if ((xDelta > self.radius * 2) || (yDelta > self.radius)) return;
       // return if there are no open coordinates in the LOD texture
@@ -1537,6 +1549,74 @@ function Loader() {
 }
 
 /**
+* Configure filters
+**/
+
+function Filters() {
+  var self = this;
+  self.filters = [];
+  self.loadFilters();
+}
+
+Filters.prototype.loadFilters = function() {
+  var self = this;
+  var url = config.dataUrl + 'filters/filters.json';
+  get(url, function(data) {
+    data = JSON.parse(data);
+    for (var i=0; i<data.length; i++) {
+      var filter = new Filter(data[i]);
+      self.filters.push(filter);
+    }
+  })
+}
+
+function Filter(obj) {
+  var self = this;
+  self.values = obj.filter_values;
+  self.name = obj.filter_name;
+  self.createSelect();
+}
+
+Filter.prototype.createSelect = function() {
+  var self = this;
+  var select = document.createElement('select');
+  for (var i=0; i<self.values.length; i++) {
+    var option = document.createElement('option');
+    option.textContent = self.values[i];
+    select.appendChild(option);
+  }
+  select.onchange = self.onChange.bind(self);
+  find('#filters').appendChild(select);
+}
+
+Filter.prototype.onChange = function(e) {
+  var self = this,
+      val = e.target.value,
+      clean = val.replace(/\//g, '-').replace(/ /g, '-'),
+      url = config.dataUrl + 'filters/option_values/';
+  get(url + clean + '.json', function(data) {
+    self.filterCells(JSON.parse(data));
+  })
+}
+
+// mutate the opacity of each cell to activate / deactivate
+Filter.prototype.filterCells = function(names) {
+  names = names.reduce(function(obj, n) {
+    obj[n] = true; return obj;
+  }, {}); // facilitate O(1) lookups
+
+  data.cells.forEach(function(cell, idx) {
+    var opacity = cell.name in names ? 1 : 0.3;
+    // find the buffer attributes that describe this cell to the GPU
+    var group = world.scene.children[0],
+        attrs = group.children[cell.drawCallIdx].geometry.attributes;
+    attrs.opacity.array[cell.idxInDrawCall] = opacity;
+  })
+
+  world.attrsNeedUpdate(['opacity']);
+}
+
+/**
 * Assess WebGL parameters
 **/
 
@@ -1671,6 +1751,7 @@ function getWindowSize() {
 var loader = new Loader();
 var webgl = new Webgl();
 var config = new Config();
+var filters = new Filters();
 var selector = new Selector();
 var world = new World();
 var lod = new LOD();

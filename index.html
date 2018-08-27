@@ -56,12 +56,14 @@
     attribute vec2 textureOffset; // offset of the texture coords for an instance
     attribute float size;         // size of each side of the current instance
     attribute vec3 color;         // unique color for cell; used for raycasting
+    attribute float opacity;      // opacity value for cell
 
     varying float vTextureIndex;  // cell texture idx (varyings can't be int)
     varying vec2 vTextureOffset;  // cell texture offset
     varying vec2 vTextureSize;    // cell texture size (in w h percents)
     varying vec2 vCellSize;       // cell size
     varying vec3 vColor;          // cell color
+    varying float vOpacity;       // cell opacity
 
     // function that returns the size of a point, scaled by the camera position
     float scalePoint(in vec3 pos, in vec3 cameraPosition) {
@@ -87,6 +89,7 @@
       vTextureOffset = textureOffset;
       vCellSize = vec2(size, size);
       vColor = color;
+      vOpacity = opacity;
 
       // set point position as a mixture between the position + target
       vec3 currentPos = position + translation;
@@ -129,6 +132,7 @@
     varying vec2 vTextureOffset; // cell's uv offsets in the texture
     varying vec2 vCellSize;      // cell's size
     varying vec3 vColor;         // cell's color
+    varying float vOpacity;      // cell's opacity
 
     void main() {
       // width and height margins for texture size
@@ -160,6 +164,7 @@
       <div class='app-name'>PixPlot</div>
       <div class='tagline'>Image fields in a Local Collection</div>
       <div class='header-controls'>
+        <div class='filter-icons' id='filters'></div>
         <div class='layout-icons'>
           <img id='grid-icon'
             src='assets/images/icons/grid-layout-icon.svg'
