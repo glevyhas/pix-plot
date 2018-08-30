@@ -1,5 +1,6 @@
-data/
-output/
+data
+output
+images
 .DS_Store
 *.pem
 *.swp
