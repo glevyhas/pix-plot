@@ -325,6 +325,7 @@ noscript {
   display: inline-block;
   height: 100%;
   transition: transform 0.5s;
+  white-space: nowrap;
 }
 
 #selected-image {
@@ -343,6 +344,7 @@ noscript {
   width: 50px;
   position: relative;
   bottom: 20px;
+  white-space: initial;
 }
 
 .icons * {
