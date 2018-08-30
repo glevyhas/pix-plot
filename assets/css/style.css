@@ -193,6 +193,10 @@ nav h2 {
   font-weight: 400;
 }
 
+#hotspots {
+  padding-bottom: 25px;
+}
+
 .hotspot {
   padding: 6px 0;
   cursor: pointer;
