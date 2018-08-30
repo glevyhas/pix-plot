@@ -1441,8 +1441,10 @@ LOD.prototype.unloadGridPos = function(gridPos) {
   var toUnload = this.state.gridPosToCoords[gridPos];
   // delete unloaded cell keys in the cellIdxToCoords map
   toUnload.forEach(function(coords) {
-    data.cells[coords.cellIdx].deactivate();
-    delete this.state.cellIdxToCoords[coords.cellIdx];
+    try {
+      data.cells[coords.cellIdx].deactivate();
+      delete this.state.cellIdxToCoords[coords.cellIdx];
+    } catch(err) {console.warn(coords.cellIdx + ' cleared')}
   }.bind(this))
   // remove the old grid position from the list of active grid positions
   delete this.state.gridPosToCoords[gridPos];
