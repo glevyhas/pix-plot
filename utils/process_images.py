@@ -124,7 +124,7 @@ class PixPlot:
     print(' * creating image thumbs')
     resize_args = []
     n_thumbs = len(self.image_files)
-    for c, j in enumerate(self.image_files):
+    for idx, j in enumerate(self.image_files):
       sizes = []
       out_paths = []
       for i in sorted(self.sizes, key=int, reverse=True):
@@ -135,7 +135,7 @@ class PixPlot:
         sizes.append(i)
         out_paths.append(out_path)
       if len(sizes) > 0:
-        resize_args.append([j, c, n_thumbs, sizes, out_paths])
+        resize_args.append([j, idx, n_thumbs, sizes, out_paths])
 
     pool = Pool()
     for result in pool.imap(resize_thumb, resize_args):
@@ -220,9 +220,9 @@ class PixPlot:
     '''
     print(' * loading image vectors')
     self.vector_files = glob( join(self.output_dir, 'image_vectors', '*') )
-    for c, i in enumerate(self.vector_files):
+    for idx, i in enumerate(self.vector_files):
       self.image_vectors.append(np.load(i))
-      print(' * loaded', c+1, 'of', len(self.vector_files), 'image vectors')
+      print(' * loaded', idx+1, 'of', len(self.vector_files), 'image vectors')
 
 
   def build_model(self, image_vectors):
@@ -245,17 +245,16 @@ class PixPlot:
     Write a JSON file that indicates the 2d position of each image
     '''
     image_positions = []
-    for c, i in enumerate(fit_model):
-      img = get_filename(self.vector_files[c])
+    for idx, i in enumerate(fit_model):
+      img = get_filename(self.vector_files[idx])
       if img in self.errored_images:
         continue
       thumb_path = join(self.output_dir, 'thumbs', '32px', img)
-      print(img, thumb_path)
       with Image.open(thumb_path) as image:
         width, height = image.size
       # Add the image name, x offset, y offset
       image_positions.append([
-        os.path.splitext(os.path.basename(img))[0],
+        get_filename(img),
         int(i[0] * 100),
         int(i[1] * 100),
         width,
@@ -264,9 +263,9 @@ class PixPlot:
     return image_positions
 
 
-  def get_centroids(self):
+  def write_centroids(self):
     '''
-    Use KMeans clustering to find n centroid images
+    Use K-Means clustering to find n centroid images
     that represent the center of an image cluster
     '''
     print(' * calculating ' + str(self.n_clusters) + ' clusters')
@@ -278,12 +277,14 @@ class PixPlot:
     closest, _ = pairwise_distances_argmin_min(centroids, X)
     centroid_paths = [self.vector_files[i] for i in closest]
     centroid_json = []
-    for c, i in enumerate(centroid_paths):
+    for idx, i in enumerate(centroid_paths):
       centroid_json.append({
-        'img': get_filename(i),
-        'label': 'Cluster ' + str(c+1)
+        'img': get_filename(i), # strip the npy extension from the vector
+        'idx': int(closest[idx]),
+        'label': 'Cluster ' + str(idx+1)
       })
-    return centroid_json
+    with open(join(self.output_dir, 'centroids.json'), 'w') as out:
+      json.dump(centroid_json, out)
 
 
   def write_json(self):
@@ -292,10 +293,9 @@ class PixPlot:
     in each size, and the centroids of the k means clusters
     '''
     print(' * writing main JSON plot data file')
-    out_path = join(self.output_dir, 'plot_data.json')
-    with open(out_path, 'w') as out:
+    self.write_centroids()
+    with open(join(self.output_dir, 'plot_data.json'), 'w') as out:
       json.dump({
-        'centroids': self.get_centroids(),
         'positions': self.get_2d_image_positions(),
         'atlas_counts': self.get_atlas_counts(),
       }, out)
@@ -315,13 +315,11 @@ class PixPlot:
     '''
     print(' * creating atlas files')
     atlas_group_imgs = []
-    for thumb_size in self.sizes[1:-1]:
-      # identify the images for this atlas group
-      atlas_thumbs = self.get_atlas_thumbs(thumb_size)
-      atlas_group_imgs.append(len(atlas_thumbs))
-      self.write_atlas_files(thumb_size, atlas_thumbs)
-    # assert all image atlas files have the same number of images
-    assert all(i == atlas_group_imgs[0] for i in atlas_group_imgs)
+    # identify the images for this atlas group
+    thumb_size = self.sizes[0]
+    atlas_thumbs = self.get_atlas_thumbs(thumb_size)
+    atlas_group_imgs.append(len(atlas_thumbs))
+    self.write_atlas_files(thumb_size, atlas_thumbs)
 
 
   def get_atlas_thumbs(self, thumb_size):
@@ -338,8 +336,7 @@ class PixPlot:
     Given a thumb_size (int) and image_thumbs [file_path],
     write the total number of required atlas files at this size
     '''
-    if not self.rewrite_atlas_files:
-      return
+    if not self.rewrite_atlas_files: return
 
     # build a directory for the atlas files
     out_dir = join(self.output_dir, 'atlas_files', str(thumb_size) + 'px')
@@ -377,10 +374,8 @@ class PixPlot:
       os.system(cmd)
 
     # delete the last images to montage file
-    try:
+    if os.path.exists(tmp_file_path):
       os.remove(tmp_file_path)
-    except Exception:
-      pass
 
 
 def get_magick_command(cmd):
