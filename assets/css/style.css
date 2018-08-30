@@ -26,6 +26,36 @@ a {
   display: inline-block;
 }
 
+select {
+  border-radius: 0;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  -moz-box-sizing: border-box;
+  -webkit-box-sizing: border-box;
+  box-sizing: border-box;
+  background: transparent;
+  -webkit-user-select: none;
+  -moz-user-select: -moz-none;
+  -ms-user-select: none;
+  user-select: none;
+  cursor: pointer;
+  border: none;
+  color: #333131;
+  font-size: 13px;
+  padding: 3px 6px;
+  border-radius: 5px;
+  background-color: #c3c3c3;
+  background-image: url(/assets/images/icons/caret-icon.png);
+  background-size: 20px;
+  background-repeat: no-repeat;
+  background-position: 95%;
+}
+
+select::-ms-expand {
+  display: none;
+}
+
 /**
 * Header
 **/
@@ -101,7 +131,7 @@ a {
 
 .filter-icons {
   position: relative;
-  top: 18px;
+  top: 16px;
   display: inline-block;
 }
 
@@ -348,7 +378,7 @@ noscript {
 #image-text {
   font-size: 13px;
   font-weight: 300;
-  max-height: 71px;
+  max-height: 73px;
   overflow: auto;
   padding-right: 15px;
 }
