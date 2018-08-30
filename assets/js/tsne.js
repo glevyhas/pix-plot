@@ -5,12 +5,12 @@
 // Use `self` as alias for `this` to enable context-invariant introspection
 function Config() {
   var self = this;
-  self.dataUrl = 'plotting-output'; // path to location where data lives
+  self.dataUrl = 'output'; // path to location where data lives
   self.thumbsUrl = self.dataUrl + '/thumbs/128px/';
   self.spread = {
     x: 5,
     y: 5,
-    z: 1,
+    z: 0,
   }; // scale for positioning items on x,y axes
   self.cellSize = 32;
   self.lodCellSize = 128;
@@ -22,20 +22,18 @@ function Config() {
   self.cellsPerAtlas = Math.pow((self.atlasSize / self.cellSize), 2);
   self.cellsPerAtlasSide = Math.pow(self.cellsPerAtlas, 0.5);
   self.cellsPerTex = self.cellsPerAtlas * self.atlasesPerTex;
-  self.cellsPerDrawCall = null;
+  self.cellsPerDrawCall = self.getCellsPerDrawCall();
   self.transitionDuration = 3.5;
   self.flyDuration = 3.5;
-  self.cellsPerDrawCall = self.getCellsPerDrawCall();
 }
 
 // Determine how many cells can be drawn in each draw call
 Config.prototype.getCellsPerDrawCall = function() {
-  var self = this;
   return Math.min(
     // case where elements per draw call is limiting factor
     webgl.limits.indexedElements,
     // case where textures are limiting factor (-1 to fit high res tex in calls)
-    (webgl.limits.textureCount - 1) * self.cellsPerTex,
+    (webgl.limits.textureCount - 1) * this.cellsPerTex,
   );
 };
 
@@ -44,18 +42,16 @@ Config.prototype.getCellsPerDrawCall = function() {
 **/
 
 function Data() {
-  var self = this;
-  self.file = 'plot_data.json';
-  self.atlasCount = null;
-  self.centroids = null;
-  self.positions = null;
-  self.images = [];
-  self.textures = [];
-  self.cells = [];
-  self.textureProgress = {};
-  self.textureCount = null;
-  self.loadedTextures = 0;
-  self.boundingBox = {
+  this.file = 'plot_data.json';
+  this.atlasCount = null;
+  this.positions = null;
+  this.images = [];
+  this.textures = [];
+  this.cells = [];
+  this.textureProgress = {};
+  this.textureCount = null;
+  this.loadedTextures = 0;
+  this.boundingBox = {
     x: {
       min: Number.POSITIVE_INFINITY,
       max: Number.NEGATIVE_INFINITY,
@@ -65,46 +61,40 @@ function Data() {
       max: Number.NEGATIVE_INFINITY,
     },
   };
-  self.load();
+  this.load();
 }
 
 // Get an array of the position data to pass to the texture at idx `idx`
 Data.prototype.getTexturePositions = function(texIdx) {
-  var self = this;
   var chunk = config.cellsPerAtlas * config.atlasesPerTex,
       start = chunk * texIdx,
       end = chunk * (texIdx + 1);
-  return self.positions.slice(start, end);
+  return this.positions.slice(start, end);
 }
 
 // When a texture's progress updates, update the aggregate progress
 Data.prototype.onTextureProgress = function(texIdx, progress) {
-  var self = this;
-  self.textureProgress[texIdx] = progress / self.textures[texIdx].atlasCount;
-  loader.updateProgress();
+  this.textureProgress[texIdx] = progress / this.textures[texIdx].atlasCount;
+  welcome.updateProgress();
 }
 
 // When a texture loads, draw plot if all have loaded
 Data.prototype.onTextureLoad = function(texIdx) {
-  var self = this;
-  self.loadedTextures += 1;
-  loader.updateProgress();
+  this.loadedTextures += 1;
+  welcome.updateProgress();
 }
 
 // Get the number of atlases to include in texture at index `idx`
 Data.prototype.getAtlasCount = function(texIdx) {
-  var self = this;
-  return self.atlasCount / config.atlasesPerTex > (texIdx + 1)
+  return this.atlasCount / config.atlasesPerTex > (texIdx + 1)
     ? config.atlasesPerTex
-    : self.atlasCount % config.atlasesPerTex;
+    : this.atlasCount % config.atlasesPerTex;
 }
 
 // Load json data with chart element positions
 Data.prototype.load = function() {
   var self = this;
-  get(config.dataUrl + '/' + self.file, function(data) {
-    var json = JSON.parse(data);
-    self.centroids = json.centroids;
+  get(config.dataUrl + '/' + self.file, function(json) {
     self.positions = json.positions;
     self.atlasCount = json.atlas_counts['32px'];
     self.textureCount = Math.ceil(self.atlasCount / config.atlasesPerTex);
@@ -128,64 +118,58 @@ Data.prototype.load = function() {
 **/
 
 function Texture(obj) {
-  var self = this;
-  self.idx = obj.idx;
-  self.atlasProgress = {};
-  self.atlases = [];
-  self.atlasCount = obj.atlasCount;
-  self.positions = obj.positions;
-  self.onProgress = obj.onProgress;
-  self.onLoad = obj.onLoad;
-  self.loadedAtlases = 0;
-  self.canvas = null;
-  self.ctx = null;
-  self.load();
+  this.idx = obj.idx;
+  this.atlasProgress = {};
+  this.atlases = [];
+  this.atlasCount = obj.atlasCount;
+  this.positions = obj.positions;
+  this.onProgress = obj.onProgress;
+  this.onLoad = obj.onLoad;
+  this.loadedAtlases = 0;
+  this.canvas = null;
+  this.ctx = null;
+  this.load();
 }
 
 Texture.prototype.setCanvas = function() {
-  var self = this;
-  self.canvas = getElem('canvas', {
+  this.canvas = getElem('canvas', {
     width: config.textureSize,
     height: config.textureSize,
-    id: 'texture-' + self.idx,
+    id: 'texture-' + this.idx,
   })
-  self.ctx = self.canvas.getContext('2d');
+  this.ctx = this.canvas.getContext('2d');
 }
 
 Texture.prototype.load = function() {
-  var self = this;
-  self.setCanvas();
-  for (var i=0; i<self.atlasCount; i++) {
-    self.atlases.push(new Atlas({
-      idx: (config.atlasesPerTex * self.idx) + i,
-      positions: self.getAtlasPositions(i),
+  this.setCanvas();
+  for (var i=0; i<this.atlasCount; i++) {
+    this.atlases.push(new Atlas({
+      idx: (config.atlasesPerTex * this.idx) + i,
+      positions: this.getAtlasPositions(i),
       size: config.atlasSize,
-      texIdx: self.idx,
-      onProgress: self.onAtlasProgress.bind(self),
-      onLoad: self.onAtlasLoad.bind(self),
+      texIdx: this.idx,
+      onProgress: this.onAtlasProgress.bind(this),
+      onLoad: this.onAtlasLoad.bind(this),
     }))
   }
 }
 
 // Get an array of the position data for the atlas at position `idx`
 Texture.prototype.getAtlasPositions = function(atlasIdx) {
-  var self = this;
   var start = config.cellsPerAtlas * atlasIdx,
       end = config.cellsPerAtlas * (atlasIdx + 1);
-  return self.positions.slice(start, end);
+  return this.positions.slice(start, end);
 }
 
 // Log the load progress of each atlas file
 Texture.prototype.onAtlasProgress = function(idx, progress) {
-  var self = this;
-  self.atlasProgress[idx] = progress;
-  var textureProgress = valueSum(self.atlasProgress);
-  self.onProgress(self.idx, textureProgress);
+  this.atlasProgress[idx] = progress;
+  var textureProgress = valueSum(this.atlasProgress);
+  this.onProgress(this.idx, textureProgress);
 }
 
 // Add each cell from the loaded atlas to the texture's canvas
 Texture.prototype.onAtlasLoad = function(atlas) {
-  var self = this;
   // Add the loaded atlas file the texture's canvas
   var atlasSize = config.atlasSize,
       textureSize = config.textureSize,
@@ -193,19 +177,16 @@ Texture.prototype.onAtlasLoad = function(atlas) {
   // Get x and y offsets of this atlas within the canvas texture
   var atlasX = (idx * atlasSize) % textureSize,
       atlasY = Math.floor((idx * atlasSize) / textureSize) * atlasSize;
-  // Add each cell from the atlas (source) to the canvas (destination)
-  atlas.cells.forEach(function(cell) {
-    var sX = cell.posInAtlas.x + cell.state.size.leftPad,
-        sY = cell.posInAtlas.y + cell.state.size.topPad,
-        sW = cell.state.size.w,
-        sH = cell.state.size.h,
-        dX = sX + atlasX,
-        dY = sY + atlasY;
-    self.ctx.drawImage(atlas.image, sX, sY, sW, sH, dX, dY, sW, sH);
-  })
+  // draw the atlas on the canvas
+  var dx = atlasX,
+      dy = atlasY,
+      dw = config.atlasSize,
+      dh = config.atlasSize;
+  this.ctx.drawImage(atlas.image, dx, dy, dw, dh);
+
   // If all atlases are loaded, build the texture
-  if (++self.loadedAtlases == self.atlasCount) {
-    self.onLoad(self.idx);
+  if (++this.loadedAtlases == this.atlasCount) {
+    this.onLoad(this.idx);
   }
 }
 
@@ -214,24 +195,23 @@ Texture.prototype.onAtlasLoad = function(atlas) {
 **/
 
 function Atlas(obj) {
-  var self = this;
-  self.texIdx = obj.texIdx;
-  self.idx = obj.idx;
-  self.idxInTex = obj.idx % config.atlasesPerTex;
-  self.size = obj.size;
-  self.onLoad = obj.onLoad;
-  self.onProgress = obj.onProgress;
-  self.positions = obj.positions;
-  self.image = null;
-  self.progress = 0;
-  self.url = config.dataUrl + '/atlas_files/32px/atlas-' + self.idx + '.jpg';
-  self.cells = [];
-  self.posInTex = {
-    x: (self.idxInTex % config.atlasesPerTexSide) * config.atlasSize,
-    y: Math.floor(self.idxInTex / config.atlasesPerTexSide) * config.atlasSize,
+  this.texIdx = obj.texIdx;
+  this.idx = obj.idx;
+  this.idxInTex = obj.idx % config.atlasesPerTex;
+  this.size = obj.size;
+  this.onLoad = obj.onLoad;
+  this.onProgress = obj.onProgress;
+  this.positions = obj.positions;
+  this.image = null;
+  this.progress = 0;
+  this.url = config.dataUrl + '/atlas_files/32px/atlas-' + this.idx + '.jpg';
+  this.cells = [];
+  this.posInTex = {
+    x: (this.idxInTex % config.atlasesPerTexSide) * config.atlasSize,
+    y: Math.floor(this.idxInTex / config.atlasesPerTexSide) * config.atlasSize,
   }
-  self.setCells();
-  self.load();
+  this.setCells();
+  this.load();
 }
 
 Atlas.prototype.load = function() {
@@ -274,49 +254,45 @@ Atlas.prototype.setCells = function() {
 **/
 
 function Cell(obj) {
-  var self = this;
-  self.idx = obj.idx;   // index among all cells
-  self.name = obj.name; // name for image (for searching on page load)
-  self.gridCoords = {}; // x, y pos of the cell in the lod grid (set by lod)
-  self.posInAtlas = {}; // position of cell in atlas
-  self.idxInAtlas = self.idx % config.cellsPerAtlas; // index of cell in atlas
-  self.idxInDrawCall = self.idx % config.cellsPerDrawCall; // index in draw call
-  self.drawCallIdx = Math.floor(self.idx / config.cellsPerDrawCall); // draw call index
-  self.posInAtlas = self.getPosInAtlas();
-  self.layouts = self.getLayouts(obj);
-  self.default = self.getDefaultState(obj);
-  self.state = Object.assign({}, self.default);
-  self.updateParentBoundingBox(obj);
-  data.cells[self.idx] = self; // augment window.data.cells
+  this.idx = obj.idx;   // index among all cells
+  this.name = obj.name; // name for image (for searching on page load)
+  this.gridCoords = {}; // x, y pos of the cell in the lod grid (set by lod)
+  this.posInAtlas = {}; // position of cell in atlas
+  this.idxInAtlas = this.idx % config.cellsPerAtlas; // index of cell in atlas
+  this.idxInDrawCall = this.idx % config.cellsPerDrawCall; // index in draw call
+  this.drawCallIdx = Math.floor(this.idx / config.cellsPerDrawCall); // draw call index
+  this.posInAtlas = this.getPosInAtlas();
+  this.layouts = this.getLayouts(obj);
+  this.default = this.getDefaultState(obj);
+  this.state = Object.assign({}, this.default);
+  this.updateParentBoundingBox(obj);
+  data.cells[this.idx] = this; // augment window.data.cells
 }
 
 Cell.prototype.getDefaultState = function(obj) {
-  var self = this;
   return {
-    position: self.layouts.scatter,
-    target: self.layouts.scatter,
-    size: self.getSize(obj),
+    position: this.layouts.scatter,
+    target: this.layouts.scatter,
+    size: this.getSize(obj),
     texIdx: obj.texIdx,
-    posInTex: self.getPosInTex(obj),
+    posInTex: this.getPosInTex(obj),
     isLarge: false,
   };
 }
 
 Cell.prototype.getPosInAtlas = function() {
-  var self = this;
   var perSide = config.cellsPerAtlasSide;
   return {
-    x: (self.idxInAtlas % perSide) * config.cellSize,
-    y: Math.floor(self.idxInAtlas / perSide) * config.cellSize,
+    x: (this.idxInAtlas % perSide) * config.cellSize,
+    y: Math.floor(this.idxInAtlas / perSide) * config.cellSize,
   }
 }
 
 Cell.prototype.getLayouts = function(obj) {
-  var self = this;
   // perSide: number of cells to include in each row/col of the grid layout
   var perSide = data.gridSideCells,
-      x = self.idx % perSide,
-      y = Math.floor(self.idx / perSide),
+      x = this.idx % perSide,
+      y = Math.floor(this.idx / perSide),
       scalar = config.cellSize * 0.7,
       center = (scalar * perSide)/2;
   return {
@@ -334,7 +310,6 @@ Cell.prototype.getLayouts = function(obj) {
 }
 
 Cell.prototype.getSize = function(obj) {
-  var self = this;
   return {
     w: obj.w,
     h: obj.h,
@@ -346,19 +321,17 @@ Cell.prototype.getSize = function(obj) {
 }
 
 Cell.prototype.getPosInTex = function(obj) {
-  var self = this;
   return {
-    x: self.posInAtlas.x + obj.atlasPosInTex.x,
-    y: self.posInAtlas.y + obj.atlasPosInTex.y,
+    x: this.posInAtlas.x + obj.atlasPosInTex.x,
+    y: this.posInAtlas.y + obj.atlasPosInTex.y,
   }
 }
 
 // get the grid coords for the LOD texture
 Cell.prototype.getGridCoords = function() {
-  var self = this;
   return {
-    x: Math.floor(self.state.position.x / lod.grid.size.x),
-    y: Math.floor(self.state.position.y / lod.grid.size.y),
+    x: Math.floor(this.state.position.x / lod.grid.size.x),
+    y: Math.floor(this.state.position.y / lod.grid.size.y),
   }
 }
 
@@ -673,7 +646,7 @@ function World() {
       group.add(mesh);
     }
     self.scene.add(group);
-    setTimeout(loader.activateButton.bind(loader), 1000);
+    setTimeout(welcome.activateButton.bind(welcome), 1000);
     requestAnimationFrame(function() {
       self.render();
       selector.init();
@@ -1002,7 +975,7 @@ function World() {
       value: 0,
     };
     self.state.transitioning = false;
-    // index cell locations in LOD mechanism
+    // reindex cells in LOD and clear LOD state
     lod.clear();
     lod.indexCells();
   }
@@ -1028,14 +1001,10 @@ function World() {
 
   self.fly = function(obj) {
     self.state.flying = true;
-    var target = {
-      x: obj.x,
-      y: obj.y,
-      z: obj.z - 1,
-    }
     // slerp between the camera's current and desired future positions
-    var quaternion = self.camera.quaternion.clone();
-    var newCamera = self.camera.clone();
+    var quaternion = self.camera.quaternion.clone(),
+        newCamera = self.camera.clone(),
+        target = {x: obj.x, y: obj.y, z: obj.z-1};
     newCamera.position.set(target.x, target.y, target.z);
     // also slerp the controls
     var newControls = new THREE.TrackballControls(newCamera);
@@ -1052,7 +1021,7 @@ function World() {
         slerp(quaternion, newCamera.quaternion, self.camera.quaternion, ++frame);
       },
       onComplete: function() {
-        self.controls.target = new THREE.Vector3(obj.x, obj.y, obj.z);
+        self.controls.target = new THREE.Vector3(obj.x, obj.y, obj.z + 100);
         self.state.flying = false;
       },
       ease: obj.ease || Power4.easeInOut,
@@ -1160,7 +1129,6 @@ Selector.prototype.showModal = function(selected) {
   // fetch data for the selected record
   var filename = data.cells[selected].name + '.json';
   get(config.dataUrl + '/metadata/' + filename, function(data) {
-    data = JSON.parse(data);
     var image = new Image();
     image.onload = function() {
       // compile the template and remove whitespace for FF formatting
@@ -1485,6 +1453,8 @@ LOD.prototype.unloadGridPos = function(gridPos) {
 // clear the LOD state entirely
 LOD.prototype.clear = function() {
   Object.keys(this.state.gridPosToCoords).forEach(this.unloadGridPos);
+  var inf = Number.POSITIVE_INFINITY;
+  this.gridPos = { x: inf, y: inf };
   world.attrsNeedUpdate(['textureOffset', 'textureIndex', 'size']);
 }
 
@@ -1492,7 +1462,7 @@ LOD.prototype.clear = function() {
 * Handle load progress and welcome scene events
 **/
 
-function Loader() {
+function Welcome() {
   this.progressElem = find('#progress');
   this.loaderTextElem = find('#loader-text');
   this.loaderSceneElem = find('#loader-scene');
@@ -1500,7 +1470,7 @@ function Loader() {
   this.buttonElem.addEventListener('click', this.onButtonClick.bind(this));
 }
 
-Loader.prototype.updateProgress = function() {
+Welcome.prototype.updateProgress = function() {
   var progress = valueSum(data.textureProgress) / data.textureCount;
   this.progressElem.textContent = progress + '%';
   if (progress == 100 && data.loadedTextures == data.textureCount) {
@@ -1509,23 +1479,22 @@ Loader.prototype.updateProgress = function() {
   }
 }
 
-Loader.prototype.activateButton = function() {
+Welcome.prototype.activateButton = function() {
   this.buttonElem.className += ' active';
 }
 
-Loader.prototype.hideWelcome = function() {
+Welcome.prototype.hideWelcome = function() {
   this.loaderSceneElem.className += ' hidden';
 }
 
-Loader.prototype.onButtonClick = function(e) {
+Welcome.prototype.onButtonClick = function(e) {
   if (e.target.className.indexOf('active') > -1) {
     setTimeout(this.hideWelcome.bind(this), 100)
   }
 }
 
-Loader.prototype.startWorld = function() {
+Welcome.prototype.startWorld = function() {
   lod.indexCells();
-  hotspots.init();
   world.init();
 }
 
@@ -1543,7 +1512,6 @@ Filters.prototype.loadFilters = function() {
   var self = this;
   var url = config.dataUrl + '/filters/filters.json';
   get(url, function(data) {
-    data = JSON.parse(data);
     for (var i=0; i<data.length; i++) {
       var filter = new Filter(data[i]);
       self.filters.push(filter);
@@ -1584,10 +1552,9 @@ Filter.prototype.onChange = function(e) {
     }, []) )
   // case where user selected a specific option
   } else {
-    var filename = val.replace(/\//g, '-').replace(/ /g, '-') + '.json';
-    get(config.dataUrl + '/filters/option_values/' + filename, function(data) {
-      self.filterCells(JSON.parse(data));
-    })
+    var filename = val.replace(/\//g, '-').replace(/ /g, '-') + '.json',
+        url = config.dataUrl + '/filters/option_values/' + filename;
+    get(url, self.filterCells);
   }
 }
 
@@ -1598,7 +1565,7 @@ Filter.prototype.filterCells = function(names) {
   }, {}); // facilitate O(1) lookups
 
   data.cells.forEach(function(cell, idx) {
-    var opacity = cell.name in names ? 1 : 0.01;
+    var opacity = cell.name in names ? 1 : 0.1;
     // find the buffer attributes that describe this cell to the GPU
     var group = world.scene.children[0],
         attrs = group.children[cell.drawCallIdx].geometry.attributes;
@@ -1615,19 +1582,29 @@ Filter.prototype.filterCells = function(names) {
 function Hotspots() {
   this.template = find('#hotspot-template');
   this.target = find('#hotspots');
+  this.centroids = null;
+  this.init();
 }
 
 Hotspots.prototype.init = function() {
-  this.target.innerHTML = _.template(this.template.innerHTML)({
-    hotspots: data.centroids
-  });
-  var hotspots = findAll('.hotspot');
-  for (var i=0; i<hotspots.length; i++) {
-    hotspots[i].addEventListener('click', function(idx) {
-      var img = data.centroids[idx].img;
-      console.log('user clicked', img)
-    }.bind(this, i))
-  }
+  get(config.dataUrl + '/centroids.json', function(json) {
+    this.centroids = json;
+    this.target.innerHTML = _.template(this.template.innerHTML)({
+      hotspots: json,
+    });
+    var hotspots = findAll('.hotspot');
+    for (var i=0; i<hotspots.length; i++) {
+      hotspots[i].addEventListener('click', function(idx) {
+        var centroid = this.centroids[idx],
+            position = data.cells[centroid.idx].state.position;
+        world.fly({
+          x: position.x,
+          y: position.y,
+          z: position.z - 100,
+        })
+      }.bind(this, i))
+    }
+  }.bind(this))
 }
 
 /**
@@ -1686,7 +1663,7 @@ function get(url, handleSuccess, handleErr) {
   xmlhttp.onreadystatechange = function() {
     if (xmlhttp.readyState == XMLHttpRequest.DONE) {
       xmlhttp.status === 200
-        ? handleSuccess(xmlhttp.responseText)
+        ? handleSuccess(JSON.parse(xmlhttp.responseText))
         : handleErr(xmlhttp)
     };
   };
@@ -1759,7 +1736,7 @@ function getWindowSize() {
 * Main
 **/
 
-var loader = new Loader();
+var welcome = new Welcome();
 var webgl = new Webgl();
 var config = new Config();
 var filters = new Filters();
