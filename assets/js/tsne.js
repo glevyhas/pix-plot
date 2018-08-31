@@ -2,29 +2,27 @@
 * Config
 **/
 
-// Use `self` as alias for `this` to enable context-invariant introspection
 function Config() {
-  var self = this;
-  self.dataUrl = 'output'; // path to location where data lives
-  self.thumbsUrl = self.dataUrl + '/thumbs/128px/';
-  self.spread = {
+  this.dataUrl = 'output'; // path to location where data lives
+  this.thumbsUrl = this.dataUrl + '/thumbs/128px/';
+  this.spread = {
     x: 5,
     y: 5,
     z: 0,
   }; // scale for positioning items on x,y axes
-  self.cellSize = 32;
-  self.lodCellSize = 128;
-  self.atlasSize = 2048;
-  self.textureSize = webgl.limits.textureSize;
-  self.lodTextureSize = 2048;
-  self.atlasesPerTex = Math.pow((self.textureSize / self.atlasSize), 2);
-  self.atlasesPerTexSide = Math.pow(self.atlasesPerTex, 0.5);
-  self.cellsPerAtlas = Math.pow((self.atlasSize / self.cellSize), 2);
-  self.cellsPerAtlasSide = Math.pow(self.cellsPerAtlas, 0.5);
-  self.cellsPerTex = self.cellsPerAtlas * self.atlasesPerTex;
-  self.cellsPerDrawCall = self.getCellsPerDrawCall();
-  self.transitionDuration = 3.5;
-  self.flyDuration = 3.5;
+  this.cellSize = 32;
+  this.lodCellSize = 128;
+  this.atlasSize = 2048;
+  this.textureSize = webgl.limits.textureSize;
+  this.lodTextureSize = 2048;
+  this.atlasesPerTex = Math.pow((this.textureSize / this.atlasSize), 2);
+  this.atlasesPerTexSide = Math.pow(this.atlasesPerTex, 0.5);
+  this.cellsPerAtlas = Math.pow((this.atlasSize / this.cellSize), 2);
+  this.cellsPerAtlasSide = Math.pow(this.cellsPerAtlas, 0.5);
+  this.cellsPerTex = this.cellsPerAtlas * this.atlasesPerTex;
+  this.cellsPerDrawCall = this.getCellsPerDrawCall();
+  this.transitionDuration = 3.5;
+  this.flyDuration = 3.5;
 }
 
 // Determine how many cells can be drawn in each draw call
