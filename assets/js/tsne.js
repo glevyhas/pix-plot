@@ -1452,7 +1452,7 @@ LOD.prototype.unloadGridPos = function(gridPos) {
 
 // clear the LOD state entirely
 LOD.prototype.clear = function() {
-  Object.keys(this.state.gridPosToCoords).forEach(this.unloadGridPos);
+  Object.keys(this.state.gridPosToCoords).forEach(this.unloadGridPos.bind(this));
   var inf = Number.POSITIVE_INFINITY;
   this.gridPos = { x: inf, y: inf };
   world.attrsNeedUpdate(['textureOffset', 'textureIndex', 'size']);
