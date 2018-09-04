@@ -146,6 +146,8 @@
         gl_PointCoord.y < hMargin ||
         gl_PointCoord.y > (vTextureSize[1] + hMargin)) {
         discard;
+      } else if (vOpacity < 0.5) {
+        discard;
       }
 
       if (useColor == 1.) {
