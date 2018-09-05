@@ -681,18 +681,18 @@ function World() {
       it.opacities[it.opacityIterator++] = 1.0;
     }
     // format the arrays into THREE attributes
-    var BA = THREE.BufferAttribute;
-    var IBA = THREE.InstancedBufferAttribute;
-    var uvAttr = new BA(new Float32Array([0, 0]), 2);
-    var positionAttr = new BA(new Float32Array([0, 0, 0]), 3);
-    var sizeAttr = new IBA(it.sizes, 1, 1);
-    var texIndexAttr = new IBA(it.texIndices, 1, 1);
-    var texSizeAttr = new IBA(it.texSizes, 2, 1);
-    var texOffsetAttr = new IBA(it.texOffsets, 2, 1);
-    var translationAttr = new IBA(it.translations, 3, 1);
-    var targetAttr = new IBA(it.targets, 3, 1);
-    var colorAttr = new IBA(it.colors, 3, 1);
-    var opacityAttr = new IBA(it.opacities, 1, 1);
+    var BA = THREE.BufferAttribute,
+        IBA = THREE.InstancedBufferAttribute,
+        uvAttr = new BA(new Float32Array([0, 0]), 2),
+        positionAttr = new BA(new Float32Array([0, 0, 0]), 3),
+        sizeAttr = new IBA(it.sizes, 1, 1),
+        texIndexAttr = new IBA(it.texIndices, 1, 1),
+        texSizeAttr = new IBA(it.texSizes, 2, 1),
+        texOffsetAttr = new IBA(it.texOffsets, 2, 1),
+        translationAttr = new IBA(it.translations, 3, 1),
+        targetAttr = new IBA(it.targets, 3, 1),
+        colorAttr = new IBA(it.colors, 3, 1),
+        opacityAttr = new IBA(it.opacities, 1, 1);
     uvAttr.dynamic = true;
     positionAttr.dynamic = true;
     texIndexAttr.dynamic = true;
@@ -1065,7 +1065,6 @@ function Selector() {
   this.mouse = new THREE.Vector2();
   this.mouseDown = new THREE.Vector2();
   this.tex = this.getTexture();
-  this.mesh = null;
   this.geometries = [];
   this.meshes = [];
   this.modal = false;
