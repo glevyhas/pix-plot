@@ -43,6 +43,8 @@ flags.DEFINE_integer('clusters', 20, 'The number of clusters to display in the i
 flags.DEFINE_boolean('validate_images', True, 'Whether to validate images before processing')
 flags.DEFINE_string('output_folder', 'output', 'The folder where output files will be stored')
 flags.DEFINE_string('layout', 'umap', 'The layout method to use {umap|tsne}')
+flags.DEFINE_string('csv', None, 'Path to a csv with metadata for input images')
+flags.DEFINE_string('copy_images', True, 'Copy inputs to outputs for detailed image view in browser')
 FLAGS = flags.FLAGS
 
 
@@ -54,7 +56,7 @@ class PixPlot:
 
     self.image_files = image_glob
     self.output_dir = FLAGS.output_folder
-    self.sizes = [16, 32, 64, 128]
+    self.sizes = [32]
     self.n_clusters = FLAGS.clusters
     self.errored_images = set()
     self.vector_files = []
@@ -246,7 +248,8 @@ class PixPlot:
     '''
     image_positions = []
     for idx, i in enumerate(fit_model):
-      img = get_filename(self.vector_files[idx])
+      # img_filename includes the file extension of the input image
+      img_filename = get_filename(self.image_files[idx])
       if img in self.errored_images:
         continue
       thumb_path = join(self.output_dir, 'thumbs', '32px', img)
@@ -429,11 +432,15 @@ def get_ascii_chars(s):
   return ''.join(i for i in s if ord(i) < 128)
 
 
-def get_filename(path):
+def get_filename(path, extension=False):
   '''
-  Return the root filename of `path` without file extension
+  Return the root filename of `path`. If `extension` is True,
+  keep the extension, else return the filename without extension.
   '''
-  return os.path.splitext( os.path.basename(path) )[0]
+  filename = os.path.basename(path)
+  if not extension:
+    return os.path.splitext(filename)[0]
+  return filename
 
 
 def ensure_dir_exists(directory):
@@ -458,9 +465,11 @@ def main(*args, **kwargs):
   # user specified glob path with tensorflow flags
   if FLAGS.image_files:
     image_glob = glob(FLAGS.image_files)
+
   # one argument was passed; assume it's a glob of image paths
   elif len(sys.argv) == 2:
     image_glob = glob(sys.argv[1])
+
   # many args were passed; assume the user passed a glob
   # path without quotes, and the shell auto-expanded them
   # into a list of file arguments
