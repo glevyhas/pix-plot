@@ -55,7 +55,7 @@ class PixPlot:
 
     self.image_files = image_glob
     self.output_dir = FLAGS.output_folder
-    self.sizes = [32]
+    self.sizes = [32, 128]
     self.n_clusters = FLAGS.clusters
     self.errored_images = set()
     self.vector_files = []
