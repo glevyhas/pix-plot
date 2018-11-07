@@ -62,7 +62,7 @@ function Data() {
   this.load();
 }
 
-// Get an array of the position data to pass to the texture at idx `idx`
+// Get an array of the position data to pass to the texture at idx `texIdx`
 Data.prototype.getTexturePositions = function(texIdx) {
   var chunk = config.cellsPerAtlas * config.atlasesPerTex,
       start = chunk * texIdx,
@@ -308,11 +308,27 @@ Cell.prototype.getLayouts = function(obj) {
 }
 
 Cell.prototype.getSize = function(obj) {
+  if (obj.w == obj.h) {
+    var topPad = 0,
+        leftPad = 0,
+        w = config.cellSize,
+        h = config.cellSize;
+  } else if (obj.w > obj.h) {
+    var topPad = Math.ceil(((obj.w - obj.h)/(obj.w)) * config.cellSize / 2),
+        leftPad = 0,
+        w = config.cellSize,
+        h = obj.h/obj.w*config.cellSize;
+  } else if (obj.h > obj.w) {
+    var topPad = 0,
+        leftPad = Math.ceil(((obj.h - obj.w)/(obj.h)) * config.cellSize / 2),
+        w = obj.w/obj.h*config.cellSize,
+        h = config.cellSize;
+  }
   return {
-    w: obj.w,
-    h: obj.h,
-    topPad: (config.cellSize - obj.h) / 2,
-    leftPad: (config.cellSize - obj.w) / 2,
+    w: w,
+    h: h,
+    topPad: topPad,
+    leftPad: leftPad,
     fullCell: config.cellSize,
     inTexture: config.cellSize / config.textureSize,
   }
@@ -456,7 +472,7 @@ function World() {
 
   self.getScene = function() {
     var scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x000000);
+    scene.background = new THREE.Color(0xaaaaaa);
     return scene;
   }
 
@@ -634,7 +650,7 @@ function World() {
       var material = self.getShaderMaterial({
         firstTex: attrs.texStartIdx,
         textures: attrs.textures,
-        useColor: 0.0,
+        useColor: 0.0, // todo - set back to 0.0
       });
       material.transparent = true;
       var mesh = new THREE.Points(geometry, material);
@@ -1115,6 +1131,7 @@ Selector.prototype.onMouseUp = function(e) {
 
 // called via self.onClick; shows the full-size selected image
 Selector.prototype.showModal = function(selected) {
+
   // select elements that will be updated
   var img = find('#selected-image'),
       title = find('#image-title'),
@@ -1207,7 +1224,7 @@ Selector.prototype.select = function(obj) {
 **/
 
 function LOD() {
-  this.gridPos = {x: null, y: null}; // grid coords of current camera position
+  this.gridPos = { x: null, y: null }; // grid coords of current camera position
   this.cellIdxToImage = {};
   this.cellSizeScalar = config.lodCellSize / config.cellSize;
   this.framesBetweenUpdates = 40; // frames that elapse between texture updates
@@ -1345,7 +1362,7 @@ LOD.prototype.addCellsToLodTexture = function(cell) {
   // find and store the coords where each img will be stored in lod texture
   this.state.cellsToActivate.forEach(function(cellIdx) {
     // check to ensure cell is sufficiently close to camera
-    var cell = data.cells[cellIdx];
+    var cell = data.cells[cellIdx],
         xDelta = Math.abs(cell.gridCoords.x - this.gridPos.x),
         yDelta = Math.abs(cell.gridCoords.y - this.gridPos.y);
     // don't load the cell if it's already been loaded
@@ -1551,6 +1568,7 @@ Filter.prototype.onChange = function(e) {
     }, []) )
   // case where user selected a specific option
   } else {
+    // each {{ level-name }}.json file should use hyphens instead of whitespace
     var filename = val.replace(/\//g, '-').replace(/ /g, '-') + '.json',
         url = config.dataUrl + '/filters/option_values/' + filename;
     get(url, self.filterCells);

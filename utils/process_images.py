@@ -43,8 +43,7 @@ flags.DEFINE_integer('clusters', 20, 'The number of clusters to display in the i
 flags.DEFINE_boolean('validate_images', True, 'Whether to validate images before processing')
 flags.DEFINE_string('output_folder', 'output', 'The folder where output files will be stored')
 flags.DEFINE_string('layout', 'umap', 'The layout method to use {umap|tsne}')
-flags.DEFINE_string('csv', None, 'Path to a csv with metadata for input images')
-flags.DEFINE_string('copy_images', True, 'Copy inputs to outputs for detailed image view in browser')
+flags.DEFINE_boolean('copy_images', True, 'Copy inputs to outputs for detailed image view in browser')
 FLAGS = flags.FLAGS
 
 
@@ -52,7 +51,7 @@ class PixPlot:
   def __init__(self, image_glob):
     print(' * writing PixPlot outputs with ' + str(FLAGS.clusters) +
       ' clusters for ' + str(len(image_glob)) +
-      ' images to folder ' + FLAGS.output_folder)
+      ' images to folder "' + FLAGS.output_folder + '"')
 
     self.image_files = image_glob
     self.output_dir = FLAGS.output_folder
@@ -111,8 +110,14 @@ class PixPlot:
     '''
     Create each of the required output dirs
     '''
-    dirs = ['image_vectors', 'atlas_files', 'thumbs']
-    for i in dirs:
+    for i in [
+      'atlas_files',
+      'filters',
+      'image_vectors',
+      'metadata',
+      'originals',
+      'thumbs',
+    ]:
       ensure_dir_exists( join(self.output_dir, i) )
     # make subdirectories for each image thumb size
     for i in self.sizes:
@@ -248,22 +253,38 @@ class PixPlot:
     '''
     image_positions = []
     for idx, i in enumerate(fit_model):
-      # img_filename includes the file extension of the input image
-      img_filename = get_filename(self.image_files[idx])
-      if img in self.errored_images:
+      # get the full path to the `ith` input image
+      img_path = self.image_files[idx]
+      # get the basename and file extension of the `ith` input image
+      img_filename = get_filename(img_path)
+      if img_filename in self.errored_images:
         continue
-      thumb_path = join(self.output_dir, 'thumbs', '32px', img)
-      with Image.open(thumb_path) as image:
+      with Image.open(img_path) as image:
         width, height = image.size
-      # Add the image name, x offset, y offset
+      # Add the image name, x offset, y offset, full width, full height
       image_positions.append([
-        get_filename(img),
+        img_filename,
         int(i[0] * 100),
         int(i[1] * 100),
         width,
-        height
+        height,
       ])
     return image_positions
+
+
+  def write_json(self):
+    '''
+    Write a JSON file with image positions, the number of atlas files
+    in each size, and the centroids of the k means clusters
+    '''
+    print(' * writing main JSON plot data file')
+    # write each of the distinct JSON files to disk
+    self.write_centroids()
+    with open(join(self.output_dir, 'plot_data.json'), 'w') as out:
+      json.dump({
+        'positions': self.get_2d_image_positions(),
+        'atlas_counts': self.get_atlas_counts(),
+      }, out)
 
 
   def write_centroids(self):
@@ -284,31 +305,15 @@ class PixPlot:
       centroid_json.append({
         'img': get_filename(i), # strip the npy extension from the vector
         'idx': int(closest[idx]),
-        'label': 'Cluster ' + str(idx+1)
+        'label': 'Cluster ' + str(idx+1),
       })
     with open(join(self.output_dir, 'centroids.json'), 'w') as out:
       json.dump(centroid_json, out)
 
 
-  def write_json(self):
-    '''
-    Write a JSON file with image positions, the number of atlas files
-    in each size, and the centroids of the k means clusters
-    '''
-    print(' * writing main JSON plot data file')
-    self.write_centroids()
-    with open(join(self.output_dir, 'plot_data.json'), 'w') as out:
-      json.dump({
-        'positions': self.get_2d_image_positions(),
-        'atlas_counts': self.get_atlas_counts(),
-      }, out)
-
-
   def get_atlas_counts(self):
-    file_count = len(self.vector_files)
     return {
-      '32px': ceil( file_count / (64**2) ),
-      '64px': ceil( file_count / (32**2) )
+      '32px': ceil( len(self.vector_files) / (64**2) ),
     }
 
 
@@ -470,16 +475,22 @@ def main(*args, **kwargs):
   elif len(sys.argv) == 2:
     image_glob = glob(sys.argv[1])
 
-  # many args were passed; assume the user passed a glob
-  # path without quotes, and the shell auto-expanded them
-  # into a list of file arguments
+  # many args were passed; check if user passed any flags
   elif len(sys.argv) > 2:
-    image_glob = sys.argv[1:]
+    # use the first argument as the image glob
+    if any('--' in i for i in sys.argv):
+      image_glob = glob(sys.argv[1])
+
+    # else assume user passed glob without quotes and the
+    # shell auto-expanded them into a list of file arguments
+    else:
+      image_glob = glob(sys.argv[1:])
 
   # no glob path was specified
   else:
     print('Please specify a glob path of images to process\n' +
       'e.g. python utils/process_images.py "folder/*.jpg"')
+    sys.exit()
 
   PixPlot(image_glob)
 

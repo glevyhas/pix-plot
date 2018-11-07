@@ -5,3 +5,4 @@ images
 *.pem
 *.swp
 get_metadata.py
+make_csv.py

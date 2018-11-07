@@ -50,6 +50,7 @@ select {
   background-size: 20px;
   background-repeat: no-repeat;
   background-position: 95%;
+  min-width: 120px;
 }
 
 select::-ms-expand {
