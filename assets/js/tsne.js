@@ -302,7 +302,7 @@ Cell.prototype.getLayouts = function(obj) {
     scatter: {
       x: obj.x,
       y: obj.y,
-      z: 0,
+      z: this.idx % 25,
     },
   }
 }
@@ -472,7 +472,7 @@ function World() {
 
   self.getScene = function() {
     var scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xaaaaaa);
+    scene.background = new THREE.Color(0x222222);
     return scene;
   }
 
@@ -660,7 +660,10 @@ function World() {
       group.add(mesh);
     }
     self.scene.add(group);
-    setTimeout(welcome.activateButton.bind(welcome), 1000);
+    setTimeout(function() {
+      welcome.activateButton();
+      welcome.loaderTextElem.innerHTML = '&nbsp;'
+    }, 1000);
     requestAnimationFrame(function() {
       self.render();
       selector.init();
@@ -794,7 +797,7 @@ function World() {
 
   // Return an int specifying the scalar uniform for points
   self.getPointScale = function() {
-    return window.innerHeight * 12;
+    return window.devicePixelRatio * window.innerHeight * 12;
   }
 
   /**
@@ -1094,15 +1097,6 @@ Selector.prototype.getTexture = function() {
   return tex;
 }
 
-/**
-* Set the current mouse coordinates in client coordinates
-* @param {Event} event - triggered on canvas mousemove
-**/
-
-Selector.prototype.onMouseMove = function(e) {
-  this.mouse.x = e.clientX;
-  this.mouse.y = e.clientY;
-}
 
 // on canvas mousedown store the coords where user moused down
 Selector.prototype.onMouseDown = function(e) {
@@ -1112,7 +1106,7 @@ Selector.prototype.onMouseDown = function(e) {
 
 // on canvas click, show detailed modal with clicked image
 Selector.prototype.onMouseUp = function(e) {
-  var selected = this.select();
+  var selected = this.select({x: e.clientX, y: e.clientY});
   // if click hit background, close the modal
   if (e.target.className == 'modal-image-sizer' ||
       e.target.className == 'modal-content' ||
@@ -1122,8 +1116,10 @@ Selector.prototype.onMouseUp = function(e) {
   }
   // if mouseup isn't in the last mouse position, user is dragging
   // if the click wasn't on the canvas, quit
-  if (e.clientX !== this.mouseDown.x || e.clientY !== this.mouseDown.y ||
-      selected == -1 || e.target.id !== 'pixplot-canvas') {
+  if (e.clientX !== this.mouseDown.x ||
+      e.clientY !== this.mouseDown.y ||
+      selected == -1 ||
+      e.target.id !== 'pixplot-canvas') {
     return;
   }
   this.showModal(selected);
@@ -1186,7 +1182,6 @@ Selector.prototype.getMouseWorldCoords = function() {
 // get the mesh in which to render picking elements
 Selector.prototype.init = function() {
   var renderer = world.renderer.domElement;
-  renderer.addEventListener('mousemove', this.onMouseMove.bind(this));
   renderer.addEventListener('mousedown', this.onMouseDown.bind(this));
   document.body.addEventListener('mouseup', this.onMouseUp.bind(this));
   for (var i=0; i<this.meshes.length; i++) {
@@ -1205,14 +1200,11 @@ Selector.prototype.render = function() {
 Selector.prototype.select = function(obj) {
   if (!world) return;
   this.render();
-  var mouse = {
-    x: obj && obj.x ? obj.x : this.mouse.x,
-    y: obj && obj.x ? obj.y : this.mouse.y,
-  }
+  if (!obj) return;
   // read the texture color at the current mouse pixel
   var pixelBuffer = new Uint8Array(4),
-      x = mouse.x,
-      y = this.tex.height - mouse.y;
+      x = obj.x,
+      y = this.tex.height - obj.y;
   world.renderer.readRenderTargetPixels(this.tex, x, y, 1, 1, pixelBuffer);
   var id = (pixelBuffer[0] << 16) | (pixelBuffer[1] << 8) | (pixelBuffer[2]),
       selected = id-1; // ids use id+1 as the id of null selections is 0
@@ -1488,6 +1480,11 @@ function Welcome() {
 
 Welcome.prototype.updateProgress = function() {
   var progress = valueSum(data.textureProgress) / data.textureCount;
+  // remove the decimal value from the load progress
+  progress = progress.toString();
+  var index = progress.indexOf('.');
+  if (index > -1) progress = progress.substring(0, index);
+  // display the load progress
   this.progressElem.textContent = progress + '%';
   if (progress == 100 && data.loadedTextures == data.textureCount) {
     this.loaderTextElem.textContent = ' * drawing geometries';
