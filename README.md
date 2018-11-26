@@ -53,11 +53,11 @@ After processing, you can curate the discovered hotspots by editing the resultin
 You can add, remove or re-order these, change the labels to make them more meaningful, and/or adjust the image that symbolizes each hotspot in the left-hand **Hotspots** menu. *Hint: to get the name of an image that you feel better reflects the cluster, click on it in the visualization and it will appear suffixed to the URL.*
 
 
-## Curating Metadata
+## Adding Metadata
 
 If you have metadata associated with each of your images, you can pass in that metadata when running the data processing script. Doing so will allow the PixPlot viewer to display the metadata associated with an image when a user clicks on that image.
 
-To specify the metadata for your image collection, you can add ` --csv=path-to-csv.csv` to the command you use to call the processing script. For example, you might specify:
+To specify the metadata for your image collection, you can add ` --csv=path-to-metadata.csv` to the command you use to call the processing script. For example, you might specify:
 
 ```bash
 python utils/process_images.py "path/to/images/*.jpg" --csv="data/metadata.csv"
@@ -65,13 +65,10 @@ python utils/process_images.py "path/to/images/*.jpg" --csv="data/metadata.csv"
 
 Your metadata should be in a comma-separated value file (CSV), should contain one row for each of your input images, and should contain exactly the following columns in the following order.
 
-| Filename | Metadata Tag | Title | Description | Year |
-| -------- | ------------ | ----- | ----------- | ---- |
-
-
+| Filename | Metadata Tag | Description | Permalink |
+| -------- | ------------ | ----------- | --------- |
 
 The CSV should contain no headers.
-
 
 ## Demonstrations
 
