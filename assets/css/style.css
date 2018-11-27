@@ -50,6 +50,7 @@ select {
   background-size: 20px;
   background-repeat: no-repeat;
   background-position: 95%;
+  min-width: 120px;
 }
 
 select::-ms-expand {
@@ -315,7 +316,7 @@ noscript {
 
 .modal-image-sizer {
   position: absolute;
-  top: 40px;
+  top: 10%;
   left: 0;
   bottom: 260px;
   right: 0;
@@ -331,7 +332,6 @@ noscript {
 #selected-image {
   max-height: 100%;
   padding: 25px;
-  background: #333;
   box-sizing: border-box;
 }
 
