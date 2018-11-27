@@ -6,8 +6,8 @@ function Config() {
   this.dataUrl = 'output'; // path to location where data lives
   this.thumbsUrl = this.dataUrl + '/thumbs/128px/';
   this.spread = {
-    x: 5,
-    y: 5,
+    x: 10,
+    y: 10,
     z: 0,
   }; // scale for positioning items on x,y axes
   this.cellSize = 32;
@@ -1131,7 +1131,7 @@ Selector.prototype.showModal = function(selected) {
   // select elements that will be updated
   var img = find('#selected-image'),
       title = find('#image-title'),
-      text = find('#image-text'),
+      description = find('#image-text'),
       template = find('#tag-template'),
       tags = find('#meta-tags'),
       modal = find('#selected-image-modal'),
@@ -1146,11 +1146,11 @@ Selector.prototype.showModal = function(selected) {
       compiled = compiled.replace(/\s\s+/g, '');
       // set metadata attributes
       img.src = data.src ? data.src : '';
-      title.textContent = data.title ? data.title : '';
-      text.textContent = data.text ? data.text : '';
+      title.textContent = data.title ? data.title : data.filename ? data.filename : '';
+      description.textContent = data.description ? data.description : '';
       tags.innerHTML = compiled ? compiled : '';
-      if (data.src)   modal.style.display = 'block';
-      if (data.title || data.text || data.tags) meta.style.display = 'block';
+      if (data.src) modal.style.display = 'block';
+      if (data.title || data.description || data.tags) meta.style.display = 'block';
     }
     // set or get the image src and load the image
     if (!data.src) data.src = config.dataUrl + '/originals/' + data.filename;
@@ -1534,9 +1534,9 @@ Filters.prototype.loadFilters = function() {
 
 function Filter(obj) {
   var self = this;
-  self.values = obj.filter_values;
-  self.name = obj.filter_name;
-  self.createSelect();
+  self.values = obj.filter_values || [];
+  self.name = obj.filter_name || '';
+  if (self.values.length) self.createSelect();
 }
 
 Filter.prototype.createSelect = function() {
