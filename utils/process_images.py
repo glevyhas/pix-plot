@@ -3,11 +3,9 @@
 '''
 Generates all data required to create a PixPlot viewer.
 
-Documentation:
-https://github.com/YaleDHLab/pix-plot
+Documentation: https://github.com/YaleDHLab/pix-plot
 
-Usage:
-  python utils/process_images.py --image_files="data/*/*.jpg"
+Usage: python utils/process_images.py --image_files="data/*/*.jpg"
 
                       * * *
 '''
@@ -19,7 +17,8 @@ from sklearn.metrics import pairwise_distances_argmin_min
 from sklearn.manifold import TSNE
 from multiprocessing import Pool
 from six.moves import urllib
-from os.path import join
+from os.path import join, basename
+from shutil import copy, rmtree
 from PIL import Image
 from umap import UMAP
 from math import ceil
@@ -34,16 +33,19 @@ import tarfile
 import psutil
 import subprocess
 import codecs
+import csv
 
 # configure command line interface arguments
 flags = tf.app.flags
 flags.DEFINE_string('model_dir', '/tmp/imagenet', 'The location of downloaded imagenet model')
 flags.DEFINE_string('image_files', '', 'A glob path of images to process')
-flags.DEFINE_integer('clusters', 20, 'The number of clusters to display in the image browser')
+flags.DEFINE_boolean('process_images', True, 'Whether to process images')
 flags.DEFINE_boolean('validate_images', True, 'Whether to validate images before processing')
+flags.DEFINE_integer('clusters', 20, 'The number of clusters to display in the image browser')
 flags.DEFINE_string('output_folder', 'output', 'The folder where output files will be stored')
 flags.DEFINE_string('layout', 'umap', 'The layout method to use {umap|tsne}')
 flags.DEFINE_boolean('copy_images', True, 'Copy inputs to outputs for detailed image view in browser')
+flags.DEFINE_string('csv', '', 'The path to a metadata CSV file (see README)')
 FLAGS = flags.FLAGS
 
 
@@ -54,18 +56,26 @@ class PixPlot:
       ' images to folder "' + FLAGS.output_folder + '"')
 
     self.image_files = image_glob
-    self.output_dir = FLAGS.output_folder
     self.sizes = [32, 128]
-    self.n_clusters = FLAGS.clusters
     self.errored_images = set()
     self.vector_files = []
     self.image_vectors = []
-    self.method = FLAGS.layout
+    self.flags = FLAGS
     self.rewrite_image_thumbs = False
     self.rewrite_image_vectors = False
     self.rewrite_atlas_files = True
-    self.validate_inputs(FLAGS.validate_images)
     self.create_output_dirs()
+    self.create_metadata()
+    self.copy_original_images()
+    if self.flags.process_images:
+      self.process_images()
+
+
+  def process_images(self):
+    '''
+    Wrapper function that calls all image processing functions
+    '''
+    self.validate_inputs()
     self.create_image_thumbs()
     self.create_image_vectors()
     self.load_image_vectors()
@@ -75,17 +85,93 @@ class PixPlot:
       str(len(self.image_files) - len(self.errored_images)) + ' images')
 
 
-  def validate_inputs(self, validate_files):
+  def create_output_dirs(self):
+    '''
+    Create each of the required output dirs
+    '''
+    for i in [
+      'atlas_files',
+      'filters',
+      'image_vectors',
+      'metadata',
+      'originals',
+      'thumbs',
+    ]:
+      ensure_dir_exists( join(self.flags.output_folder, i) )
+    # make subdirectories for each image thumb size
+    for i in self.sizes:
+      ensure_dir_exists( join(self.flags.output_folder, 'thumbs', str(i) + 'px') )
+
+
+  def create_metadata(self):
+    '''
+    If the user provided a CSV metadata file, parse the metadata
+    '''
+    if not self.flags.csv: return
+    rmtree(join(self.flags.output_folder, 'metadata'))
+    print(' * generating metadata')
+    tag_to_filenames = defaultdict(set) # d[tag] = {filename_0, filename_1...}
+    filenames = set()
+    rows = []
+    with open(self.flags.csv) as f:
+      reader = csv.reader(f)
+      for idx, i in enumerate(reader):
+        if len(i) == 0: continue # skip empty rows
+        filename, tags, description, permalink = i
+        tags = tags.split('|')
+        for tag in tags: tag_to_filenames[tag].add(get_filename(filename))
+        rows.append([filename, tags, description, permalink])
+        filenames.add(filename)
+    # inform the user if files are missing from the metadata
+    img_filenames = {basename(i) for i in self.image_files}
+    missing_from_meta = img_filenames - filenames
+    if missing_from_meta:
+      print(' ! warning, metadata missing files', missing_from_meta)
+    # create the directory where each filter option will live
+    levels_dir = join(self.flags.output_folder, 'filters', 'option_values')
+    ensure_dir_exists(levels_dir)
+    # write the JSON for each tag
+    for i in tag_to_filenames:
+      hyphenated = '-'.join(i.split())
+      with open(join(levels_dir, hyphenated + '.json'), 'w') as out:
+        json.dump(list(tag_to_filenames[i]), out)
+    # save JSON with all level options
+    with open(join(self.flags.output_folder, 'filters', 'filters.json'), 'w') as out:
+      json.dump([{
+        'filter_name': 'select',
+        'filter_values': list(tag_to_filenames.keys())
+      }], out)
+    # write metadata for each input image
+    metadata_dir = join(self.flags.output_folder, 'metadata')
+    ensure_dir_exists(metadata_dir)
+    cols = ['filename', 'tags', 'description', 'permalink']
+    for i in rows:
+      d = {cols[idx]: i[idx] for idx, _ in enumerate(i)}
+      with open(join(metadata_dir, get_filename(i[0]) + '.json'), 'w') as out:
+        json.dump(d, out)
+
+
+  def copy_original_images(self):
+    '''
+    Copy the input high-res images to the ouput directory
+    '''
+    if not self.flags.copy_images: return
+    print(' * copying high res images to output directory')
+    for i in self.image_files:
+      copy(i, join(self.flags.output_folder, 'originals', basename(i)))
+
+
+  def validate_inputs(self):
     '''
     Make sure the inputs are valid, and warn users if they're not
     '''
     # ensure the user provided enough input images
-    if len(self.image_files) < self.n_clusters:
-      print('Please provide >= ' + str(self.n_clusters) + ' images')
+    if len(self.image_files) < self.flags.clusters:
+      print('Please provide >= ' + str(self.flags.clusters) + ' images')
       print(str(len(self.image_files)) + ' images were provided')
       sys.exit()
 
-    if not validate_files:
+    if not self.flags.validate_images:
       print(' * skipping image validation')
       return
 
@@ -106,24 +192,6 @@ class PixPlot:
       sys.exit()
 
 
-  def create_output_dirs(self):
-    '''
-    Create each of the required output dirs
-    '''
-    for i in [
-      'atlas_files',
-      'filters',
-      'image_vectors',
-      'metadata',
-      'originals',
-      'thumbs',
-    ]:
-      ensure_dir_exists( join(self.output_dir, i) )
-    # make subdirectories for each image thumb size
-    for i in self.sizes:
-      ensure_dir_exists( join(self.output_dir, 'thumbs', str(i) + 'px') )
-
-
   def create_image_thumbs(self):
     '''
     Create output thumbs in 32px, 64px, and 128px
@@ -135,7 +203,7 @@ class PixPlot:
       sizes = []
       out_paths = []
       for i in sorted(self.sizes, key=int, reverse=True):
-        out_dir = join(self.output_dir, 'thumbs', str(i) + 'px')
+        out_dir = join(self.flags.output_folder, 'thumbs', str(i) + 'px')
         out_path = join( out_dir, get_filename(j) + '.jpg' )
         if os.path.exists(out_path) and not self.rewrite_image_thumbs:
           continue
@@ -162,8 +230,8 @@ class PixPlot:
       for image_index, image in enumerate(self.image_files):
         try:
           print(' * processing image', image_index+1, 'of', len(self.image_files))
-          outfile_name = os.path.basename(image) + '.npy'
-          out_path = join(self.output_dir, 'image_vectors', outfile_name)
+          outfile_name = basename(image) + '.npy'
+          out_path = join(self.flags.output_folder, 'image_vectors', outfile_name)
           if os.path.exists(out_path) and not self.rewrite_image_vectors:
             continue
           # save the penultimate inception tensor/layer of the current image
@@ -226,7 +294,7 @@ class PixPlot:
     Return all image vectors
     '''
     print(' * loading image vectors')
-    self.vector_files = glob( join(self.output_dir, 'image_vectors', '*') )
+    self.vector_files = glob( join(self.flags.output_folder, 'image_vectors', '*') )
     for idx, i in enumerate(self.vector_files):
       self.image_vectors.append(np.load(i))
       print(' * loaded', idx+1, 'of', len(self.vector_files), 'image vectors')
@@ -237,12 +305,12 @@ class PixPlot:
     Build a 2d projection of the `image_vectors`
     '''
     print(' * building 2D projection')
-    if self.method == 'tsne':
+    if self.flags.layout == 'tsne':
       model = TSNE(n_components=2, random_state=0)
       np.set_printoptions(suppress=True)
       return model.fit_transform( np.array(image_vectors) )
 
-    elif self.method == 'umap':
+    elif self.flags.layout == 'umap':
       model = UMAP(n_neighbors=25, min_dist=0.00001, metric='correlation')
       return model.fit_transform( np.array(image_vectors) )
 
@@ -280,7 +348,7 @@ class PixPlot:
     print(' * writing main JSON plot data file')
     # write each of the distinct JSON files to disk
     self.write_centroids()
-    with open(join(self.output_dir, 'plot_data.json'), 'w') as out:
+    with open(join(self.flags.output_folder, 'plot_data.json'), 'w') as out:
       json.dump({
         'positions': self.get_2d_image_positions(),
         'atlas_counts': self.get_atlas_counts(),
@@ -292,8 +360,8 @@ class PixPlot:
     Use K-Means clustering to find n centroid images
     that represent the center of an image cluster
     '''
-    print(' * calculating ' + str(self.n_clusters) + ' clusters')
-    model = KMeans(n_clusters=self.n_clusters)
+    print(' * calculating ' + str(self.flags.clusters) + ' clusters')
+    model = KMeans(n_clusters=self.flags.clusters)
     X = np.array(self.image_vectors)
     fit_model = model.fit(X)
     centroids = fit_model.cluster_centers_
@@ -307,7 +375,7 @@ class PixPlot:
         'idx': int(closest[idx]),
         'label': 'Cluster ' + str(idx+1),
       })
-    with open(join(self.output_dir, 'centroids.json'), 'w') as out:
+    with open(join(self.flags.output_folder, 'centroids.json'), 'w') as out:
       json.dump(centroid_json, out)
 
 
@@ -332,8 +400,8 @@ class PixPlot:
 
   def get_atlas_thumbs(self, thumb_size):
     thumbs = []
-    thumb_dir = join(self.output_dir, 'thumbs', str(thumb_size) + 'px')
-    with open(join(self.output_dir, 'plot_data.json')) as f:
+    thumb_dir = join(self.flags.output_folder, 'thumbs', str(thumb_size) + 'px')
+    with open(join(self.flags.output_folder, 'plot_data.json')) as f:
       for i in json.load(f)['positions']:
         thumbs.append( join(thumb_dir, i[0] + '.jpg') )
     return thumbs
@@ -347,7 +415,7 @@ class PixPlot:
     if not self.rewrite_atlas_files: return
 
     # build a directory for the atlas files
-    out_dir = join(self.output_dir, 'atlas_files', str(thumb_size) + 'px')
+    out_dir = join(self.flags.output_folder, 'atlas_files', str(thumb_size) + 'px')
     ensure_dir_exists(out_dir)
 
     # specify number of columns in a 2048 x 2048px texture
@@ -361,7 +429,7 @@ class PixPlot:
       print(' * creating atlas', idx + 1, 'at size', thumb_size)
       out_path = join(out_dir, 'atlas-' + str(idx) + '.jpg')
       # write a file containing a list of images for the current montage
-      tmp_file_path = join(self.output_dir, 'images_to_montage.txt')
+      tmp_file_path = join(self.flags.output_folder, 'images_to_montage.txt')
       with codecs.open(tmp_file_path, 'w', encoding='utf-8') as out:
         # python 2
         try:
@@ -442,7 +510,7 @@ def get_filename(path, extension=False):
   Return the root filename of `path`. If `extension` is True,
   keep the extension, else return the filename without extension.
   '''
-  filename = os.path.basename(path)
+  filename = basename(path)
   if not extension:
     return os.path.splitext(filename)[0]
   return filename
