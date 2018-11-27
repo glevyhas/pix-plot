@@ -65,8 +65,9 @@ python utils/process_images.py "path/to/images/*.jpg" --csv="data/metadata.csv"
 
 Your metadata should be in a comma-separated value file (CSV), should contain one row for each of your input images, and should contain exactly the following columns in the following order.
 
-| Filename | Metadata Tag | Description | Permalink |
-| -------- | ------------ | ----------- | --------- |
+| Filename | Metadata Tags | Description | Permalink   |
+| -------- | ------------- | ----------- | ----------- |
+| bees.jpg | honey|yellow  | bees' knees | https://... |
 
 The CSV should contain no headers.
 
