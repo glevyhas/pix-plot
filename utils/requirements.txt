@@ -1,4 +1,4 @@
-lloyd>=0.0.2
+lloyd>=0.0.5
 numpy==1.12.1
 Pillow==4.1.1
 psutil==5.2.2
