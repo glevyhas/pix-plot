@@ -1,8 +1,9 @@
+__pycache__
+*.pem
+*.swp
+*.DS_Store
 data
 output
 images
-.DS_Store
-*.pem
-*.swp
 get_metadata.py
 make_csv.py
