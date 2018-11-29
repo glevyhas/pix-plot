@@ -343,17 +343,23 @@ noscript {
   display: inline-block;
   width: 50px;
   position: relative;
-  bottom: 20px;
+  bottom: 30px;
   white-space: initial;
 }
 
-.icons * {
+.icons a {
   height: 32px;
+  width: 32px;
   background: #cecbcb;
   padding: 6px;
   box-sizing: border-box;
   border-radius: 4px;
   cursor: pointer;
+  margin: 3px;
+}
+
+.icons img {
+  width: 100%;
 }
 
 /**

@@ -71,6 +71,14 @@ Your metadata should be in a comma-separated value file (CSV), should contain on
 
 The CSV should contain no headers.
 
+## Overlapping Points
+
+For both performance and aesthetic reasons, it can make sense to minimize the degree to which images overlap in the z-dimension (depth into the scene). To separate overlapping points, one can supply a `lloyd_iterations` argument to the command line utility, either while creating a pixplot or thereafter. For example, one can run:
+
+```
+python utils/process_images.py --image_files="data/*.jpg" --lloyd_iterations=20
+```
+
 ## Demonstrations
 
 | Collection | # Images | Collection Info | Image Source |

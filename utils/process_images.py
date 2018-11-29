@@ -19,6 +19,8 @@ from multiprocessing import Pool
 from six.moves import urllib
 from os.path import join, basename
 from shutil import copy, rmtree
+from random import random
+from lloyd import Field
 from PIL import Image
 from umap import UMAP
 from math import ceil
@@ -44,6 +46,7 @@ flags.DEFINE_boolean('validate_images', True, 'Whether to validate images before
 flags.DEFINE_integer('clusters', 20, 'The number of clusters to display in the image browser')
 flags.DEFINE_string('output_folder', 'output', 'The folder where output files will be stored')
 flags.DEFINE_string('layout', 'umap', 'The layout method to use {umap|tsne}')
+flags.DEFINE_integer('lloyd_iterations', 0, 'Number of times to run Lloyd relaxation on positions')
 flags.DEFINE_boolean('copy_images', True, 'Copy inputs to outputs for detailed image view in browser')
 flags.DEFINE_string('csv', '', 'The path to a metadata CSV file (see README)')
 FLAGS = flags.FLAGS
@@ -67,8 +70,8 @@ class PixPlot:
     self.create_output_dirs()
     self.create_metadata()
     self.copy_original_images()
-    if self.flags.process_images:
-      self.process_images()
+    if self.flags.process_images: self.process_images()
+    if self.flags.lloyd_iterations: self.lloyd_iterate()
 
 
   def process_images(self):
@@ -83,6 +86,34 @@ class PixPlot:
     self.create_atlas_files()
     print('Processed output for ' + \
       str(len(self.image_files) - len(self.errored_images)) + ' images')
+
+
+  def lloyd_iterate(self):
+    '''
+    Run Lloyd iteration on points to minimize overlapping positions
+    '''
+    # read in previously persisted JSON data with point positions
+    j = json.load(open(join(self.flags.output_folder, 'plot_data.json')))
+    positions = j['positions']
+    # parse out just the positional information from the full JSON packet
+    coords = np.array([ (i[1]+random(), i[2]+random()) for i in positions ])
+    field = Field(coords, constrain=True)
+    for i in range(self.flags.lloyd_iterations):
+      field.relax()
+    # add the image filename and size data to the resulting positions
+    p = []
+    for idx, i in enumerate(field.get_points()):
+      p.append([
+        positions[idx][0],
+        i[0],
+        i[1],
+        positions[idx][3],
+        positions[idx][4],
+      ])
+    # write the updated JSON data to disk
+    with open(join(self.flags.output_folder, 'plot_data.json'), 'w') as out:
+      j['positions'] = p
+      json.dump(j, out)
 
 
   def create_output_dirs(self):
@@ -286,7 +317,8 @@ class PixPlot:
     '''
     print(' * calculating 2D image positions')
     model = self.build_model(self.image_vectors)
-    return self.get_image_positions(model)
+    positions = self.get_image_positions(model)
+    return positions
 
 
   def load_image_vectors(self):

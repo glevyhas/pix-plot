@@ -1135,7 +1135,9 @@ Selector.prototype.showModal = function(selected) {
       template = find('#tag-template'),
       tags = find('#meta-tags'),
       modal = find('#selected-image-modal'),
-      meta = find('#selected-image-meta');
+      meta = find('#selected-image-meta'),
+      deeplink = find('#eye-icon'),
+      download = find('#download-icon');
   // fetch data for the selected record
   var filename = data.cells[selected].name + '.json';
   get(config.dataUrl + '/metadata/' + filename, function(data) {
@@ -1149,6 +1151,11 @@ Selector.prototype.showModal = function(selected) {
       title.textContent = data.title ? data.title : data.filename ? data.filename : '';
       description.textContent = data.description ? data.description : '';
       tags.innerHTML = compiled ? compiled : '';
+      // update action buttons
+      deeplink.href = data.permalink ? data.permalink : '#';
+      download.href = img.src;
+      download.download = data.filename ? data.filename : Math.random() + '.jpg'
+      // show/hide the modal
       if (data.src) modal.style.display = 'block';
       if (data.title || data.description || data.tags) meta.style.display = 'block';
     }
