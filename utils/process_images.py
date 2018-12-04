@@ -58,11 +58,11 @@ class PixPlot:
       ' clusters for ' + str(len(image_glob)) +
       ' images to folder "' + FLAGS.output_folder + '"')
 
-    self.image_files = image_glob
-    self.sizes = [32, 128]
-    self.errored_images = set()
+    self.image_files = sorted(image_glob)
     self.vector_files = []
     self.image_vectors = []
+    self.errored_images = set()
+    self.sizes = [32, 128]
     self.flags = FLAGS
     self.rewrite_image_thumbs = False
     self.rewrite_image_vectors = False
@@ -72,48 +72,6 @@ class PixPlot:
     self.copy_original_images()
     if self.flags.process_images: self.process_images()
     if self.flags.lloyd_iterations: self.lloyd_iterate()
-
-
-  def process_images(self):
-    '''
-    Wrapper function that calls all image processing functions
-    '''
-    self.validate_inputs()
-    self.create_image_thumbs()
-    self.create_image_vectors()
-    self.load_image_vectors()
-    self.write_json()
-    self.create_atlas_files()
-    print('Processed output for ' + \
-      str(len(self.image_files) - len(self.errored_images)) + ' images')
-
-
-  def lloyd_iterate(self):
-    '''
-    Run Lloyd iteration on points to minimize overlapping positions
-    '''
-    # read in previously persisted JSON data with point positions
-    j = json.load(open(join(self.flags.output_folder, 'plot_data.json')))
-    positions = j['positions']
-    # parse out just the positional information from the full JSON packet
-    coords = np.array([ (i[1]+random(), i[2]+random()) for i in positions ])
-    field = Field(coords, constrain=True)
-    for i in range(self.flags.lloyd_iterations):
-      field.relax()
-    # add the image filename and size data to the resulting positions
-    p = []
-    for idx, i in enumerate(field.get_points()):
-      p.append([
-        positions[idx][0],
-        i[0],
-        i[1],
-        positions[idx][3],
-        positions[idx][4],
-      ])
-    # write the updated JSON data to disk
-    with open(join(self.flags.output_folder, 'plot_data.json'), 'w') as out:
-      j['positions'] = p
-      json.dump(j, out)
 
 
   def create_output_dirs(self):
@@ -139,8 +97,8 @@ class PixPlot:
     If the user provided a CSV metadata file, parse the metadata
     '''
     if not self.flags.csv: return
-    rmtree(join(self.flags.output_folder, 'metadata'))
     print(' * generating metadata')
+    rmtree(join(self.flags.output_folder, 'metadata'))
     tag_to_filenames = defaultdict(set) # d[tag] = {filename_0, filename_1...}
     filenames = set()
     rows = []
@@ -192,6 +150,20 @@ class PixPlot:
       copy(i, join(self.flags.output_folder, 'originals', basename(i)))
 
 
+  def process_images(self):
+    '''
+    Wrapper function that calls all image processing functions
+    '''
+    self.validate_inputs()
+    self.create_image_thumbs()
+    self.create_image_vectors()
+    self.load_image_vectors()
+    self.write_json()
+    self.create_atlas_files()
+    print('Processed output for ' + \
+      str(len(self.image_files) - len(self.errored_images)) + ' images')
+
+
   def validate_inputs(self):
     '''
     Make sure the inputs are valid, and warn users if they're not
@@ -225,7 +197,7 @@ class PixPlot:
 
   def create_image_thumbs(self):
     '''
-    Create output thumbs in 32px, 64px, and 128px
+    Create output thumbs in all required sizes
     '''
     print(' * creating image thumbs')
     resize_args = []
@@ -246,6 +218,7 @@ class PixPlot:
     pool = Pool()
     for result in pool.imap(resize_thumb, resize_args):
       if result:
+        print(' ! warning', result, 'was not properly resized')
         self.errored_images.add( get_filename(result) )
 
 
@@ -258,15 +231,15 @@ class PixPlot:
 
     print(' * creating image vectors')
     with tf.Session() as sess:
-      for image_index, image in enumerate(self.image_files):
+      for image_index, image_path in enumerate(self.image_files):
         try:
           print(' * processing image', image_index+1, 'of', len(self.image_files))
-          outfile_name = basename(image) + '.npy'
+          outfile_name = basename(image_path) + '.npy'
           out_path = join(self.flags.output_folder, 'image_vectors', outfile_name)
           if os.path.exists(out_path) and not self.rewrite_image_vectors:
             continue
           # save the penultimate inception tensor/layer of the current image
-          with tf.gfile.FastGFile(image, 'rb') as f:
+          with tf.gfile.FastGFile(image_path, 'rb') as f:
             data = {'DecodeJpeg/contents:0': f.read()}
             feature_tensor = sess.graph.get_tensor_by_name('pool_3:0')
             feature_vector = np.squeeze( sess.run(feature_tensor, data) )
@@ -276,8 +249,8 @@ class PixPlot:
             file_handler = getattr(open_file, 'fd')
             os.close(file_handler)
         except Exception as exc:
-          self.errored_images.add( get_filename(image) )
-          print(' * image', get_ascii_chars(image), 'hit a snag', exc)
+          print(' * image', get_ascii_chars(image_path), 'hit a snag', exc)
+          self.errored_images.add( get_filename(image_path) )
 
 
   def download_inception(self):
@@ -326,7 +299,8 @@ class PixPlot:
     Return all image vectors
     '''
     print(' * loading image vectors')
-    self.vector_files = glob( join(self.flags.output_folder, 'image_vectors', '*') )
+    vector_glob = join(self.flags.output_folder, 'image_vectors', '*')
+    self.vector_files = sorted(glob(vector_glob))
     for idx, i in enumerate(self.vector_files):
       self.image_vectors.append(np.load(i))
       print(' * loaded', idx+1, 'of', len(self.vector_files), 'image vectors')
@@ -377,8 +351,6 @@ class PixPlot:
     Write a JSON file with image positions, the number of atlas files
     in each size, and the centroids of the k means clusters
     '''
-    print(' * writing main JSON plot data file')
-    # write each of the distinct JSON files to disk
     self.write_centroids()
     with open(join(self.flags.output_folder, 'plot_data.json'), 'w') as out:
       json.dump({
@@ -399,9 +371,8 @@ class PixPlot:
     centroids = fit_model.cluster_centers_
     # find the points closest to the cluster centroids
     closest, _ = pairwise_distances_argmin_min(centroids, X)
-    centroid_paths = [self.vector_files[i] for i in closest]
     centroid_json = []
-    for idx, i in enumerate(centroid_paths):
+    for idx, i in enumerate([self.vector_files[i] for i in closest]):
       centroid_json.append({
         'img': get_filename(i), # strip the npy extension from the vector
         'idx': int(closest[idx]),
@@ -484,6 +455,34 @@ class PixPlot:
     # delete the last images to montage file
     if os.path.exists(tmp_file_path):
       os.remove(tmp_file_path)
+
+
+  def lloyd_iterate(self):
+    '''
+    Run Lloyd iteration on points to minimize overlapping positions
+    '''
+    # read in previously persisted JSON data with point positions
+    j = json.load(open(join(self.flags.output_folder, 'plot_data.json')))
+    # parse out just the positional information from the full JSON packet
+    coords = np.array([ (i[1]+random(), i[2]+random()) for i in j['positions'] ])
+    field = Field(coords, constrain=True)
+    for i in range(self.flags.lloyd_iterations):
+      print(' * running lloyd iteration', i+1)
+      field.relax()
+    # add the image filename and size data to the resulting positions
+    p = []
+    for idx, i in enumerate(field.get_points()):
+      p.append([
+        j['positions'][idx][0],
+        i[0],
+        i[1],
+        j['positions'][idx][3],
+        j['positions'][idx][4],
+      ])
+    # write the updated JSON data to disk
+    with open(join(self.flags.output_folder, 'plot_data.json'), 'w') as out:
+      j['positions'] = p
+      json.dump(j, out)
 
 
 def get_magick_command(cmd):
