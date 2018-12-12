@@ -1,6 +1,6 @@
 # PixPlot
 
-This repository contains code that can be used to visualize tens of thousands of images in a two-dimensional projection within which similar images are clustered together. The image analysis uses Tensorflow's Inception bindings, and the visualization layer uses a custom WebGL viewer.
+This repository contains code that can be used to visualize tens of thousands of images in a two-dimensional projection within which similar images are clustered together. The image analysis uses (by default) a pre-trained captioning neural network from Google called [Inception](https://ai.google/research/pubs/pub43022), discarding the final labels and using the penultimate layer to provide 2,048-dimensional visual features. The visualization layer uses a custom WebGL viewer.
 
 ![App preview](./assets/images/preview.png?raw=true)
 
@@ -93,3 +93,8 @@ You can add, remove or re-order these, change the labels to make them more meani
 ## Acknowledgements
 
 The DHLab would like to thank [Cyril Diagne](http://cyrildiagne.com/), a lead developer on the spectacular [Google Arts Experiments TSNE viewer](https://artsexperiments.withgoogle.com/tsnemap/), for generously sharing ideas on optimization techniques used in this viewer.
+
+PixPlot was inspired by the approach shown by Benoit Seguin et al in:
+
+di Lenardo, I., Seguin, B., Kaplan, F. (2016). [Visual Patterns Discovery in Large Databases of Paintings](http://dh2016.adho.org/abstracts/348). In Digital Humanities 2016: Conference Abstracts. Jagiellonian University & Pedagogical University, Kraków, pp. 169-172.
+
