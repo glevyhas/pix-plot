@@ -614,13 +614,12 @@ function World() {
   * Position the camera and controls in the center of the world
   **/
 
-  self.centerControls = function() {
-    self.setCenter();
+  self.setControls = function(x, y, z) {
     // position the camera in the plot's center
-    self.camera.position.set(self.center.x, self.center.y, -6000);
-    self.camera.lookAt(self.center.x, self.center.y, 0);
+    self.camera.position.set(x, y, z);
+    self.camera.lookAt(x, y, 0);
     // position the controls in the plot's center
-    self.controls.target = new THREE.Vector3(self.center.x, self.center.y, 0);
+    self.controls.target = new THREE.Vector3(x, y, 0);
   }
 
   /**
@@ -1063,7 +1062,8 @@ function World() {
   **/
 
   self.init = function() {
-    self.centerControls();
+    self.setCenter();
+    self.setControls(self.center.x, 0, -6000);
     self.plot();
   }
 
