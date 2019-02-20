@@ -4,6 +4,3 @@ __pycache__
 *.DS_Store
 data
 output
-images
-get_metadata.py
-make_csv.py
