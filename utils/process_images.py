@@ -49,6 +49,8 @@ flags.DEFINE_string('layout', 'umap', 'The layout method to use {umap|tsne}')
 flags.DEFINE_integer('lloyd_iterations', 0, 'Number of times to run Lloyd relaxation on positions')
 flags.DEFINE_boolean('copy_images', True, 'Copy inputs to outputs for detailed image view in browser')
 flags.DEFINE_string('csv', '', 'The path to a metadata CSV file (see README)')
+flags.DEFINE_integer('n_neighbors', 25, 'The minimum number of neighbors between points in UMAP projectsions')
+flags.DEFINE_float('min_dist', 0.0001, 'The minimum distance between points in UMAP projections')
 FLAGS = flags.FLAGS
 
 
@@ -116,7 +118,8 @@ class PixPlot:
         if filename not in img_filenames:
           missing_from_images.add(filename)
           continue
-        for tag in tags.split('|'):
+        tags = tags.split('|')
+        for tag in tags:
           tag_to_filenames[tag].add(filename)
         rows.append([filename, tags, description, permalink])
         filenames.add(filename)
@@ -127,7 +130,7 @@ class PixPlot:
     ensure_dir_exists(levels_dir)
     # write the JSON for each tag
     for i in tag_to_filenames:
-      with open(join(levels_dir, '-'.join(i.split()) + '.json'), 'w') as out:
+      with open(join(levels_dir, '-'.join(i.split(' ')) + '.json'), 'w') as out:
         json.dump(list(tag_to_filenames[i]), out)
     # save JSON with all level options
     with open(join(self.flags.output_folder, 'filters', 'filters.json'), 'w') as out:
@@ -146,11 +149,21 @@ class PixPlot:
 
 
   def log_missing_metadata(self, filename_set, present_in, missing_from):
+    '''
+    Log images that are present in metadata but not the input images or
+    vice versa
+    '''
+    if not filename_set: return
     filename_set = list(filename_set)
-    if len(filename_set) > 50:
+    set_length = len(filename_set)
+    if set_length > 50:
       filename_set = filename_set[:50]
-    print(' ! warning, these files are in the {0} but not the {1}:\n {2}'.format(
-      present_in, missing_from, ', '.join(filename_set)))
+    print(' ! warning, {0} files are in the {1} but not the {2}:\n {3}{4}'.format(
+      str(set_length),
+      present_in,
+      missing_from,
+      ', '.join(filename_set),
+      '...' if set_length > 50 else ''))
 
 
   def copy_original_images(self):
@@ -223,7 +236,7 @@ class PixPlot:
       out_paths = []
       for i in sorted(self.sizes, key=int, reverse=True):
         out_dir = join(self.flags.output_folder, 'thumbs', str(i) + 'px')
-        out_path = join( out_dir, get_filename(j) + '.jpg' )
+        out_path = join( out_dir, get_filename(j) )
         if os.path.exists(out_path) and not self.rewrite_image_thumbs:
           continue
         sizes.append(i)
@@ -255,7 +268,7 @@ class PixPlot:
           if os.path.exists(out_path) and not self.rewrite_image_vectors:
             continue
           # save the penultimate inception tensor/layer of the current image
-          with tf.gfile.FastGFile(image_path, 'rb') as f:
+          with tf.gfile.GFile(image_path, 'rb') as f:
             data = {'DecodeJpeg/contents:0': f.read()}
             feature_tensor = sess.graph.get_tensor_by_name('pool_3:0')
             feature_vector = np.squeeze( sess.run(feature_tensor, data) )
@@ -333,7 +346,9 @@ class PixPlot:
       return model.fit_transform( np.array(image_vectors) )
 
     elif self.flags.layout == 'umap':
-      model = UMAP(n_neighbors=25, min_dist=0.00001, metric='correlation')
+      n_neighbors = self.flags.n_neighbors
+      min_dist = self.flags.min_dist
+      model = UMAP(n_neighbors=n_neighbors, min_dist=min_dist, metric='correlation')
       return model.fit_transform( np.array(image_vectors) )
 
 
@@ -390,7 +405,7 @@ class PixPlot:
     centroid_json = []
     for idx, i in enumerate([self.vector_files[i] for i in closest]):
       centroid_json.append({
-        'img': get_filename(i), # strip the npy extension from the vector
+        'img': get_filename(i).rstrip('.npy'),
         'idx': int(closest[idx]),
         'label': 'Cluster ' + str(idx+1),
       })
@@ -422,7 +437,7 @@ class PixPlot:
     thumb_dir = join(self.flags.output_folder, 'thumbs', str(thumb_size) + 'px')
     with open(join(self.flags.output_folder, 'plot_data.json')) as f:
       for i in json.load(f)['positions']:
-        thumbs.append( join(thumb_dir, i[0] + '.jpg') )
+        thumbs.append( join(thumb_dir, i[0] ) )
     return thumbs
 
 
@@ -538,7 +553,7 @@ def resize_thumb(args):
 
 def subdivide(l, n):
   '''
-  Return n-sized sublists from iterable l
+  Return `n`-sized sublists from iterable `l`
   '''
   n = int(n)
   for i in range(0, len(l), n):
@@ -552,15 +567,11 @@ def get_ascii_chars(s):
   return ''.join(i for i in s if ord(i) < 128)
 
 
-def get_filename(path, extension=False):
+def get_filename(path):
   '''
-  Return the root filename of `path`. If `extension` is True,
-  keep the extension, else return the filename without extension.
+  Return the root filename of `path`
   '''
-  filename = basename(path)
-  if not extension:
-    return os.path.splitext(filename)[0]
-  return filename
+  return basename(path)
 
 
 def ensure_dir_exists(directory):
