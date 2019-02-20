@@ -333,7 +333,6 @@ noscript {
 
 #selected-image {
   max-height: 100%;
-  padding: 25px;
   box-sizing: border-box;
 }
 
@@ -345,7 +344,7 @@ noscript {
   display: inline-block;
   width: 50px;
   position: relative;
-  bottom: 30px;
+  bottom: 6px;
   white-space: initial;
 }
 
