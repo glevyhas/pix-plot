@@ -649,7 +649,7 @@ function World() {
       var material = self.getShaderMaterial({
         firstTex: attrs.texStartIdx,
         textures: attrs.textures,
-        useColor: 0.0, // todo - set back to 0.0
+        useColor: 0.0,
       });
       material.transparent = true;
       var mesh = new THREE.Points(geometry, material);
