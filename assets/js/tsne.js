@@ -1154,7 +1154,7 @@ Selector.prototype.showModal = function(selected) {
       // update action buttons
       deeplink.href = data.permalink ? data.permalink : '#';
       download.href = img.src;
-      download.download = data.filename ? data.filename : Math.random() + '.jpg'
+      download.download = data.filename ? data.filename : Math.random();
       // show/hide the modal
       if (data.src) modal.style.display = 'block';
       if (data.title || data.description || data.tags) meta.style.display = 'block';
@@ -1351,7 +1351,7 @@ LOD.prototype.loadImage = function(cellIdx) {
         this.state.cellsToActivate = this.state.cellsToActivate.concat(cellIdx);
       }
     }.bind(this, cellIdx);
-    image.src = config.thumbsUrl + data.cells[cellIdx].name + '.jpg';
+    image.src = config.thumbsUrl + data.cells[cellIdx].name;
   }
 }
 
