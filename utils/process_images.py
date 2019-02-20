@@ -18,7 +18,7 @@ from sklearn.manifold import TSNE
 from multiprocessing import Pool
 from six.moves import urllib
 from os.path import join, basename
-from shutil import copy, rmtree
+from shutil import copy, rmtree, SameFileError
 from random import random
 from lloyd import Field
 from PIL import Image
@@ -98,7 +98,11 @@ class PixPlot:
     '''
     if not self.flags.csv: return
     print(' * generating metadata')
-    rmtree(join(self.flags.output_folder, 'metadata'))
+    # remove the stale metadata
+    for i in ['metadata', 'filters']:
+      rmtree(join(self.flags.output_folder, i))
+    img_filenames = {get_filename(i) for i in self.image_files}
+    missing_from_images = set()
     tag_to_filenames = defaultdict(set) # d[tag] = {filename_0, filename_1...}
     filenames = set()
     rows = []
@@ -107,22 +111,23 @@ class PixPlot:
       for idx, i in enumerate(reader):
         if len(i) == 0: continue # skip empty rows
         filename, tags, description, permalink = i
-        tags = tags.split('|')
-        for tag in tags: tag_to_filenames[tag].add(get_filename(filename))
+        filename = get_filename(filename)
+        # check if this filename in the metadata is present in the images
+        if filename not in img_filenames:
+          missing_from_images.add(filename)
+          continue
+        for tag in tags.split('|'):
+          tag_to_filenames[tag].add(filename)
         rows.append([filename, tags, description, permalink])
         filenames.add(filename)
-    # inform the user if files are missing from the metadata
-    img_filenames = {basename(i) for i in self.image_files}
-    missing_from_meta = img_filenames - filenames
-    if missing_from_meta:
-      print(' ! warning, metadata missing files', missing_from_meta)
+    self.log_missing_metadata(missing_from_images, 'metadata', 'images')
+    self.log_missing_metadata(img_filenames - filenames, 'images', 'metadata')
     # create the directory where each filter option will live
     levels_dir = join(self.flags.output_folder, 'filters', 'option_values')
     ensure_dir_exists(levels_dir)
     # write the JSON for each tag
     for i in tag_to_filenames:
-      hyphenated = '-'.join(i.split())
-      with open(join(levels_dir, hyphenated + '.json'), 'w') as out:
+      with open(join(levels_dir, '-'.join(i.split()) + '.json'), 'w') as out:
         json.dump(list(tag_to_filenames[i]), out)
     # save JSON with all level options
     with open(join(self.flags.output_folder, 'filters', 'filters.json'), 'w') as out:
@@ -140,6 +145,14 @@ class PixPlot:
         json.dump(d, out)
 
 
+  def log_missing_metadata(self, filename_set, present_in, missing_from):
+    filename_set = list(filename_set)
+    if len(filename_set) > 50:
+      filename_set = filename_set[:50]
+    print(' ! warning, these files are in the {0} but not the {1}:\n {2}'.format(
+      present_in, missing_from, ', '.join(filename_set)))
+
+
   def copy_original_images(self):
     '''
     Copy the input high-res images to the ouput directory
@@ -147,7 +160,10 @@ class PixPlot:
     if not self.flags.copy_images: return
     print(' * copying high res images to output directory')
     for i in self.image_files:
-      copy(i, join(self.flags.output_folder, 'originals', basename(i)))
+      try:
+        copy(i, join(self.flags.output_folder, 'originals', basename(i)))
+      except SameFileError:
+        pass
 
 
   def process_images(self):
