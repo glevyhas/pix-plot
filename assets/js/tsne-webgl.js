@@ -21,17 +21,22 @@ var sizes = {
     cols: 2048 / 32,
     rows: 2048 / 32
   }
-}
+};
 
 // Count of 32px and 64px atlas files to fetch
-var atlasCounts = { '32px': null, '64px': null }
+var atlasCounts = { '32px': null, '64px': null };
+
+// Group count
+var groupCount = 1;
 
 // Create a store for the load progress. Data structure:
 // {atlas0: percentLoaded, atlas1: percentLoaded}
 var loadProgress = {};
 
 // Create a store for the 32px and 64px atlas materials
-var materials = { 32: [], 64: [] }
+var materials = { 32: [], 64: [] };
+
+var colors = [0xbfffc1, 0xffbb8e, 0xbff9ff, 0xecbfff];
 
 // Many graphics cards only support 2**16 vertices per mesh,
 // and each image requires 4 distinct vertices
@@ -164,6 +169,14 @@ function loadData() {
     var data = JSON.parse(data);
     // Set the atlas counts
     atlasCounts = data.atlas_counts;
+    // Set the group counts
+    if (data.group_count){
+      groupCount = data.group_count;
+    };
+    materials = []
+    for (group = 0; group<groupCount; group++){
+      materials.push({ 32: [], 64: [] });
+    };
     // Load the atlas files
     loadAtlasFiles()
     // Process the image positions
@@ -215,6 +228,7 @@ function parseImage(img) {
     y: img[2],
     width: img[3],
     height: img[4],
+    group: img[5],
     xOffset: (sizes.image.width - img[3])/2,
     yOffset: (sizes.image.height - img[4])/2
   }
@@ -260,6 +274,11 @@ function getImageData(img, idx) {
   var atlas = getImageAtlasData(idx);
   // Get image uv position for this image
   var uv = getImageUvData(img, idx, atlas);
+  // Get group
+  var group = 0;
+  if (img.group && img.group < groupCount) {
+    group = img.group;
+  }
   // Get the index position of the material within this image's mesh
   var material = getImageMaterialData(idx);
   // Get the index position of this image's mesh among all meshes
@@ -276,6 +295,7 @@ function getImageData(img, idx) {
     uv: uv,
     material: material,
     mesh: mesh,
+    group: group,
   }
 }
 
@@ -296,7 +316,7 @@ function getImagePositionData(img, idx) {
   return {
     x: img.x * 15,
     y: img.y * 12,
-    z: 2000 + (idx/100),
+    z: 2000 + (idx/20),
   }
 }
 
@@ -343,7 +363,7 @@ function getImageUvData(img, idx, atlas) {
     h: img.height / sizes.atlas.height,
     x: ((atlas.col) * cellWidth) + (img.xOffset / sizes.atlas.width),
     y: (1 - (atlas.row * cellHeight) - cellHeight) + (img.yOffset / sizes.atlas.height),
-    face: (idx % imagesPerMesh) * 2,
+    face: 0,//(idx % imagesPerMesh) * 2,
   }
 }
 
@@ -422,8 +442,13 @@ function onProgress(atlasIndex, xhr) {
 **/
 
 function handleTexture(textureIndex, texture) {
-  var material = new THREE.MeshBasicMaterial({ map: texture });
-  materials['32'][textureIndex] = material;
+  //var material = new THREE.MeshBasicMaterial({ map: texture });
+  //materials['64'][atlasIndex] = material;
+
+  for (group = 0; group < groupCount; group++){
+    materials[group]['32'][textureIndex] = new THREE.MeshBasicMaterial({ color: colors[group], map: texture });
+  }
+
   startIfReady();
 }
 
@@ -433,7 +458,7 @@ function handleTexture(textureIndex, texture) {
 
 function startIfReady() {
   var atlasCount = atlasCounts['32px'];
-  var loadedAtlasCount = Object.keys(materials['32']).length;
+  var loadedAtlasCount = Object.keys(materials[0]['32']).length;
   if (loadedAtlasCount === atlasCount &&
       Object.keys(imageData).length > 0 &&
       progress === 1) {
@@ -459,21 +484,31 @@ function startIfReady() {
 function buildGeometry() {
   var meshCount = Math.ceil( imageDataKeys.length / imagesPerMesh );
   for (var i=0; i<meshCount; i++) {
-    var geometry = new THREE.Geometry();
     var meshImages = imageDataKeys.slice(i*imagesPerMesh, (i+1)*imagesPerMesh);
+    var geometryPerGroup = [];
+    var counterPerGroup = [];
+    for (var g=0; g<groupCount; g++){
+      geometryPerGroup.push(new THREE.Geometry());
+      counterPerGroup.push(0);
+    }
     for (var j=0; j<meshImages.length; j++) {
       var datum = imageData[ meshImages[j] ];
+      datum.uv.face = counterPerGroup[datum.group]*2;
+      geometry = geometryPerGroup[datum.group];
       geometry = updateVertices(geometry, datum);
-      geometry = updateFaces(geometry);
+      geometry = updateFaces(geometry, datum);
       geometry = updateFaceVertexUvs(geometry, datum);
+      counterPerGroup[datum.group]++;
     }
     var startMaterial = imageData[ meshImages[0] ].atlas.index;
     var endMaterial = imageData[ meshImages[j-1] ].atlas.index;
-    buildMesh(geometry, materials['32'].slice(startMaterial, endMaterial + 1));
+    for (var g=0; g<groupCount; g++){
+      buildMesh(geometryPerGroup[g], materials[g]['32'].slice(startMaterial, endMaterial + 1));
+    };
   }
   requestAnimationFrame(animate);
   removeLoaderScene();
-  loadLargeAtlasFiles();
+  //loadLargeAtlasFiles();
 }
 
 /**
@@ -524,21 +559,22 @@ function updateVertices(geometry, img) {
 *   contain the new image's faces
 **/
 
-function updateFaces(geometry) {
-  geometry.faces.push(
-    // Add the first face (the lower-right triangle)
-    new THREE.Face3(
-      geometry.vertices.length-4,
-      geometry.vertices.length-3,
-      geometry.vertices.length-2
-    ),
-    // Add the second face (the upper-left triangle)
-    new THREE.Face3(
-      geometry.vertices.length-4,
-      geometry.vertices.length-2,
-      geometry.vertices.length-1
-    )
-  )
+function updateFaces(geometry, img) {
+  var face1 =  new THREE.Face3(
+    geometry.vertices.length-4,
+    geometry.vertices.length-3,
+    geometry.vertices.length-2
+  );
+  face1.userData = {"img_idx": img.idx};
+
+  var face2 = new THREE.Face3(
+    geometry.vertices.length-4,
+    geometry.vertices.length-2,
+    geometry.vertices.length-1
+  );
+  face2.userData = {"img_idx": img.idx};
+  geometry.faces.push(face1);
+  geometry.faces.push(face2);
   return geometry;
 }
 
@@ -640,8 +676,12 @@ function loadLargeAtlasFiles() {
 **/
 
 function handleLargeTexture(atlasIndex, texture) {
-  var material = new THREE.MeshBasicMaterial({ map: texture });
-  materials['64'][atlasIndex] = material;
+  //var material = new THREE.MeshBasicMaterial({ map: texture });
+
+  for (group = 0; group < groupCount; group++){
+    materials[group]['64'][atlasIndex] = new THREE.MeshBasicMaterial({ color: colors[group], map: texture });
+  }
+  //materials['64'][atlasIndex] = material;
   updateImages(atlasIndex)
 }
 
@@ -663,7 +703,7 @@ function updateImages(atlasIndex) {
   // Identify the index position for the new atlas file
   var materialIndex = meshes[meshIndex].material.length;
   // Add the new atlas to its mesh
-  meshes[meshIndex].material.push( materials['64'][atlasIndex] )
+  meshes[meshIndex].material.push( materials[0]['64'][atlasIndex] )
   // Request an update for this material
   meshes[meshIndex].material[materialIndex].needsUpdate = true;
   // Grab the geometry to which we added the new atlas
@@ -812,19 +852,14 @@ function onMouseup(event) {
   if (!selected.length || !(mouse.equals(lastMouse))) return;
   // The 0th member is closest to the camera
   selected = selected[0];
-  // Identify the selected item's face within its parent mesh
-  var faceIndex = selected.faceIndex;
-  // Identify the selected item's mesh index
-  var meshIndex = selected.object.userData.meshIndex;
-  // rows * cols images per mesh, 2 faces per image
-  var imageIndex = (meshIndex * imagesPerMesh) + Math.floor(faceIndex / 2);
-  // Store the image name in the url hash for reference
-  window.location.hash = imageDataKeys[imageIndex];
+  window.location.hash = imageDataKeys[selected.face.userData['img_idx']];
+  var imdat = imageData[imageDataKeys[selected.face.userData['img_idx']]];
   flyTo(
     selected.point.x,
     selected.point.y,
     selected.point.z
   );
+  window.open("full/"+imageDataKeys[selected.face.userData['img_idx']]+".jpg", "_blank");
 }
 
 /**
