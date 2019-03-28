@@ -1,5 +1,20 @@
 # PixPlot
 
+This repository is a fork of the original PixPlot created by the Yale DH lab. In our version, cluster visualisation via different colors is added. In order to use this, create the plot_data.json as usual and then add group information to each image and a global group_count. Afterwards, the json should look like that:
+
+<pre>
+    {"atlas_counts": {"64px": 15.0, "32px": 4.0}, 
+     <b>"group_count": 3,</b>
+     "positions": [
+          ["picture1", 0, 0, 0, 0, <b>0</b>],
+          ["picture2", 0, 0, 0, 0, <b>1</b>],
+          ...
+     "clusters": [...]
+     }
+</pre>
+
+- - - -
+
 This repository contains code that can be used to visualize tens of thousands of images in a two-dimensional projection within which similar images are clustered together. The image analysis uses Tensorflow's Inception bindings, and the visualization layer uses a custom WebGL viewer.
 
 ![App preview](./assets/images/preview.png?raw=true)
