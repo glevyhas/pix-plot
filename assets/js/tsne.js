@@ -8,7 +8,7 @@ function Config() {
   this.spread = {
     x: 1000,
     y: 1000,
-    z: 1,
+    z: 1000,
   }; // scale for positioning items on x,y axes
   this.cellSize = 32;
   this.lodCellSize = 128;
@@ -95,8 +95,7 @@ Data.prototype.load = function() {
   var self = this;
   get(config.dataUrl + '/' + self.file, function(json) {
     self.cellData = json.cells.data; // maps layout key to position array
-    layout.options = json.cells.layouts;
-    layout.selected = layout.options[0];
+    layout.setOptions(json.cells.layouts); // set available layouts
     self.cellCount = self.cellData.length;
     self.atlasCount = json.atlas_counts['32px'];
     self.textureCount = Math.ceil(self.atlasCount / config.atlasesPerTex);
@@ -276,13 +275,19 @@ Cell.prototype.getPosInAtlas = function() {
 Cell.prototype.getLayouts = function() {
   // build up the positional vals for this cell
   var options = {},
-      d = Object.assign([], data.cellData[this.idx]);
+      d = Object.assign([], data.cellData[this.idx]),
+      positions = d[3]; // cell position arrays
   layout.options.forEach(function(i, idx) {
-    var z = d[3][idx].length > 2 ? d[3][idx][2] : 1;
-    options[i] = {
-      x: d[3][idx][0] * config.spread.x,
-      y: d[3][idx][1] * config.spread.y,
-      z: z * config.spread.z,
+    if (i != 'grid') { //skip grid key as it doesn't come from server
+      var layoutPositions = positions[idx], // x, y, {z} positions for layout
+          x = layoutPositions[0],
+          y = layoutPositions[1],
+          z = layoutPositions.length > 2 ? layoutPositions[2] : 1;
+      options[i] = {
+        x: x * config.spread.x,
+        y: y * config.spread.y,
+        z: z * config.spread.z,
+      };
     };
   })
   // compute grid position of cell
@@ -295,6 +300,7 @@ Cell.prototype.getLayouts = function() {
     y: (Math.floor(this.idx / perSide) * scalar) - center,
     z: 0,
   }
+
   return options;
 }
 
@@ -456,8 +462,36 @@ Cell.prototype.mutateBuffer = function(attr) {
 
 function Layout() {
   var self = this;
+  self.elem = null;
   self.selected = null;
   self.options = [];
+}
+
+/**
+* @param [str] options: an array of layout strings; each should
+*   be an attribute in data.cells[ithCell].layouts
+**/
+
+Layout.prototype.setOptions = function(options) {
+  this.options = Object.assign([], options).concat('grid');
+  //this.options = this.options; // all scenes can use grid layout
+  this.selected = options[0];
+  if (this.options.length > 1) this.render();
+}
+
+Layout.prototype.render = function() {
+  var select = document.createElement('select');
+  select.id = 'layout-select';
+  for (var i=0; i<this.options.length; i++) {
+    var option = document.createElement('option');
+    option.val = this.options[i];
+    option.textContent = this.options[i];
+    select.appendChild(option);
+  }
+  select.addEventListener('change', function(e) {
+    this.set(e.target.value);
+  }.bind(this))
+  document.querySelector('.header-controls').appendChild(select);
 }
 
 // Transition to a new layout; layout must be an attr on Cell.layouts
@@ -1525,7 +1559,7 @@ function Filter(obj) {
   var self = this;
   self.values = obj.filter_values || [];
   self.name = obj.filter_name || '';
-  if (self.values.length) self.createSelect();
+  if (self.values.length > 1) self.createSelect();
 }
 
 Filter.prototype.createSelect = function() {

@@ -127,7 +127,8 @@ select::-ms-expand {
   display: inline-block;
   position: absolute;
   right: 0;
-  width: 400px;
+  top: 18px;
+  min-width: 400px;
 }
 
 .filter-icons {
