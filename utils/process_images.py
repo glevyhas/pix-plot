@@ -45,7 +45,7 @@ flags.DEFINE_boolean('process_images', True, 'Whether to process images')
 flags.DEFINE_boolean('validate_images', True, 'Whether to validate images before processing')
 flags.DEFINE_integer('clusters', 20, 'The number of clusters to display in the image browser')
 flags.DEFINE_string('output_folder', 'output', 'The folder where output files will be stored')
-flags.DEFINE_string('layout', 'umap', 'The layout method to use {umap|tsne}')
+flags.DEFINE_string('layout', 'all', 'The layout method to use {umap|tsne|all}')
 flags.DEFINE_integer('lloyd_iterations', 0, 'Number of times to run Lloyd relaxation on positions')
 flags.DEFINE_boolean('copy_images', True, 'Copy inputs to outputs for detailed image view in browser')
 flags.DEFINE_string('csv', '', 'The path to a metadata CSV file (see README)')
@@ -313,16 +313,6 @@ class PixPlot:
       _ = tf.import_graph_def(graph_def, name='')
 
 
-  def get_2d_image_positions(self):
-    '''
-    Create a 2d embedding of the image vectors
-    '''
-    print(' * calculating 2D image positions')
-    model = self.build_model(self.image_vectors)
-    positions = self.get_image_positions(model)
-    return positions
-
-
   def load_image_vectors(self):
     '''
     Return all image vectors
@@ -335,46 +325,59 @@ class PixPlot:
       print(' * loaded', idx+1, 'of', len(self.vector_files), 'image vectors')
 
 
-  def build_model(self, image_vectors):
+  def get_cell_data(self):
     '''
-    Build a 2d projection of the `image_vectors`
+    Write a JSON file that indicates the position of each image
     '''
-    print(' * building 2D projection')
+    print(' * generating image position data')
+    layout_models = self.get_layout_models()
+    layout_keys = list(layout_models.keys())
+    position_data = {'layouts': layout_keys, 'data': []}
+    for idx, i in enumerate(self.image_files):
+      img_filename = get_filename(i)
+      if img_filename in self.errored_images: continue
+      with Image.open(i) as image: w, h = image.size
+      # get all layouts for this image
+      layouts = [[float(j) for j in layout_models[k][idx]] for k in layout_keys]
+      # add this image's data to the outgoing packet
+      position_data['data'].append([
+        img_filename,
+        w,
+        h,
+        layouts,
+      ])
+    return position_data
+
+
+  def get_layout_models(self):
+    '''
+    Build one or more lower-dimensional projections of `self.image_vectors`
+    '''
+    print(' * building lower-dimensional projections')
+    np.set_printoptions(suppress=True)
+    # call tsne constructors
+    tsne_2d_model = TSNE(n_components=2, random_state=0)
+    tsne_3d_model = TSNE(n_components=3, random_state=0)
+    # call umap constructor
+    n_neighbors = self.flags.n_neighbors
+    min_dist = self.flags.min_dist
+    umap_2d_model = UMAP(n_neighbors=n_neighbors, min_dist=min_dist, metric='correlation')
+    # prepare the input vectors
+    vecs = np.array(self.image_vectors)
+    # build and return the requested layout models
     if self.flags.layout == 'tsne':
-      model = TSNE(n_components=2, random_state=0)
-      np.set_printoptions(suppress=True)
-      return model.fit_transform( np.array(image_vectors) )
+      return {'tsne_2d': center_features(tsne_2d_model.fit_transform(vecs))}
 
     elif self.flags.layout == 'umap':
-      n_neighbors = self.flags.n_neighbors
-      min_dist = self.flags.min_dist
-      model = UMAP(n_neighbors=n_neighbors, min_dist=min_dist, metric='correlation')
-      return model.fit_transform( np.array(image_vectors) )
+      return {'umap_2d': center_features(umap_2d_model.fit_transform(vecs))}
 
+    elif self.flags.layout == 'all':
+      return {
+        'tsne_2d': center_features(tsne_2d_model.fit_transform(vecs)),
+        'tsne_3d': center_features(tsne_3d_model.fit_transform(vecs)),
+        'umap_2d': center_features(umap_2d_model.fit_transform(vecs)),
+      }
 
-  def get_image_positions(self, fit_model):
-    '''
-    Write a JSON file that indicates the 2d position of each image
-    '''
-    image_positions = []
-    for idx, i in enumerate(fit_model):
-      # get the full path to the `ith` input image
-      img_path = self.image_files[idx]
-      # get the basename and file extension of the `ith` input image
-      img_filename = get_filename(img_path)
-      if img_filename in self.errored_images:
-        continue
-      with Image.open(img_path) as image:
-        width, height = image.size
-      # Add the image name, x offset, y offset, full width, full height
-      image_positions.append([
-        img_filename,
-        int(i[0] * 100),
-        int(i[1] * 100),
-        width,
-        height,
-      ])
-    return image_positions
 
 
   def write_json(self):
@@ -385,7 +388,7 @@ class PixPlot:
     self.write_centroids()
     with open(join(self.flags.output_folder, 'plot_data.json'), 'w') as out:
       json.dump({
-        'positions': self.get_2d_image_positions(),
+        'cells': self.get_cell_data(),
         'atlas_counts': self.get_atlas_counts(),
       }, out)
 
@@ -436,8 +439,9 @@ class PixPlot:
     thumbs = []
     thumb_dir = join(self.flags.output_folder, 'thumbs', str(thumb_size) + 'px')
     with open(join(self.flags.output_folder, 'plot_data.json')) as f:
-      for i in json.load(f)['positions']:
-        thumbs.append( join(thumb_dir, i[0] ) )
+      image_names = [i[0] for i in  json.load(f)['cells']['data']]
+      for i in image_names:
+        thumbs.append( join(thumb_dir, i) )
     return thumbs
 
 
@@ -492,6 +496,7 @@ class PixPlot:
     '''
     Run Lloyd iteration on points to minimize overlapping positions
     '''
+    raise Exception('Not implemented')
     # read in previously persisted JSON data with point positions
     j = json.load(open(join(self.flags.output_folder, 'plot_data.json')))
     # parse out just the positional information from the full JSON packet
@@ -589,28 +594,37 @@ def limit_float(f):
   return int(f*10000)/10000
 
 
+def center_features(arr):
+  '''
+  Find the min and max of each column in `arr` and center values -1, 1
+  '''
+  centered = np.zeros(arr.shape)
+  for i in range(int(arr.shape[1])):
+    col = arr[:,i]
+    col_min = np.min(col)
+    col_max = np.max(col)
+    centered[:,i] = ((arr[:,i]-col_min)/(col_max-col_min)-0.5)*2
+  return centered
+
+
 def main(*args, **kwargs):
   '''
   The main function to run
   '''
   # user specified glob path with tensorflow flags
-  if FLAGS.image_files:
-    image_glob = glob(FLAGS.image_files)
+  if FLAGS.image_files: image_glob = glob(FLAGS.image_files)
 
   # one argument was passed; assume it's a glob of image paths
-  elif len(sys.argv) == 2:
-    image_glob = glob(sys.argv[1])
+  elif len(sys.argv) == 2: image_glob = glob(sys.argv[1])
 
   # many args were passed; check if user passed any flags
   elif len(sys.argv) > 2:
     # use the first argument as the image glob
-    if any('--' in i for i in sys.argv):
-      image_glob = glob(sys.argv[1])
+    if any('--' in i for i in sys.argv): image_glob = glob(sys.argv[1])
 
     # else assume user passed glob without quotes and the
     # shell auto-expanded them into a list of file arguments
-    else:
-      image_glob = glob(sys.argv[1:])
+    else: image_glob = glob(sys.argv[1:])
 
   # no glob path was specified
   else:

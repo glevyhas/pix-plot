@@ -6,9 +6,9 @@ function Config() {
   this.dataUrl = 'output'; // path to location where data lives
   this.thumbsUrl = this.dataUrl + '/thumbs/128px/';
   this.spread = {
-    x: 10,
-    y: 10,
-    z: 0,
+    x: 1000,
+    y: 1000,
+    z: 1000,
   }; // scale for positioning items on x,y axes
   this.cellSize = 32;
   this.lodCellSize = 128;
@@ -63,11 +63,12 @@ function Data() {
 }
 
 // Get an array of the position data to pass to the texture at idx `texIdx`
-Data.prototype.getTexturePositions = function(texIdx) {
-  var chunk = config.cellsPerAtlas * config.atlasesPerTex,
-      start = chunk * texIdx,
-      end = chunk * (texIdx + 1);
-  return this.positions.slice(start, end);
+Data.prototype.getTextureCellIndices = function(texIdx) {
+  var cellsPerTex = config.cellsPerAtlas * config.atlasesPerTex;
+  return {
+    start: cellsPerTex * texIdx,
+    end: Math.min(cellsPerTex * (texIdx + 1), self.cellCount),
+  }
 }
 
 // When a texture's progress updates, update the aggregate progress
@@ -93,16 +94,17 @@ Data.prototype.getAtlasCount = function(texIdx) {
 Data.prototype.load = function() {
   var self = this;
   get(config.dataUrl + '/' + self.file, function(json) {
-    self.positions = json.positions;
+    self.cellData = json.cells.data; // maps layout key to position array
+    layout.setOptions(json.cells.layouts); // set available layouts
+    self.cellCount = self.cellData.length;
     self.atlasCount = json.atlas_counts['32px'];
     self.textureCount = Math.ceil(self.atlasCount / config.atlasesPerTex);
-    self.gridSideCells = Math.ceil(Math.pow(self.positions.length, 0.5));
+    self.gridSideCells = Math.ceil(Math.pow(self.cellCount, 0.5));
     // load each texture for this data set
     for (var i=0; i<self.textureCount; i++) {
       self.textures.push(new Texture({
-        data: self,
         idx: i,
-        positions: self.getTexturePositions(i),
+        cellIndices: self.getTextureCellIndices.bind(self),
         onProgress: self.onTextureProgress.bind(self),
         onLoad: self.onTextureLoad.bind(self),
         atlasCount: self.getAtlasCount(i),
@@ -117,10 +119,10 @@ Data.prototype.load = function() {
 
 function Texture(obj) {
   this.idx = obj.idx;
+  this.cellIndices = obj.cellIndices;
   this.atlasProgress = {};
   this.atlases = [];
   this.atlasCount = obj.atlasCount;
-  this.positions = obj.positions;
   this.onProgress = obj.onProgress;
   this.onLoad = obj.onLoad;
   this.loadedAtlases = 0;
@@ -143,7 +145,7 @@ Texture.prototype.load = function() {
   for (var i=0; i<this.atlasCount; i++) {
     this.atlases.push(new Atlas({
       idx: (config.atlasesPerTex * this.idx) + i,
-      positions: this.getAtlasPositions(i),
+      cellIndices: this.getAtlasCellIndices(i),
       size: config.atlasSize,
       texIdx: this.idx,
       onProgress: this.onAtlasProgress.bind(this),
@@ -152,11 +154,12 @@ Texture.prototype.load = function() {
   }
 }
 
-// Get an array of the position data for the atlas at position `idx`
-Texture.prototype.getAtlasPositions = function(atlasIdx) {
-  var start = config.cellsPerAtlas * atlasIdx,
-      end = config.cellsPerAtlas * (atlasIdx + 1);
-  return this.positions.slice(start, end);
+// Set the indices of cells within data.cellData for the atlas at position `idx`
+Texture.prototype.getAtlasCellIndices = function(atlasIdx) {
+  return {
+    start: config.cellsPerAtlas * atlasIdx,
+    end: Math.min(config.cellsPerAtlas * (atlasIdx + 1), data.cellCount),
+  }
 }
 
 // Log the load progress of each atlas file
@@ -181,11 +184,8 @@ Texture.prototype.onAtlasLoad = function(atlas) {
       dw = config.atlasSize,
       dh = config.atlasSize;
   this.ctx.drawImage(atlas.image, dx, dy, dw, dh);
-
   // If all atlases are loaded, build the texture
-  if (++this.loadedAtlases == this.atlasCount) {
-    this.onLoad(this.idx);
-  }
+  if (++this.loadedAtlases == this.atlasCount) this.onLoad(this.idx);
 }
 
 /**
@@ -196,10 +196,10 @@ function Atlas(obj) {
   this.texIdx = obj.texIdx;
   this.idx = obj.idx;
   this.idxInTex = obj.idx % config.atlasesPerTex;
+  this.cellIndices = obj.cellIndices;
   this.size = obj.size;
   this.onLoad = obj.onLoad;
   this.onProgress = obj.onProgress;
-  this.positions = obj.positions;
   this.image = null;
   this.progress = 0;
   this.url = config.dataUrl + '/atlas_files/32px/atlas-' + this.idx + '.jpg';
@@ -230,17 +230,9 @@ Atlas.prototype.load = function() {
 Atlas.prototype.setCells = function() {
   var self = this;
   // find the index position of the first cell among all cells
-  var start = (self.texIdx * config.cellsPerTex) +
-              (self.idx * config.cellsPerAtlas);
-  for (var i=0; i<self.positions.length; i++) {
-    var cellData = self.positions[i];
+  for (var i=self.cellIndices.start; i<self.cellIndices.end; i++) {
     self.cells.push(new Cell({
-      idx: start + i,
-      name: cellData[0],
-      x: cellData[1] * config.spread.x,
-      y: cellData[2] * config.spread.y,
-      w: cellData[3],
-      h: cellData[4],
+      idx: i,
       atlasPosInTex: self.posInTex,
       texIdx: self.texIdx,
     }))
@@ -252,30 +244,24 @@ Atlas.prototype.setCells = function() {
 **/
 
 function Cell(obj) {
-  this.idx = obj.idx;   // index among all cells
-  this.name = obj.name; // name for image (for searching on page load)
+  var d = Object.assign([], data.cellData[obj.idx]);
+  this.idx = obj.idx; // index among all cells
+  this.atlasPosInTex = obj.atlasPosInTex;
+  this.texIdx = obj.texIdx;
+  this.name = d[0]; // name for image (for searching on page load)
+  this.w = d[1];
+  this.h = d[2];
   this.gridCoords = {}; // x, y pos of the cell in the lod grid (set by lod)
   this.posInAtlas = {}; // position of cell in atlas
   this.idxInAtlas = this.idx % config.cellsPerAtlas; // index of cell in atlas
   this.idxInDrawCall = this.idx % config.cellsPerDrawCall; // index in draw call
   this.drawCallIdx = Math.floor(this.idx / config.cellsPerDrawCall); // draw call index
   this.posInAtlas = this.getPosInAtlas();
-  this.layouts = this.getLayouts(obj);
-  this.default = this.getDefaultState(obj);
+  this.layouts = this.getLayouts();
+  this.default = this.getDefaultState();
   this.state = Object.assign({}, this.default);
-  this.updateParentBoundingBox(obj);
+  this.updateParentBoundingBox();
   data.cells[this.idx] = this; // augment window.data.cells
-}
-
-Cell.prototype.getDefaultState = function(obj) {
-  return {
-    position: this.layouts.scatter,
-    target: this.layouts.scatter,
-    size: this.getSize(obj),
-    texIdx: obj.texIdx,
-    posInTex: this.getPosInTex(obj),
-    isLarge: false,
-  };
 }
 
 Cell.prototype.getPosInAtlas = function() {
@@ -286,42 +272,64 @@ Cell.prototype.getPosInAtlas = function() {
   }
 }
 
-Cell.prototype.getLayouts = function(obj) {
-  // perSide: number of cells to include in each row/col of the grid layout
-  var perSide = data.gridSideCells,
-      x = this.idx % perSide,
-      y = Math.floor(this.idx / perSide),
+Cell.prototype.getLayouts = function() {
+  // build up the positional vals for this cell
+  var options = {},
+      d = Object.assign([], data.cellData[this.idx]),
+      positions = d[3]; // cell position arrays
+  layout.options.forEach(function(i, idx) {
+    if (i != 'grid') { //skip grid key as it doesn't come from server
+      var layoutPositions = positions[idx], // x, y, {z} positions for layout
+          x = layoutPositions[0],
+          y = layoutPositions[1],
+          z = layoutPositions.length > 2 ? layoutPositions[2] : 1;
+      options[i] = {
+        x: x * config.spread.x,
+        y: y * config.spread.y,
+        z: z * config.spread.z,
+      };
+    };
+  })
+  // compute grid position of cell
+  var perSide = data.gridSideCells, // n cells per row/col of grid layout
       scalar = config.cellSize * 0.7,
       center = (scalar * perSide)/2;
-  return {
-    grid: {
-      x: (x * scalar) - center,
-      y: (y * scalar) - center,
-      z: 1,
-    },
-    scatter: {
-      x: obj.x,
-      y: obj.y,
-      z: this.idx % 25,
-    },
+  // add the grid position of the cell to the positional options for cell
+  options.grid = {
+    x: (this.idx % perSide * scalar) - center,
+    y: (Math.floor(this.idx / perSide) * scalar) - center,
+    z: 0,
   }
+
+  return options;
 }
 
-Cell.prototype.getSize = function(obj) {
-  if (obj.w == obj.h) {
+Cell.prototype.getDefaultState = function() {
+  return {
+    position: this.layouts[layout.selected],
+    target: this.layouts[layout.selected],
+    size: this.getSize(),
+    texIdx: this.texIdx,
+    posInTex: this.getPosInTex(),
+    isLarge: false,
+  };
+}
+
+Cell.prototype.getSize = function() {
+  if (this.w == this.h) {
     var topPad = 0,
         leftPad = 0,
         w = config.cellSize,
         h = config.cellSize;
-  } else if (obj.w > obj.h) {
-    var topPad = Math.ceil(((obj.w - obj.h)/(obj.w)) * config.cellSize / 2),
+  } else if (this.w > this.h) {
+    var topPad = Math.ceil(((this.w - this.h)/(this.w)) * config.cellSize / 2),
         leftPad = 0,
         w = config.cellSize,
-        h = obj.h/obj.w*config.cellSize;
-  } else if (obj.h > obj.w) {
+        h = this.h/this.w*config.cellSize;
+  } else if (this.h > this.w) {
     var topPad = 0,
-        leftPad = Math.ceil(((obj.h - obj.w)/(obj.h)) * config.cellSize / 2),
-        w = obj.w/obj.h*config.cellSize,
+        leftPad = Math.ceil(((this.h - this.w)/(this.h)) * config.cellSize / 2),
+        w = this.w/this.h*config.cellSize,
         h = config.cellSize;
   }
   return {
@@ -334,10 +342,10 @@ Cell.prototype.getSize = function(obj) {
   }
 }
 
-Cell.prototype.getPosInTex = function(obj) {
+Cell.prototype.getPosInTex = function() {
   return {
-    x: this.posInAtlas.x + obj.atlasPosInTex.x,
-    y: this.posInAtlas.y + obj.atlasPosInTex.y,
+    x: this.posInAtlas.x + this.atlasPosInTex.x,
+    y: this.posInAtlas.y + this.atlasPosInTex.y,
   }
 }
 
@@ -349,7 +357,7 @@ Cell.prototype.getGridCoords = function() {
   }
 }
 
-Cell.prototype.updateParentBoundingBox = function(obj) {
+Cell.prototype.updateParentBoundingBox = function() {
   var self = this;
   ['x', 'y'].forEach(function(dim) {
     if (self.state.position[dim] > data.boundingBox[dim].max) {
@@ -449,6 +457,112 @@ Cell.prototype.mutateBuffer = function(attr) {
 }
 
 /**
+* Create a controller for different layouts
+**/
+
+function Layout() {
+  var self = this;
+  self.elem = null;
+  self.selected = null;
+  self.options = [];
+}
+
+/**
+* @param [str] options: an array of layout strings; each should
+*   be an attribute in data.cells[ithCell].layouts
+**/
+
+Layout.prototype.setOptions = function(options) {
+  this.options = Object.assign([], options).concat('grid');
+  //this.options = this.options; // all scenes can use grid layout
+  this.selected = options[0];
+  if (this.options.length > 1) this.render();
+}
+
+Layout.prototype.render = function() {
+  var select = document.createElement('select');
+  select.id = 'layout-select';
+  for (var i=0; i<this.options.length; i++) {
+    var option = document.createElement('option');
+    option.val = this.options[i];
+    option.textContent = this.options[i];
+    select.appendChild(option);
+  }
+  select.addEventListener('change', function(e) {
+    this.set(e.target.value);
+  }.bind(this))
+  document.querySelector('.header-controls').appendChild(select);
+}
+
+// Transition to a new layout; layout must be an attr on Cell.layouts
+Layout.prototype.set = function(layoutKey) {
+  var self = this;
+  self.selected = layoutKey;
+  world.state.transitioning = true;
+  // set the target locations of each point
+  data.cells.forEach(function(cell) {
+    cell.state.target = Object.assign({}, cell.layouts[self.selected]);
+  })
+  // iterate over each mesh to be updated
+  var meshes = world.scene.children[0].children;
+  for (var i=0; i<meshes.length; i++) {
+    var mesh = meshes[i],
+        percent = mesh.material.uniforms.transitionPercent,
+        attr = mesh.geometry.attributes.target,
+        iter = 0,
+        start = i * config.cellsPerDrawCall, // start and end cells
+        end = (i+1) * config.cellsPerDrawCall,
+        cells = data.cells.slice(start, end);
+    // transition the transitionPercent attribute on the mesh
+    TweenLite.to(
+      percent,
+      config.transitionDuration, {
+        value: 1,
+        ease: Power2.easeInOut,
+      });
+    // update the target positional attribute
+    cells.forEach(function(cell) {
+      attr.array[iter++] = cell.state.target.x;
+      attr.array[iter++] = cell.state.target.y;
+      attr.array[iter++] = cell.state.target.z;
+    })
+    attr.needsUpdate = true;
+    // set the cell's new position to enable future transitions
+    setTimeout(self.onTransitionComplete.bind(null, {
+      mesh: mesh,
+      cells: cells,
+    }), config.transitionDuration * 1000);
+  }
+}
+
+// reset the cell translation buffers, update cell state
+// and reset the time uniforms after a positional transition completes
+Layout.prototype.onTransitionComplete = function(obj) {
+  var attr = obj.mesh.geometry.attributes.translation,
+      iter = 0;
+  obj.cells.forEach(function(cell) {
+    cell.state.position = {
+      x: cell.state.target.x,
+      y: cell.state.target.y,
+      z: cell.state.target.z,
+    }
+    attr.array[iter++] = cell.state.position.x;
+    attr.array[iter++] = cell.state.position.y;
+    attr.array[iter++] = cell.state.position.z;
+  })
+  // update the positional attribute and time uniform on the mesh
+  attr.needsUpdate = true;
+  obj.mesh.material.uniforms.transitionPercent = {
+    type: 'f',
+    value: 0,
+  };
+  world.state.transitioning = false;
+  // reindex cells in LOD and clear LOD state
+  lod.clear();
+  lod.indexCells();
+}
+
+/**
 * Create the Three.js scene
 **/
 
@@ -491,8 +605,7 @@ function World() {
   self.getCamera = function() {
     var windowSize = getWindowSize();
     var aspectRatio = windowSize.w / windowSize.h;
-    var camera = new THREE.PerspectiveCamera(75, aspectRatio, 0.1, 100000);
-    return camera;
+    return new THREE.PerspectiveCamera(75, aspectRatio, 0.1, 100000);
   }
 
   /**
@@ -529,7 +642,6 @@ function World() {
   self.addEventListeners = function() {
     self.addResizeListener();
     self.addLostContextListener();
-    self.addLayoutListeners();
   }
 
   /**
@@ -580,26 +692,6 @@ function World() {
   }
 
   /**
-  * Layout transition event listeners
-  **/
-
-  self.addLayoutListeners = function() {
-    find('#grid-icon').addEventListener('click',  self.onLayoutButtonClick);
-    find('#scatter-icon').addEventListener('click',  self.onLayoutButtonClick);
-  }
-
-  self.onLayoutButtonClick = function(e) {
-    if (self.state.transitioning) return;
-    var elems = document.querySelectorAll('.layout-icons img');
-    for (var i=0; i<elems.length; i++) {
-      elems[i].className = elems[i].className.replace(' active', '');
-    }
-    e.target.className += ' active';
-    var layout = e.target.id.includes('grid') ? 'grid' : 'scatter';
-    self.transitionLayout(layout);
-  }
-
-  /**
   * Set the center point of the scene
   **/
 
@@ -628,8 +720,8 @@ function World() {
 
   self.plot = function() {
     var group = new THREE.Group();
-    var cells = self.getCells();
-    var drawCalls = Math.ceil(data.positions.length / config.cellsPerDrawCall);
+    var cells = data.cells;
+    var drawCalls = Math.ceil(data.cellCount / config.cellsPerDrawCall);
     for (var i=0; i<drawCalls; i++) {
       var start = i * config.cellsPerDrawCall;
       var end = (i+1) * config.cellsPerDrawCall;
@@ -667,11 +759,6 @@ function World() {
       self.render();
       selector.init();
     })
-  }
-
-  // Get all cells for plot as an array of items
-  self.getCells = function() {
-    return data.cells;
   }
 
   // Return attribute data for the initial draw call of a mesh
@@ -923,77 +1010,6 @@ function World() {
     stats.domElement.style.left = 'initial';
     document.body.appendChild(stats.domElement);
     return stats;
-  }
-
-  /**
-  * Transition point positions
-  **/
-
-  self.transitionLayout = function(layout) {
-    self.state.transitioning = true;
-    // select the layout to use; must be on Cell.layouts
-    layout = layout ? layout : 'grid';
-    // set the target locations of each point
-    data.cells.forEach(function(cell) {
-      cell.state.target = Object.assign({}, cell.layouts[layout]);
-    })
-    // iterate over each mesh to be updated
-    var meshes = self.scene.children[0].children;
-    for (var i=0; i<meshes.length; i++) {
-      var mesh = meshes[i],
-          percent = mesh.material.uniforms.transitionPercent,
-          attr = mesh.geometry.attributes.target,
-          iter = 0,
-          start = i * config.cellsPerDrawCall, // start and end cells
-          end = (i+1) * config.cellsPerDrawCall,
-          cells = data.cells.slice(start, end);
-      // transition the transitionPercent attribute on the mesh
-      TweenLite.to(
-        percent,
-        config.transitionDuration, {
-          value: 1,
-          ease: Power2.easeInOut,
-        });
-      // update the target positional attribute
-      cells.forEach(function(cell) {
-        attr.array[iter++] = cell.state.target.x;
-        attr.array[iter++] = cell.state.target.y;
-        attr.array[iter++] = cell.state.target.z;
-      })
-      attr.needsUpdate = true;
-      // set the cell's new position to enable future transitions
-      setTimeout(self.onTransitionComplete.bind(null, {
-        mesh: mesh,
-        cells: cells,
-      }), config.transitionDuration * 1000);
-    }
-  }
-
-  // reset the cell translation buffers, update cell state
-  // and reset the time uniforms after a positional transition completes
-  self.onTransitionComplete = function(obj) {
-    var attr = obj.mesh.geometry.attributes.translation,
-        iter = 0;
-    obj.cells.forEach(function(cell) {
-      cell.state.position = {
-        x: cell.state.target.x,
-        y: cell.state.target.y,
-        z: cell.state.target.z,
-      }
-      attr.array[iter++] = cell.state.position.x;
-      attr.array[iter++] = cell.state.position.y;
-      attr.array[iter++] = cell.state.position.z;
-    })
-    // update the positional attribute and time uniform on the mesh
-    attr.needsUpdate = true;
-    obj.mesh.material.uniforms.transitionPercent = {
-      type: 'f',
-      value: 0,
-    };
-    self.state.transitioning = false;
-    // reindex cells in LOD and clear LOD state
-    lod.clear();
-    lod.indexCells();
   }
 
   /**
@@ -1543,7 +1559,7 @@ function Filter(obj) {
   var self = this;
   self.values = obj.filter_values || [];
   self.name = obj.filter_name || '';
-  if (self.values.length) self.createSelect();
+  if (self.values.length > 1) self.createSelect();
 }
 
 Filter.prototype.createSelect = function() {
@@ -1762,6 +1778,7 @@ var webgl = new Webgl();
 var config = new Config();
 var filters = new Filters();
 var selector = new Selector();
+var layout = new Layout();
 var world = new World();
 var lod = new LOD();
 var hotspots = new Hotspots();
