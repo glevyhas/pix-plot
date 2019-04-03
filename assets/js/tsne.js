@@ -23,6 +23,15 @@ function Config() {
   this.cellsPerDrawCall = this.getCellsPerDrawCall();
   this.transitionDuration = 3.5;
   this.flyDuration = 3.5;
+  this.lod = {
+    minZ: 250,
+    radius: 2,
+    framesBetweenUpdates: 40,
+    gridSpacing: 0.01,
+  },
+  this.layout = {
+    preferences: ['grid', 'umap_2d', 'tsne_3d', 'tsne_2d'], // most to least preferable
+  }
 }
 
 // Determine how many cells can be drawn in each draw call
@@ -282,7 +291,7 @@ Cell.prototype.getLayouts = function() {
       var layoutPositions = positions[idx], // x, y, {z} positions for layout
           x = layoutPositions[0],
           y = layoutPositions[1],
-          z = layoutPositions.length > 2 ? layoutPositions[2] : 1;
+          z = layoutPositions.length > 2 ? layoutPositions[2] : 0;
       options[i] = {
         x: x * config.spread.x,
         y: y * config.spread.y,
@@ -300,7 +309,6 @@ Cell.prototype.getLayouts = function() {
     y: (Math.floor(this.idx / perSide) * scalar) - center,
     z: 0,
   }
-
   return options;
 }
 
@@ -346,14 +354,6 @@ Cell.prototype.getPosInTex = function() {
   return {
     x: this.posInAtlas.x + this.atlasPosInTex.x,
     y: this.posInAtlas.y + this.atlasPosInTex.y,
-  }
-}
-
-// get the grid coords for the LOD texture
-Cell.prototype.getGridCoords = function() {
-  return {
-    x: Math.floor(this.state.position.x / lod.grid.size.x),
-    y: Math.floor(this.state.position.y / lod.grid.size.y),
   }
 }
 
@@ -473,10 +473,16 @@ function Layout() {
 **/
 
 Layout.prototype.setOptions = function(options) {
-  this.options = Object.assign([], options).concat('grid');
-  //this.options = this.options; // all scenes can use grid layout
-  this.selected = options[0];
-  if (this.options.length > 1) this.render();
+  this.options = Object.assign([], options).concat('grid'),
+      preferences = config.layout.preferences;
+  // set the initial layout - try to set the highest preference layout
+  for (var i=0; i<preferences.length; i++) {
+    if (options.indexOf(preferences[i]) > -1 && !this.selected) {
+      this.selected = preferences[i];
+    }
+  }
+  if (!this.selected) this.selected = options[0];
+  if (options.length > 1) this.render();
 }
 
 Layout.prototype.render = function() {
@@ -486,6 +492,7 @@ Layout.prototype.render = function() {
     var option = document.createElement('option');
     option.val = this.options[i];
     option.textContent = this.options[i];
+    if (this.options[i] == this.selected) option.selected = true;
     select.appendChild(option);
   }
   select.addEventListener('change', function(e) {
@@ -710,8 +717,8 @@ function World() {
     // position the camera in the plot's center
     self.camera.position.set(x, y, z);
     self.camera.lookAt(x, y, 0);
-    // position the controls in the plot's center
-    self.controls.target = new THREE.Vector3(x, y, 0);
+    // position the controls in the plot's center - should be beyond cam.pos.z
+    self.controls.target = new THREE.Vector3(x, y, z-1.25*config.spread.z);
   }
 
   /**
@@ -1079,7 +1086,7 @@ function World() {
 
   self.init = function() {
     self.setCenter();
-    self.setControls(self.center.x, 0, -6000);
+    self.setControls(self.center.x, 0, 5000);
     self.plot();
   }
 
@@ -1199,7 +1206,7 @@ Selector.prototype.getMouseWorldCoords = function() {
       distance = - camera.position.z / direction.z,
       scaled = direction.multiplyScalar(distance),
       coords = camera.position.clone().add(scaled);
-  console.log(' * selector is located at', coords);
+  console.log(' * selector location:', coords);
 }
 
 // get the mesh in which to render picking elements
@@ -1242,9 +1249,9 @@ function LOD() {
   this.gridPos = { x: null, y: null }; // grid coords of current camera position
   this.cellIdxToImage = {};
   this.cellSizeScalar = config.lodCellSize / config.cellSize;
-  this.framesBetweenUpdates = 40; // frames that elapse between texture updates
-  this.minZ = -500; // minimum cameraZ to trigger texture updates
-  this.radius = 1;
+  this.framesBetweenUpdates = config.lod.framesBetweenUpdates; // frames that elapse between texture updates
+  this.minZ = config.lod.minZ; // minimum camera.z to trigger texture updates
+  this.radius = config.lod.radius;
   this.tex = this.getTexture();
   this.state = {
     loadQueue: [],
@@ -1257,10 +1264,10 @@ function LOD() {
     run: true,
   };
   this.grid = {
-    coords: {}, // set by Data constructor
+    coords: {}, // set by LOD.indexCells();
     size: {
-      x: config.spread.x * 10,
-      y: config.spread.y * 10,
+      x: config.spread.x * config.lod.gridSpacing,
+      y: config.spread.y * config.lod.gridSpacing,
     },
   };
 };
@@ -1297,14 +1304,22 @@ LOD.prototype.getOpenTexCoords = function() {
 LOD.prototype.indexCells = function() {
   var coords = {};
   data.cells.forEach(function(cell) {
-    cell.gridCoords = cell.getGridCoords();
+    cell.gridCoords = this.toGridCoords(cell.state.position);
     var x = cell.gridCoords.x,
         y = cell.gridCoords.y;
     if (!coords[x]) coords[x] = {};
     if (!coords[x][y]) coords[x][y] = [];
     coords[x][y].push(cell.idx);
-  })
+  }.bind(this))
   this.grid.coords = coords;
+}
+
+// given an object with {x, y, z} attributes, return the object's coords in grid
+LOD.prototype.toGridCoords = function(obj) {
+  return {
+    x: Math.floor(obj.x / lod.grid.size.x),
+    y: Math.floor(obj.y / lod.grid.size.y),
+  }
 }
 
 // load high-res images nearest the camera; called every frame by world.render
@@ -1316,17 +1331,15 @@ LOD.prototype.update = function() {
 }
 
 LOD.prototype.updateGridPosition = function() {
-  // determine the user's current grid position
-  var camPos = world.camera.position,
-      x = Math.floor(camPos.x / this.grid.size.x),
-      y = Math.floor(camPos.y / this.grid.size.y);
+  // determine the current grid position of the user / camera
+  var pos = this.toGridCoords(world.camera.position);
   // user is in a new grid position; unload old images and load new
-  if (this.gridPos.x !== x || this.gridPos.y !== y) {
-    this.gridPos = {x: x, y: y};
+  if (this.gridPos.x !== pos.x || this.gridPos.y !== pos.y) {
+    this.gridPos = pos;
     this.state.neighborsRequested = false;
     this.unload();
-    if (camPos.z < this.minZ) {
-      this.state.loadQueue = getNested(this.grid.coords, [x, y], []);
+    if (world.camera.position.z < this.minZ) {
+      this.state.loadQueue = getNested(this.grid.coords, [pos.x, pos.y], []);
     }
   }
 }
@@ -1347,8 +1360,8 @@ LOD.prototype.loadNextImage = function() {
 LOD.prototype.tick = function() {
   this.state.frame += 1;
   var isDrawFrame = this.state.frame % this.framesBetweenUpdates == 0;
-  if (!isDrawFrame || !this.state.cellsToActivate.length) return;
-  world.camera.position.z > this.minZ
+  if (!isDrawFrame) return;
+  world.camera.position.z < this.minZ
     ? this.addCellsToLodTexture()
     : this.unload();
 }
