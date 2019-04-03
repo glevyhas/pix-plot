@@ -6,9 +6,9 @@ function Config() {
   this.dataUrl = 'output'; // path to location where data lives
   this.thumbsUrl = this.dataUrl + '/thumbs/128px/';
   this.spread = {
-    x: 1000,
-    y: 1000,
-    z: 1000,
+    x: 4000,
+    y: 4000,
+    z: 4000,
   }; // scale for positioning items on x,y axes
   this.cellSize = 32;
   this.lodCellSize = 128;
