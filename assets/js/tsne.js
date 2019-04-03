@@ -477,12 +477,12 @@ Layout.prototype.setOptions = function(options) {
       preferences = config.layout.preferences;
   // set the initial layout - try to set the highest preference layout
   for (var i=0; i<preferences.length; i++) {
-    if (options.indexOf(preferences[i]) > -1 && !this.selected) {
+    if (this.options.indexOf(preferences[i]) > -1 && !this.selected) {
       this.selected = preferences[i];
     }
   }
-  if (!this.selected) this.selected = options[0];
-  if (options.length > 1) this.render();
+  if (!this.selected) this.selected = this.options[0];
+  if (this.options.length > 1) this.render();
 }
 
 Layout.prototype.render = function() {
@@ -499,11 +499,16 @@ Layout.prototype.render = function() {
     this.set(e.target.value);
   }.bind(this))
   document.querySelector('.header-controls').appendChild(select);
+  this.elem = select;
 }
 
 // Transition to a new layout; layout must be an attr on Cell.layouts
 Layout.prototype.set = function(layoutKey) {
   var self = this;
+   // disallow new transitions when we're transitioning
+  if (world.state.transitioning) return;
+  self.elem.disabled = true;
+  // begin the new layout transition
   self.selected = layoutKey;
   world.state.transitioning = true;
   // set the target locations of each point
@@ -535,7 +540,7 @@ Layout.prototype.set = function(layoutKey) {
     })
     attr.needsUpdate = true;
     // set the cell's new position to enable future transitions
-    setTimeout(self.onTransitionComplete.bind(null, {
+    setTimeout(self.onTransitionComplete.bind(self, {
       mesh: mesh,
       cells: cells,
     }), config.transitionDuration * 1000);
@@ -545,6 +550,7 @@ Layout.prototype.set = function(layoutKey) {
 // reset the cell translation buffers, update cell state
 // and reset the time uniforms after a positional transition completes
 Layout.prototype.onTransitionComplete = function(obj) {
+  this.elem.disabled = false;
   var attr = obj.mesh.geometry.attributes.translation,
       iter = 0;
   obj.cells.forEach(function(cell) {
@@ -718,7 +724,7 @@ function World() {
     self.camera.position.set(x, y, z);
     self.camera.lookAt(x, y, 0);
     // position the controls in the plot's center - should be beyond cam.pos.z
-    self.controls.target = new THREE.Vector3(x, y, z-1.25*config.spread.z);
+    self.controls.target = new THREE.Vector3(x, y, 0);
   }
 
   /**
@@ -1047,7 +1053,7 @@ function World() {
     newCamera.position.set(target.x, target.y, target.z);
     // also slerp the controls
     var newControls = new THREE.TrackballControls(newCamera);
-    newControls.target.set(obj.x, obj.y, obj.z);
+    newControls.target.set(obj.x, obj.y, obj.z-1);
     newControls.update();
     // transition between the start and end quaternions
     var slerp = THREE.Quaternion.slerp,
@@ -1060,7 +1066,7 @@ function World() {
         slerp(quaternion, newCamera.quaternion, self.camera.quaternion, ++frame);
       },
       onComplete: function() {
-        self.controls.target = new THREE.Vector3(obj.x, obj.y, obj.z + 100);
+        self.controls.target = new THREE.Vector3(obj.x, obj.y, 0);
         self.state.flying = false;
       },
       ease: obj.ease || Power4.easeInOut,
