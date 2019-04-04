@@ -513,8 +513,14 @@ Layout.prototype.set = function(layoutKey) {
   if (world.state.transitioning) return;
   world.state.transitioning = true;
   self.elem.disabled = true;
+  // zoom the user out if they're zoomed in
+  if (world.camera.position.z < 2500) {
+    var waitBeforeTransition = config.flyDuration * 1000;
+    world.flyTo(world.getInitialLocation());
+  } else {
+    var waitBeforeTransition = 0;
+  }
   // begin the new layout transition
-  world.flyTo(world.getInitialLocation());
   setTimeout(function() {
     self.selected = layoutKey;
     // set the target locations of each point
@@ -542,10 +548,10 @@ Layout.prototype.set = function(layoutKey) {
       // set the cell's new position to enable future transitions
       setTimeout(self.onTransitionComplete.bind(self, {
         mesh: meshes[i],
-        cells: cells,
+        cells: data.cells.slice(start, end),
       }), config.transitionDuration * 1000);
     }
-  }.bind(self), config.flyDuration * 1000)
+  }.bind(self), waitBeforeTransition)
 }
 
 // reset the cell translation buffers, update cell state
