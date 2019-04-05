@@ -14,7 +14,7 @@ function Config() {
   this.lodCellSize = 128;
   this.atlasSize = 2048;
   this.textureSize = webgl.limits.textureSize;
-  this.lodTextureSize = 2048;
+  this.lodTextureSize = 2048 * 2;
   this.atlasesPerTex = Math.pow((this.textureSize / this.atlasSize), 2);
   this.atlasesPerTexSide = Math.pow(this.atlasesPerTex, 0.5);
   this.cellsPerAtlas = Math.pow((this.atlasSize / this.cellSize), 2);
@@ -25,8 +25,8 @@ function Config() {
   this.flyDuration = 3.5;
   this.lod = {
     minZ: 250,
-    radius: 2,
-    framesBetweenUpdates: 40,
+    radius: 3,
+    framesBetweenUpdates: 30,
     gridSpacing: 0.01,
   },
   this.layout = {
@@ -508,50 +508,49 @@ Layout.prototype.render = function() {
 
 // Transition to a new layout; layout must be an attr on Cell.layouts
 Layout.prototype.set = function(layoutKey) {
-  var self = this;
    // disallow new transitions when we're transitioning
   if (world.state.transitioning) return;
   world.state.transitioning = true;
-  self.elem.disabled = true;
+  this.elem.disabled = true;
   // zoom the user out if they're zoomed in
   if (world.camera.position.z < 2500) {
-    var waitBeforeTransition = config.flyDuration * 1000;
+    var delay = config.flyDuration * 1000;
     world.flyTo(world.getInitialLocation());
   } else {
-    var waitBeforeTransition = 0;
+    delay = 0;
   }
   // begin the new layout transition
-  setTimeout(function() {
-    self.selected = layoutKey;
-    // set the target locations of each point
-    data.cells.forEach(function(cell) {
-      cell.state.target = Object.assign({}, cell.layouts[self.selected]);
+  setTimeout(this.transition.bind(this, layoutKey), delay);
+}
+
+Layout.prototype.transition = function(layoutKey) {
+  this.selected = layoutKey;
+  // set the target locations of each point
+  data.cells.forEach(function(cell) {
+    cell.state.target = Object.assign({}, cell.layouts[this.selected]);
+  }.bind(this))
+  // iterate over each mesh to be updated
+  var meshes = world.scene.children[0].children;
+  for (var i=0; i<meshes.length; i++) {
+    // transition the transitionPercent attribute on the mesh
+    TweenLite.to(meshes[i].material.uniforms.transitionPercent,
+      config.transitionDuration, config.defaultEase);
+    // update the target positional attribute
+    var iter = 0,
+        start = i*config.cellsPerDrawCall, // start and end cells
+        end = (i+1)*config.cellsPerDrawCall;
+    data.cells.slice(start, end).forEach(function(cell) {
+      meshes[i].geometry.attributes.target.array[iter++] = cell.state.target.x;
+      meshes[i].geometry.attributes.target.array[iter++] = cell.state.target.y;
+      meshes[i].geometry.attributes.target.array[iter++] = cell.state.target.z;
     })
-    // iterate over each mesh to be updated
-    var meshes = world.scene.children[0].children;
-    for (var i=0; i<meshes.length; i++) {
-      // transition the transitionPercent attribute on the mesh
-      TweenLite.to(
-        meshes[i].material.uniforms.transitionPercent,
-        config.transitionDuration, config.defaultEase);
-      // update the target positional attribute
-      var iter = 0,
-          attr = meshes[i].geometry.attributes.target,
-          start = i*config.cellsPerDrawCall, // start and end cells
-          end = (i+1)*config.cellsPerDrawCall;
-      data.cells.slice(start, end).forEach(function(cell) {
-        attr.array[iter++] = cell.state.target.x;
-        attr.array[iter++] = cell.state.target.y;
-        attr.array[iter++] = cell.state.target.z;
-      })
-      attr.needsUpdate = true;
-      // set the cell's new position to enable future transitions
-      setTimeout(self.onTransitionComplete.bind(self, {
-        mesh: meshes[i],
-        cells: data.cells.slice(start, end),
-      }), config.transitionDuration * 1000);
-    }
-  }.bind(self), waitBeforeTransition)
+    meshes[i].geometry.attributes.target.needsUpdate = true;
+    // set the cell's new position to enable future transitions
+    setTimeout(this.onTransitionComplete.bind(this, {
+      mesh: meshes[i],
+      cells: data.cells.slice(start, end),
+    }), config.transitionDuration * 1000);
+  }
 }
 
 // reset the cell translation buffers, update cell state
