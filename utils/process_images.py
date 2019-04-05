@@ -50,7 +50,7 @@ flags.DEFINE_integer('lloyd_iterations', 0, 'Number of times to run Lloyd relaxa
 flags.DEFINE_boolean('copy_images', True, 'Copy inputs to outputs for detailed image view in browser')
 flags.DEFINE_string('csv', '', 'The path to a metadata CSV file (see README)')
 flags.DEFINE_integer('n_neighbors', 25, 'The minimum number of neighbors between points in UMAP projectsions')
-flags.DEFINE_float('min_dist', 0.0001, 'The minimum distance between points in UMAP projections')
+flags.DEFINE_float('min_dist', 0.01, 'The minimum distance between points in UMAP projections')
 FLAGS = flags.FLAGS
 
 
