@@ -1039,27 +1039,31 @@ function World() {
   self.flyTo = function(obj) {
     if (self.state.flying) return;
     self.state.flying = true;
-    // slerp between the camera's current and desired future positions
-    var quaternion = self.camera.quaternion.clone(),
-        newCamera = self.camera.clone(),
-        target = {x: obj.x, y: obj.y, z: obj.z-1};
-    newCamera.position.set(target.x, target.y, target.z);
-    // also slerp the controls
-    var newControls = new THREE.TrackballControls(newCamera);
-    newControls.target.set(obj.x, obj.y, obj.z-1);
-    newControls.update();
-    // transition between the start and end quaternions
-    var slerp = THREE.Quaternion.slerp,
-        frame = 0;
+    // get a new camera to reset .up and .quaternion on self.camera
+    var camera = self.getCamera(),
+        controls = new THREE.TrackballControls(camera);
+    camera.position.set(obj.x, obj.y, obj.z);
+    controls.target.set(obj.x, obj.y, obj.z-1);
+    controls.update();
+    // prepare scope globals to transition camera
+    var time = 0,
+        q0 = self.camera.quaternion.clone();
     TweenLite.to(self.camera.position, config.flyDuration, {
-      x: target.x,
-      y: target.y,
-      z: target.z,
+      x: obj.x,
+      y: obj.y,
+      z: obj.z-1,
       onUpdate: function() {
-        slerp(quaternion, newCamera.quaternion, self.camera.quaternion, ++frame);
+        time++;
+        var deg = time / (config.flyDuration * 60); // scale time 0:1
+        THREE.Quaternion.slerp(q0, camera.quaternion, self.camera.quaternion, deg);
       },
       onComplete: function() {
-        self.controls.target = new THREE.Vector3(obj.x, obj.y, 0);
+        var q = camera.quaternion;
+        self.camera.position.set(camera.position.x, camera.position.y, camera.position.z);
+        self.camera.up.set(camera.up.x, camera.up.y, camera.up.z);
+        self.camera.quaternion.set(q.x, q.y, q.z, q.w);
+        self.controls.target = new THREE.Vector3(obj.x, obj.y, obj.z-100);
+        self.controls.update();
         self.state.flying = false;
       },
       ease: obj.ease || Power4.easeInOut,
@@ -1148,12 +1152,13 @@ Selector.prototype.onMouseUp = function(e) {
     this.closeModal();
     return;
   }
-  // if mouseup isn't in the last mouse position, user is dragging
+  // if mouseup isn't in the last mouse position,
+  // user is dragging
   // if the click wasn't on the canvas, quit
   if (e.clientX !== this.mouseDown.x ||
-      e.clientY !== this.mouseDown.y ||
-      selected == -1 ||
-      e.target.id !== 'pixplot-canvas') {
+      e.clientY !== this.mouseDown.y || // m.down and m.up != means user is dragging
+      selected == -1 || // selected == -1 means the user didn't click on a cell
+      e.target.id !== 'pixplot-canvas') { // whether the click hit the gl canvas
     return;
   }
   this.showModal(selected);
