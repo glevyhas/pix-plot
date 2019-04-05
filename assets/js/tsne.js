@@ -31,6 +31,10 @@ function Config() {
   },
   this.layout = {
     preferences: ['grid', 'umap_2d', 'tsne_3d', 'tsne_2d'], // most to least preferable
+  };
+  this.defaultEase = {
+    value: 1,
+    ease: Power2.easeInOut,
   }
 }
 
@@ -477,12 +481,12 @@ Layout.prototype.setOptions = function(options) {
       preferences = config.layout.preferences;
   // set the initial layout - try to set the highest preference layout
   for (var i=0; i<preferences.length; i++) {
-    if (options.indexOf(preferences[i]) > -1 && !this.selected) {
+    if (this.options.indexOf(preferences[i]) > -1 && !this.selected) {
       this.selected = preferences[i];
     }
   }
-  if (!this.selected) this.selected = options[0];
-  if (options.length > 1) this.render();
+  if (!this.selected) this.selected = this.options[0];
+  if (this.options.length > 1) this.render();
 }
 
 Layout.prototype.render = function() {
@@ -499,52 +503,55 @@ Layout.prototype.render = function() {
     this.set(e.target.value);
   }.bind(this))
   document.querySelector('.header-controls').appendChild(select);
+  this.elem = select;
 }
 
 // Transition to a new layout; layout must be an attr on Cell.layouts
 Layout.prototype.set = function(layoutKey) {
   var self = this;
-  self.selected = layoutKey;
+   // disallow new transitions when we're transitioning
+  if (world.state.transitioning) return;
   world.state.transitioning = true;
-  // set the target locations of each point
-  data.cells.forEach(function(cell) {
-    cell.state.target = Object.assign({}, cell.layouts[self.selected]);
-  })
-  // iterate over each mesh to be updated
-  var meshes = world.scene.children[0].children;
-  for (var i=0; i<meshes.length; i++) {
-    var mesh = meshes[i],
-        percent = mesh.material.uniforms.transitionPercent,
-        attr = mesh.geometry.attributes.target,
-        iter = 0,
-        start = i * config.cellsPerDrawCall, // start and end cells
-        end = (i+1) * config.cellsPerDrawCall,
-        cells = data.cells.slice(start, end);
-    // transition the transitionPercent attribute on the mesh
-    TweenLite.to(
-      percent,
-      config.transitionDuration, {
-        value: 1,
-        ease: Power2.easeInOut,
-      });
-    // update the target positional attribute
-    cells.forEach(function(cell) {
-      attr.array[iter++] = cell.state.target.x;
-      attr.array[iter++] = cell.state.target.y;
-      attr.array[iter++] = cell.state.target.z;
+  self.elem.disabled = true;
+  // begin the new layout transition
+  world.flyTo(world.getInitialLocation());
+  setTimeout(function() {
+    self.selected = layoutKey;
+    // set the target locations of each point
+    data.cells.forEach(function(cell) {
+      cell.state.target = Object.assign({}, cell.layouts[self.selected]);
     })
-    attr.needsUpdate = true;
-    // set the cell's new position to enable future transitions
-    setTimeout(self.onTransitionComplete.bind(null, {
-      mesh: mesh,
-      cells: cells,
-    }), config.transitionDuration * 1000);
-  }
+    // iterate over each mesh to be updated
+    var meshes = world.scene.children[0].children;
+    for (var i=0; i<meshes.length; i++) {
+      // transition the transitionPercent attribute on the mesh
+      TweenLite.to(
+        meshes[i].material.uniforms.transitionPercent,
+        config.transitionDuration, config.defaultEase);
+      // update the target positional attribute
+      var iter = 0,
+          attr = meshes[i].geometry.attributes.target,
+          start = i*config.cellsPerDrawCall, // start and end cells
+          end = (i+1)*config.cellsPerDrawCall;
+      data.cells.slice(start, end).forEach(function(cell) {
+        attr.array[iter++] = cell.state.target.x;
+        attr.array[iter++] = cell.state.target.y;
+        attr.array[iter++] = cell.state.target.z;
+      })
+      attr.needsUpdate = true;
+      // set the cell's new position to enable future transitions
+      setTimeout(self.onTransitionComplete.bind(self, {
+        mesh: meshes[i],
+        cells: cells,
+      }), config.transitionDuration * 1000);
+    }
+  }.bind(self), config.flyDuration * 1000)
 }
 
 // reset the cell translation buffers, update cell state
 // and reset the time uniforms after a positional transition completes
 Layout.prototype.onTransitionComplete = function(obj) {
+  this.elem.disabled = false;
   var attr = obj.mesh.geometry.attributes.translation,
       iter = 0;
   obj.cells.forEach(function(cell) {
@@ -710,15 +717,15 @@ function World() {
   }
 
   /**
-  * Position the camera and controls in the center of the world
+  * Focus the camera and controls on a particular region of space
   **/
 
-  self.setControls = function(x, y, z) {
+  self.setControls = function(obj) {
     // position the camera in the plot's center
-    self.camera.position.set(x, y, z);
-    self.camera.lookAt(x, y, 0);
+    self.camera.position.set(obj.x, obj.y, obj.z);
+    self.camera.lookAt(obj.x, obj.y, 0);
     // position the controls in the plot's center - should be beyond cam.pos.z
-    self.controls.target = new THREE.Vector3(x, y, z-1.25*config.spread.z);
+    self.controls.target = new THREE.Vector3(obj.x, obj.y, 0);
   }
 
   /**
@@ -1024,21 +1031,7 @@ function World() {
   **/
 
   self.flyTo = function(obj) {
-    self.fly({
-      x: world.center.x,
-      y: world.center.y,
-      z: -3000,
-    })
-    setTimeout(function() {
-      self.fly({
-        x: obj.x,
-        y: obj.y,
-        z: obj.z,
-      })
-    }, (config.flyDuration * 1000) + 100)
-  }
-
-  self.fly = function(obj) {
+    if (self.state.flying) return;
     self.state.flying = true;
     // slerp between the camera's current and desired future positions
     var quaternion = self.camera.quaternion.clone(),
@@ -1047,7 +1040,7 @@ function World() {
     newCamera.position.set(target.x, target.y, target.z);
     // also slerp the controls
     var newControls = new THREE.TrackballControls(newCamera);
-    newControls.target.set(obj.x, obj.y, obj.z);
+    newControls.target.set(obj.x, obj.y, obj.z-1);
     newControls.update();
     // transition between the start and end quaternions
     var slerp = THREE.Quaternion.slerp,
@@ -1060,11 +1053,23 @@ function World() {
         slerp(quaternion, newCamera.quaternion, self.camera.quaternion, ++frame);
       },
       onComplete: function() {
-        self.controls.target = new THREE.Vector3(obj.x, obj.y, obj.z + 100);
+        self.controls.target = new THREE.Vector3(obj.x, obj.y, 0);
         self.state.flying = false;
       },
       ease: obj.ease || Power4.easeInOut,
     });
+  }
+
+  /**
+  * Get the initial camera location
+  **/
+
+  self.getInitialLocation = function() {
+    return {
+      x: self.center.x,
+      y: self.center.y,
+      z: 5000,
+    }
   }
 
   /**
@@ -1086,7 +1091,7 @@ function World() {
 
   self.init = function() {
     self.setCenter();
-    self.setControls(self.center.x, 0, 5000);
+    self.setControls(self.getInitialLocation());
     self.plot();
   }
 
@@ -1645,12 +1650,11 @@ Hotspots.prototype.init = function() {
     var hotspots = findAll('.hotspot');
     for (var i=0; i<hotspots.length; i++) {
       hotspots[i].addEventListener('click', function(idx) {
-        var centroid = this.centroids[idx],
-            position = data.cells[centroid.idx].state.position;
-        world.fly({
+        var position = data.cells[this.centroids[idx].idx].state.position;
+        world.flyTo({
           x: position.x,
           y: position.y,
-          z: position.z - 100,
+          z: position.z + 100,
         })
       }.bind(this, i))
     }

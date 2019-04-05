@@ -51,10 +51,16 @@ select {
   background-repeat: no-repeat;
   background-position: 95%;
   min-width: 120px;
+  transition: opacity 0.3s;
 }
 
 select::-ms-expand {
   display: none;
+}
+
+select:disabled {
+  cursor: default;
+  opacity: 0.4;
 }
 
 /**
