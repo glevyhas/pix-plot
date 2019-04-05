@@ -903,7 +903,7 @@ function World() {
 
   // Return an int specifying the scalar uniform for points
   self.getPointScale = function() {
-    return window.devicePixelRatio * window.innerHeight * 12;
+    return window.devicePixelRatio * window.innerHeight * 24;
   }
 
   /**

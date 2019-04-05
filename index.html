@@ -65,17 +65,7 @@
     varying vec3 vColor;          // cell color
     varying float vOpacity;       // cell opacity
 
-    // function that returns the size of a point, scaled by the camera position
-    float scalePoint(in vec3 pos, in vec3 cameraPosition) {
-      float xDelta = pow(pos[0] - cameraPosition[0], 2.0);
-      float yDelta = pow(pos[1] - cameraPosition[1], 2.0);
-      float zDelta = pow(pos[2] - cameraPosition[2], 2.0);
-      float delta  = pow(xDelta + yDelta + zDelta, 0.5);
-      float scaled = pointScale / delta;
-      return scaled;
-    }
-
-    float scalePointZ(in vec3 pos, in vec3 cameraPosition) {
+    float scalePointZ(in vec4 pos, in vec3 cameraPosition) {
       float zDelta = pow(pos[2] - cameraPosition[2], 2.0);
       float delta  = pow(zDelta, 0.5);
       float scaled = pointScale / delta;
@@ -95,10 +85,11 @@
       vec3 currentPos = position + translation;
       vec3 targetPos = position + target;
       vec3 pos = mix(currentPos, targetPos, clamp(transitionPercent, 0.0, 1.0));
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+      vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+      gl_Position = projectionMatrix * mvPos;
 
       // use the unscaled point position and camera position to set point size
-      gl_PointSize = scalePointZ(pos, cameraPosition);
+      gl_PointSize = scalePointZ(mvPos, cameraPosition);
     }
     </script>
 
