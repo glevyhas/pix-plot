@@ -25,8 +25,8 @@ function Config() {
   this.flyDuration = 3.5;
   this.lod = {
     minZ: 250,
-    radius: 3,
-    framesBetweenUpdates: 30,
+    radius: 2,
+    framesBetweenUpdates: 40,
     gridSpacing: 0.01,
   },
   this.layout = {
@@ -141,6 +141,7 @@ function Texture(obj) {
   this.loadedAtlases = 0;
   this.canvas = null;
   this.ctx = null;
+  this.offscreen = false;
   this.load();
 }
 
@@ -150,6 +151,7 @@ Texture.prototype.setCanvas = function() {
     height: config.textureSize,
     id: 'texture-' + this.idx,
   })
+  if ('OffscreenCanvas' in window) this.offscreen = true;
   this.ctx = this.canvas.getContext('2d');
 }
 
@@ -234,9 +236,11 @@ Atlas.prototype.load = function() {
     var progress = parseInt((e.loaded / e.total) * 100);
     self.onProgress(self.idx, progress);
   };
-  xhr.onload = function(e) { self.image.src = self.url; };
+  xhr.onload = function(e) {
+    self.image.src = window.URL.createObjectURL(this.response);
+  };
   xhr.open('GET', self.url, true);
-  xhr.responseType = 'arraybuffer';
+  xhr.responseType = 'blob';
   xhr.send();
 }
 
@@ -770,14 +774,6 @@ function World() {
       group.add(mesh);
     }
     self.scene.add(group);
-    setTimeout(function() {
-      welcome.activateButton();
-      welcome.loaderTextElem.innerHTML = '&nbsp;'
-    }, 1000);
-    requestAnimationFrame(function() {
-      self.render();
-      selector.init();
-    })
   }
 
   // Return attribute data for the initial draw call of a mesh
@@ -1102,6 +1098,7 @@ function World() {
     self.setCenter();
     self.setControls(self.getInitialLocation());
     self.plot();
+    self.render();
   }
 
   self.scene = self.getScene();
@@ -1226,8 +1223,8 @@ Selector.prototype.getMouseWorldCoords = function() {
 
 // get the mesh in which to render picking elements
 Selector.prototype.init = function() {
-  var renderer = world.renderer.domElement;
-  renderer.addEventListener('mousedown', this.onMouseDown.bind(this));
+  var elem = world.renderer.domElement;
+  elem.addEventListener('mousedown', this.onMouseDown.bind(this));
   document.body.addEventListener('mouseup', this.onMouseUp.bind(this));
   for (var i=0; i<this.meshes.length; i++) {
     var mesh = this.meshes[i].clone();
@@ -1529,6 +1526,27 @@ function Welcome() {
   this.buttonElem.addEventListener('click', this.onButtonClick.bind(this));
 }
 
+Welcome.prototype.onButtonClick = function(e) {
+  if (e.target.className.indexOf('active') > -1) {
+    requestAnimationFrame(this.removeLoader.bind(this));
+  }
+}
+
+Welcome.prototype.removeLoader = function() {
+  var blocks = document.querySelectorAll('.block');
+  for (var i=0; i<blocks.length; i++) {
+    setTimeout(function(i) {
+      blocks[i].style.animation = 'exit 300s';
+      setTimeout(function(i) {
+        blocks[i].parentNode.removeChild(blocks[i]);
+        if (i == blocks.length-1) this.startWorld();
+      }.bind(this, i), 1000)
+    }.bind(this, i), i*100)
+  }
+  document.querySelector('#progress').style.opacity = 0;
+  console.log('todo: fly to coords in window.location.href if present');
+}
+
 Welcome.prototype.updateProgress = function() {
   var progress = valueSum(data.textureProgress) / data.textureCount;
   // remove the decimal value from the load progress
@@ -1538,28 +1556,19 @@ Welcome.prototype.updateProgress = function() {
   // display the load progress
   this.progressElem.textContent = progress + '%';
   if (progress == 100 && data.loadedTextures == data.textureCount) {
-    this.loaderTextElem.textContent = ' * drawing geometries';
-    setTimeout(this.startWorld, 100);
-  }
-}
-
-Welcome.prototype.activateButton = function() {
-  this.buttonElem.className += ' active';
-}
-
-Welcome.prototype.hideWelcome = function() {
-  this.loaderSceneElem.className += ' hidden';
-}
-
-Welcome.prototype.onButtonClick = function(e) {
-  if (e.target.className.indexOf('active') > -1) {
-    setTimeout(this.hideWelcome.bind(this), 100)
+    this.buttonElem.className += ' active';
   }
 }
 
 Welcome.prototype.startWorld = function() {
   lod.indexCells();
-  world.init();
+  requestAnimationFrame(function() {
+    world.init();
+    selector.init();
+    requestAnimationFrame(function() {
+      document.querySelector('#loader-scene').classList += 'hidden';
+    })
+  })
 }
 
 /**
@@ -1709,6 +1718,46 @@ Webgl.prototype.getLimits = function() {
     textureCount: this.gl.getParameter(this.gl.MAX_TEXTURE_IMAGE_UNITS),
     vShaderTextures: this.gl.getParameter(this.gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS),
     indexedElements: maxIndex,
+  }
+}
+
+/**
+* Manager for web workers
+**/
+
+function Manager() {
+  this.maxWorkers = navigator.hardwareConcurrency || 8;
+  this.path = 'assets/js/worker.js'; // path to web worker source
+  this.workers = [];
+  this.getWorkers();
+  //this.loadFiles();
+}
+
+Manager.prototype.getWorkers = function() {
+  var workerText = document.querySelector('#worker').textContent;
+  for (var i=0; i<this.maxWorkers; i++) {
+    var blob = new Blob([workerText], { type: 'text/javascript' }),
+        url = URL.createObjectURL(blob),
+        worker = new Worker(url);
+    worker.onmessage = this.onMessage.bind(this);
+    this.workers.push(worker);
+    URL.revokeObjectURL(url);
+  }
+}
+
+Manager.prototype.onMessage = function(event) {
+  switch (event.data.status) {
+    case 'complete':
+      this.onLoadComplete(event.data);
+      break;
+
+    case 'error':
+      this.onLoadError(event.data);
+      break;
+
+    case 'progress':
+      this.onLoadProgress(event.data);
+      break;
   }
 }
 
