@@ -193,6 +193,10 @@ nav.hidden {
   background: #222;
 }
 
+.nav-inner::-webkit-scrollbar {
+  -webkit-appearance: none;
+}
+
 nav h2 {
   font-size: 0.9em;
   line-height: 1.05em;
@@ -238,7 +242,6 @@ nav h2 {
   z-index: 3;
   background: #000;
   max-height: 100%;
-  overflow: auto;
 }
 
 #loader-scene.hidden {
@@ -246,13 +249,114 @@ nav h2 {
 }
 
 #loader-text {
-  margin: 20px auto;
+  margin: 10px -50px;
   text-align: center;
 }
 
 .welcome {
   max-width: 700px;
   margin: 0 auto;
+}
+
+@keyframes exit {
+  0% {
+    transform: translateX(0);
+    animation-iteration-count: 1;
+  }
+  1% {
+    transform: translateX(500vw);
+    animation-iteration-count: 1;
+  }
+}
+
+
+/**
+* Loader icon
+**/
+
+.loader-container {
+  max-width: 70px;
+  margin: 30px auto;
+  text-align: center;
+}
+
+.loader-icon {
+  width: 70px;
+  height: 70px;
+}
+
+.block {
+  position: relative;
+  height: 20px;
+  width: 20px;
+  display: inline-block;
+  background: #eab755;
+  transition: all 0.8s;
+  animation: rot 5s linear infinite;
+  animation-fill-mode: forwards;
+}
+
+.block:nth-child(1) {
+  animation-delay: 3s;
+}
+
+.block:nth-child(2) {
+  animation-delay: 1.5s;
+  animation: rot 15s linear infinite;
+}
+
+.block:nth-child(3) {
+  animation-delay: 2s;
+}
+
+.block:nth-child(4) {
+  animation-delay: 0.2s;
+}
+
+.block:nth-child(5) {
+  animation-delay: 4s;
+}
+
+.block:nth-child(6) {
+  animation-delay: 2s;
+  animation: rot 7s linear infinite;
+}
+
+.block:nth-child(7) {
+  animation-delay: 0.4s;
+}
+
+.block:nth-child(8) {
+  animation-delay: 1.5s;
+  animation: rot 6s linear infinite;
+}
+
+.block:nth-child(9) {
+  animation-delay: 25s;
+  animation: rot 8s linear infinite;
+}
+
+@keyframes rot {
+  0% {
+    transform: none;
+  }
+  20% {
+    transform: rotateZ(-90deg) rotateY(180deg);
+  }
+  40% {
+    background: chocolate;
+    transform: none;
+  }
+  60% {
+    background: white
+  }
+  80% {
+    background: cornflowerblue;
+  }
+  90% {
+    transform: none;
+    background: #222;
+  }
 }
 
 /**
