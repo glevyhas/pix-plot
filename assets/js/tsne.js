@@ -3,26 +3,21 @@
 **/
 
 function Config() {
-  this.dataUrl = 'output'; // path to location where data lives
-  this.thumbsUrl = this.dataUrl + '/thumbs/128px/';
-  this.spread = {
-    x: 4000,
-    y: 4000,
-    z: 4000,
-  }; // scale for positioning items on x,y axes
-  this.cellSize = 32;
-  this.lodCellSize = 128;
-  this.atlasSize = 2048;
-  this.textureSize = webgl.limits.textureSize;
-  this.lodTextureSize = 2048 * 2;
-  this.atlasesPerTex = Math.pow((this.textureSize / this.atlasSize), 2);
-  this.atlasesPerTexSide = Math.pow(this.atlasesPerTex, 0.5);
-  this.cellsPerAtlas = Math.pow((this.atlasSize / this.cellSize), 2);
-  this.cellsPerAtlasSide = Math.pow(this.cellsPerAtlas, 0.5);
-  this.cellsPerTex = this.cellsPerAtlas * this.atlasesPerTex;
-  this.cellsPerDrawCall = this.getCellsPerDrawCall();
-  this.transitionDuration = 3.5;
-  this.flyDuration = 3.5;
+  this.data = {
+    url: 'output', // path to location where data lives
+    spread: { // scale for positioning items on x,y axes
+      x: 4000,
+      y: 4000,
+      z: 4000,
+    },
+  };
+  this.size = {
+    cell: 32,
+    lodCell: 128,
+    atlas: 2048,
+    texture: webgl.limits.textureSize,
+    lodTexture: 4096,
+  }
   this.lod = {
     minZ: 250,
     radius: 2,
@@ -32,21 +27,23 @@ function Config() {
   this.layout = {
     preferences: ['grid', 'umap_2d', 'tsne_3d', 'tsne_2d'], // most to least preferable
   };
-  this.defaultEase = {
-    value: 1,
-    ease: Power2.easeInOut,
+  this.transitions = {
+    duration: 3.5, // in seconds
+    ease: {
+      value: 1,
+      ease: Power2.easeInOut,
+    }
   }
-}
-
-// Determine how many cells can be drawn in each draw call
-Config.prototype.getCellsPerDrawCall = function() {
-  return Math.min(
+  this.atlasesPerTex = Math.pow((this.size.texture / this.size.atlas), 2);
+  this.cellsPerAtlas = Math.pow((this.size.atlas / this.size.cell), 2);
+  this.cellsPerTex = this.cellsPerAtlas * this.atlasesPerTex;
+  this.cellsPerDrawCall = Math.min(
     // case where elements per draw call is limiting factor
     webgl.limits.indexedElements,
     // case where textures are limiting factor (-1 to fit high res tex in calls)
     (webgl.limits.textureCount - 1) * this.cellsPerTex,
   );
-};
+}
 
 /**
 * Data
@@ -106,7 +103,7 @@ Data.prototype.getAtlasCount = function(texIdx) {
 // Load json data with chart element positions
 Data.prototype.load = function() {
   var self = this;
-  get(config.dataUrl + '/' + self.file, function(json) {
+  get(config.data.url + '/' + self.file, function(json) {
     self.cellData = json.cells.data; // maps layout key to position array
     layout.setOptions(json.cells.layouts); // set available layouts
     self.cellCount = self.cellData.length;
@@ -147,8 +144,8 @@ function Texture(obj) {
 
 Texture.prototype.setCanvas = function() {
   this.canvas = getElem('canvas', {
-    width: config.textureSize,
-    height: config.textureSize,
+    width: config.size.texture,
+    height: config.size.texture,
     id: 'texture-' + this.idx,
   })
   if ('OffscreenCanvas' in window) this.offscreen = true;
@@ -161,7 +158,7 @@ Texture.prototype.load = function() {
     this.atlases.push(new Atlas({
       idx: (config.atlasesPerTex * this.idx) + i,
       cellIndices: this.getAtlasCellIndices(i),
-      size: config.atlasSize,
+      size: config.size.atlas,
       texIdx: this.idx,
       onProgress: this.onAtlasProgress.bind(this),
       onLoad: this.onAtlasLoad.bind(this),
@@ -187,8 +184,8 @@ Texture.prototype.onAtlasProgress = function(idx, progress) {
 // Add each cell from the loaded atlas to the texture's canvas
 Texture.prototype.onAtlasLoad = function(atlas) {
   // Add the loaded atlas file the texture's canvas
-  var atlasSize = config.atlasSize,
-      textureSize = config.textureSize,
+  var atlasSize = config.size.atlas,
+      textureSize = config.size.texture,
       idx = atlas.idx % config.atlasesPerTex;
   // Get x and y offsets of this atlas within the canvas texture
   var atlasX = (idx * atlasSize) % textureSize,
@@ -196,8 +193,8 @@ Texture.prototype.onAtlasLoad = function(atlas) {
   // draw the atlas on the canvas
   var dx = atlasX,
       dy = atlasY,
-      dw = config.atlasSize,
-      dh = config.atlasSize;
+      dw = config.size.atlas,
+      dh = config.size.atlas;
   this.ctx.drawImage(atlas.image, dx, dy, dw, dh);
   // If all atlases are loaded, build the texture
   if (++this.loadedAtlases == this.atlasCount) this.onLoad(this.idx);
@@ -217,11 +214,11 @@ function Atlas(obj) {
   this.onProgress = obj.onProgress;
   this.image = null;
   this.progress = 0;
-  this.url = config.dataUrl + '/atlas_files/32px/atlas-' + this.idx + '.jpg';
+  this.url = config.data.url + '/atlas_files/32px/atlas-' + this.idx + '.jpg';
   this.cells = [];
   this.posInTex = {
-    x: (this.idxInTex % config.atlasesPerTexSide) * config.atlasSize,
-    y: Math.floor(this.idxInTex / config.atlasesPerTexSide) * config.atlasSize,
+    x: (this.idxInTex % Math.pow(config.atlasesPerTex, 0.5)) * config.size.atlas,
+    y: Math.floor(this.idxInTex / Math.pow(config.atlasesPerTex, 0.5)) * config.size.atlas,
   }
   this.setCells();
   this.load();
@@ -269,11 +266,10 @@ function Cell(obj) {
   this.w = d[1];
   this.h = d[2];
   this.gridCoords = {}; // x, y pos of the cell in the lod grid (set by lod)
-  this.posInAtlas = {}; // position of cell in atlas
   this.idxInAtlas = this.idx % config.cellsPerAtlas; // index of cell in atlas
   this.idxInDrawCall = this.idx % config.cellsPerDrawCall; // index in draw call
   this.drawCallIdx = Math.floor(this.idx / config.cellsPerDrawCall); // draw call index
-  this.posInAtlas = this.getPosInAtlas();
+  this.posInAtlas = this.getPosInAtlas(); // position of cell in atlas
   this.layouts = this.getLayouts();
   this.default = this.getDefaultState();
   this.state = Object.assign({}, this.default);
@@ -282,10 +278,9 @@ function Cell(obj) {
 }
 
 Cell.prototype.getPosInAtlas = function() {
-  var perSide = config.cellsPerAtlasSide;
   return {
-    x: (this.idxInAtlas % perSide) * config.cellSize,
-    y: Math.floor(this.idxInAtlas / perSide) * config.cellSize,
+    x: (this.idxInAtlas % Math.pow(config.cellsPerAtlas, 0.5)) * config.size.cell,
+    y: Math.floor(this.idxInAtlas / Math.pow(config.cellsPerAtlas, 0.5)) * config.size.cell,
   }
 }
 
@@ -301,15 +296,15 @@ Cell.prototype.getLayouts = function() {
           y = layoutPositions[1],
           z = layoutPositions.length > 2 ? layoutPositions[2] : 0;
       options[i] = {
-        x: x * config.spread.x,
-        y: y * config.spread.y,
-        z: z * config.spread.z,
+        x: x * config.data.spread.x,
+        y: y * config.data.spread.y,
+        z: z * config.data.spread.z,
       };
     };
   })
   // compute grid position of cell
   var perSide = data.gridSideCells, // n cells per row/col of grid layout
-      scalar = config.cellSize * 0.7,
+      scalar = config.size.cell * 0.7,
       center = (scalar * perSide)/2;
   // add the grid position of the cell to the positional options for cell
   options.grid = {
@@ -335,26 +330,26 @@ Cell.prototype.getSize = function() {
   if (this.w == this.h) {
     var topPad = 0,
         leftPad = 0,
-        w = config.cellSize,
-        h = config.cellSize;
+        w = config.size.cell,
+        h = config.size.cell;
   } else if (this.w > this.h) {
-    var topPad = Math.ceil(((this.w - this.h)/(this.w)) * config.cellSize / 2),
+    var topPad = Math.ceil(((this.w - this.h)/(this.w)) * config.size.cell / 2),
         leftPad = 0,
-        w = config.cellSize,
-        h = this.h/this.w*config.cellSize;
+        w = config.size.cell,
+        h = this.h/this.w*config.size.cell;
   } else if (this.h > this.w) {
     var topPad = 0,
-        leftPad = Math.ceil(((this.h - this.w)/(this.h)) * config.cellSize / 2),
-        w = this.w/this.h*config.cellSize,
-        h = config.cellSize;
+        leftPad = Math.ceil(((this.h - this.w)/(this.h)) * config.size.cell / 2),
+        w = this.w/this.h*config.size.cell,
+        h = config.size.cell;
   }
   return {
     w: w,
     h: h,
     topPad: topPad,
     leftPad: leftPad,
-    fullCell: config.cellSize,
-    inTexture: config.cellSize / config.textureSize,
+    fullCell: config.size.cell,
+    inTexture: config.size.cell / config.size.texture,
   }
 }
 
@@ -391,12 +386,12 @@ Cell.prototype.activate = function() {
       y: lod.state.cellIdxToCoords[self.idx].y,
     },
     size: {
-      w: config.lodCellSize,
-      h: config.lodCellSize,
+      w: config.size.lodCell,
+      h: config.size.lodCell,
       topPad: self.state.size.topPad * lod.cellSizeScalar,
       leftPad: self.state.size.leftPad * lod.cellSizeScalar,
-      inTexture: config.lodCellSize / config.lodTextureSize,
-      fullCell: config.lodCellSize,
+      inTexture: config.size.lodCell / config.size.lodTexture,
+      fullCell: config.size.lodCell,
     },
   })
   // mutate the cell buffer attributes
@@ -518,7 +513,7 @@ Layout.prototype.set = function(layoutKey) {
   this.elem.disabled = true;
   // zoom the user out if they're zoomed in
   if (world.camera.position.z < 2500) {
-    var delay = config.flyDuration * 1000;
+    var delay = config.transitions.duration * 1000;
     world.flyTo(world.getInitialLocation());
   } else {
     delay = 0;
@@ -538,7 +533,7 @@ Layout.prototype.transition = function(layoutKey) {
   for (var i=0; i<meshes.length; i++) {
     // transition the transitionPercent attribute on the mesh
     TweenLite.to(meshes[i].material.uniforms.transitionPercent,
-      config.transitionDuration, config.defaultEase);
+      config.transitions.duration, config.transitions.ease);
     // update the target positional attribute
     var iter = 0,
         start = i*config.cellsPerDrawCall, // start and end cells
@@ -553,7 +548,7 @@ Layout.prototype.transition = function(layoutKey) {
     setTimeout(this.onTransitionComplete.bind(this, {
       mesh: meshes[i],
       cells: data.cells.slice(start, end),
-    }), config.transitionDuration * 1000);
+    }), config.transitions.duration * 1000);
   }
 }
 
@@ -1043,13 +1038,13 @@ function World() {
     // prepare scope globals to transition camera
     var time = 0,
         q0 = self.camera.quaternion.clone();
-    TweenLite.to(self.camera.position, config.flyDuration, {
+    TweenLite.to(self.camera.position, config.transitions.duration, {
       x: obj.x,
       y: obj.y,
       z: obj.z,
       onUpdate: function() {
         time++;
-        var deg = time / (config.flyDuration * 60); // scale time 0:1
+        var deg = time / (config.transitions.duration * 60); // scale time 0:1
         THREE.Quaternion.slerp(q0, camera.quaternion, self.camera.quaternion, deg);
       },
       onComplete: function() {
@@ -1178,7 +1173,7 @@ Selector.prototype.showModal = function(selected) {
       download = find('#download-icon');
   // fetch data for the selected record
   var filename = data.cells[selected].name + '.json';
-  get(config.dataUrl + '/metadata/' + filename, function(data) {
+  get(config.data.url + '/metadata/' + filename, function(data) {
     var image = new Image();
     image.onload = function() {
       // compile the template and remove whitespace for FF formatting
@@ -1198,7 +1193,7 @@ Selector.prototype.showModal = function(selected) {
       if (data.title || data.description || data.tags) meta.style.display = 'block';
     }
     // set or get the image src and load the image
-    if (!data.src) data.src = config.dataUrl + '/originals/' + data.filename;
+    if (!data.src) data.src = config.data.url + '/originals/' + data.filename;
     image.src = data.src;
   });
 }
@@ -1263,7 +1258,7 @@ Selector.prototype.select = function(obj) {
 function LOD() {
   this.gridPos = { x: null, y: null }; // grid coords of current camera position
   this.cellIdxToImage = {};
-  this.cellSizeScalar = config.lodCellSize / config.cellSize;
+  this.cellSizeScalar = config.size.lodCell / config.size.cell;
   this.framesBetweenUpdates = config.lod.framesBetweenUpdates; // frames that elapse between texture updates
   this.minZ = config.lod.minZ; // minimum camera.z to trigger texture updates
   this.radius = config.lod.radius;
@@ -1281,16 +1276,16 @@ function LOD() {
   this.grid = {
     coords: {}, // set by LOD.indexCells();
     size: {
-      x: config.spread.x * config.lod.gridSpacing,
-      y: config.spread.y * config.lod.gridSpacing,
+      x: config.data.spread.x * config.lod.gridSpacing,
+      y: config.data.spread.y * config.lod.gridSpacing,
     },
   };
 };
 
 LOD.prototype.getTexture = function() {
   var canvas = getElem('canvas', {
-    width: config.lodTextureSize,
-    height: config.lodTextureSize,
+    width: config.size.lodTexture,
+    height: config.size.lodTexture,
     id: 'lod-canvas',
   })
   return {
@@ -1302,13 +1297,13 @@ LOD.prototype.getTexture = function() {
 
 // initialize the array of tex coordinates available for writing
 LOD.prototype.getOpenTexCoords = function() {
-  var perDimension = config.lodTextureSize / config.lodCellSize,
+  var perDimension = config.size.lodTexture / config.size.lodCell,
       openCoords = [];
   for (var y=0; y<perDimension; y++) {
     for (var x=0; x<perDimension; x++) {
       openCoords.push({
-        x: x * config.lodCellSize,
-        y: y * config.lodCellSize,
+        x: x * config.size.lodCell,
+        y: y * config.size.lodCell,
       });
     }
   }
@@ -1395,7 +1390,7 @@ LOD.prototype.loadImage = function(cellIdx) {
         this.state.cellsToActivate = this.state.cellsToActivate.concat(cellIdx);
       }
     }.bind(this, cellIdx);
-    image.src = config.thumbsUrl + data.cells[cellIdx].name;
+    image.src = config.data.url + '/thumbs/128px/' + data.cells[cellIdx].name;
   }
 }
 
@@ -1444,7 +1439,7 @@ LOD.prototype.addCellToLodTexture = function(cell, coords) {
       topPad = cellSize.topPad * this.cellSizeScalar,
       leftPad = cellSize.leftPad * this.cellSizeScalar,
       // rectangle to clear for this cell in LOD texture
-      lodCellSize = config.lodCellSize,
+      lodCellSize = config.size.lodCell,
       x = coords.x,
       y = coords.y,
       // cell to draw: source and target coordinates
@@ -1586,7 +1581,7 @@ function Filters() {
 
 Filters.prototype.loadFilters = function() {
   var self = this;
-  var url = config.dataUrl + '/filters/filters.json';
+  var url = config.data.url + '/filters/filters.json';
   get(url, function(data) {
     for (var i=0; i<data.length; i++) {
       var filter = new Filter(data[i]);
@@ -1630,7 +1625,7 @@ Filter.prototype.onChange = function(e) {
   } else {
     // each {{ level-name }}.json file should use hyphens instead of whitespace
     var filename = val.replace(/\//g, '-').replace(/ /g, '-') + '.json',
-        url = config.dataUrl + '/filters/option_values/' + filename;
+        url = config.data.url + '/filters/option_values/' + filename;
     get(url, self.filterCells);
   }
 }
@@ -1664,7 +1659,7 @@ function Hotspots() {
 }
 
 Hotspots.prototype.init = function() {
-  get(config.dataUrl + '/centroids.json', function(json) {
+  get(config.data.url + '/centroids.json', function(json) {
     this.centroids = json;
     this.target.innerHTML = _.template(this.template.innerHTML)({
       hotspots: json,
