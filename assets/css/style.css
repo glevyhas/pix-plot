@@ -587,7 +587,7 @@ noscript {
   display: inline-block;
   padding: 0.55em 10px;
   margin-left: -4px;
-  cursor: pointer;
+  cursor: not-allowed;
   font-size: 13px;
 }
 

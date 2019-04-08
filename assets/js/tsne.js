@@ -1038,7 +1038,7 @@ function World() {
     var camera = self.getCamera(),
         controls = new THREE.TrackballControls(camera);
     camera.position.set(obj.x, obj.y, obj.z);
-    controls.target.set(obj.x, obj.y, obj.z-1);
+    controls.target.set(obj.x, obj.y, obj.z);
     controls.update();
     // prepare scope globals to transition camera
     var time = 0,
@@ -1046,18 +1046,21 @@ function World() {
     TweenLite.to(self.camera.position, config.flyDuration, {
       x: obj.x,
       y: obj.y,
-      z: obj.z-1,
+      z: obj.z,
       onUpdate: function() {
         time++;
         var deg = time / (config.flyDuration * 60); // scale time 0:1
         THREE.Quaternion.slerp(q0, camera.quaternion, self.camera.quaternion, deg);
       },
       onComplete: function() {
-        var q = camera.quaternion;
-        self.camera.position.set(camera.position.x, camera.position.y, camera.position.z);
-        self.camera.up.set(camera.up.x, camera.up.y, camera.up.z);
+        var q = camera.quaternion,
+            p = camera.position,
+            u = camera.up,
+            c = controls.target;
+        self.camera.position.set(p.x, p.y, p.z);
+        self.camera.up.set(u.x, u.y, u.z);
         self.camera.quaternion.set(q.x, q.y, q.z, q.w);
-        self.controls.target = new THREE.Vector3(obj.x, obj.y, obj.z-100);
+        self.controls.target = new THREE.Vector3(c.x, c.y, 0);
         self.controls.update();
         self.state.flying = false;
       },
