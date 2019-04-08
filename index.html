@@ -151,6 +151,60 @@
       }
     }
     </script>
+
+    <!-- Worker -->
+    <script type='script/worker' id='worker'>
+    self.onmessage = function(event) {
+      self.workerIndex = event.data.workerIndex;
+      if (event.data.message == 'load') {
+        self.url = event.data.url;
+        self.get(self.url, self.onSuccess, self.onErr)
+      }
+    };
+
+    self.onSuccess = function(data) {
+      // window.caches is a global store of web worker data
+      caches.open(self.url).then(function(cache) {
+        return cache.add(data);
+      })
+
+      self.postMessage({
+        status: 'complete',
+        workerIndex: self.workerIndex,
+        url: self.url,
+      })
+    }
+
+    self.onErr = function() {
+      self.postMessage({
+        status: 'error',
+        workerIndex: self.workerIndex,
+      })
+    }
+
+    self.onProgress = function(e) {
+      self.postMessage({
+        status: 'progress',
+        workerIndex: self.workerIndex,
+        loadPercent: e.loaded/e.total,
+      })
+    }
+
+    self.get = function(url, success, err) {
+      var xmlhttp = new XMLHttpRequest();
+      xmlhttp.onreadystatechange = function() {
+        if (xmlhttp.readyState == XMLHttpRequest.DONE) {
+          xmlhttp.status === 200
+            ? success(xmlhttp.responseText)
+            : err(xmlhttp);
+        };
+      };
+      xmlhttp.onprogress = self.onProgress;
+      xmlhttp.open('GET', url, true);
+      xmlhttp.send();
+    }
+    </script>
+
     <!-- Header -->
     <header class='header'>
       <img class='logo' src='assets/images/dhlab-logo.svg' alt='DHLab logo' />
@@ -164,8 +218,20 @@
     <div id='loader-scene'>
       <p class='welcome'>This page visualizes a large image collection within an interactive WebGL scene. Each image was processed with an <a href='https://www.cs.unc.edu/~wliu/papers/GoogLeNet.pdf' target='_blank'>Inception</a> Convolutional Neural Network, trained on <a href='http://image-net.org/challenges/LSVRC/2012/' target='_blank'>ImageNet 2012</a>, and projected into a two-dimensional manifold with the <a href='https://github.com/lmcinnes/umap' target='_blank'>UMAP</a> algorithm such that similar images appear proximate to one another.</p>
       <div class='loader-container'>
+        <div class='loader-icon'>
+          <div class='blocks'>
+            <div class='block'></div>
+            <div class='block'></div>
+            <div class='block'></div>
+            <div class='block'></div>
+            <div class='block'></div>
+            <div class='block'></div>
+            <div class='block'></div>
+            <div class='block'></div>
+            <div class='block'></div>
+          </div>
+        </div>
         <div id='loader-text'>
-          <span>Loading: </span>
           <span id='progress'>0%</span>
         </div>
       </div>
