@@ -8,7 +8,7 @@ function Config() {
     spread: { // scale for positioning items on x,y axes
       x: 4000,
       y: 4000,
-      z: 4000,
+      z: 1,
     },
   };
   this.size = {
@@ -291,17 +291,14 @@ Cell.prototype.getLayouts = function() {
       positions = d[3]; // cell position arrays
   layout.options.forEach(function(i, idx) {
     if (i != 'grid') { //skip grid key as it doesn't come from server
-      var layoutPositions = positions[idx], // x, y, {z} positions for layout
-          x = layoutPositions[0],
-          y = layoutPositions[1],
-          z = layoutPositions.length > 2 ? layoutPositions[2] : 0;
+      var pos = positions[idx];
       options[i] = {
-        x: x * config.data.spread.x,
-        y: y * config.data.spread.y,
-        z: z * config.data.spread.z,
-      };
+        x: pos[0] * config.data.spread.x,
+        y: pos[1] * config.data.spread.y,
+        z: pos.length > 2 ? (pos[2] + Math.random()) * config.data.spread.z : this.idx % 50,
+      }
     };
-  })
+  }.bind(this))
   // compute grid position of cell
   var perSide = data.gridSideCells, // n cells per row/col of grid layout
       scalar = config.size.cell * 0.7,
