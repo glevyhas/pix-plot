@@ -596,6 +596,7 @@ function World() {
   self.state = {
     flying: false,
     transitioning: false,
+    displayed: false,
   }
 
   /**
@@ -621,7 +622,7 @@ function World() {
   **/
 
   self.getCamera = function() {
-    var windowSize = getWindowSize();
+    var windowSize = getCanvasSize();
     var aspectRatio = windowSize.w / windowSize.h;
     return new THREE.PerspectiveCamera(75, aspectRatio, 0.1, 100000);
   }
@@ -633,10 +634,10 @@ function World() {
   self.getRenderer = function() {
     var renderer = new THREE.WebGLRenderer({antialias: true});
     renderer.setPixelRatio(window.devicePixelRatio); // support retina displays
-    var windowSize = getWindowSize(); // determine the size of the window
+    var windowSize = getCanvasSize(); // determine the size of the window
     renderer.setSize(windowSize.w, windowSize.h); // set the renderer size
     renderer.domElement.id = 'pixplot-canvas'; // give the canvas a unique id
-    document.body.appendChild(renderer.domElement); // appends canvas to DOM
+    document.querySelector('#canvas-target').appendChild(renderer.domElement);
     return renderer;
   }
 
@@ -674,7 +675,7 @@ function World() {
   }
 
   self.handleResize = function() {
-    var windowSize = getWindowSize();
+    var windowSize = getCanvasSize();
     self.camera.aspect = windowSize.w / windowSize.h;
     self.camera.updateProjectionMatrix();
     self.renderer.setSize(windowSize.w, windowSize.h);
@@ -800,14 +801,14 @@ function World() {
         IBA = THREE.InstancedBufferAttribute,
         uvAttr = new BA(new Float32Array([0, 0]), 2),
         positionAttr = new BA(new Float32Array([0, 0, 0]), 3),
-        sizeAttr = new IBA(it.sizes, 1, 1),
-        texIndexAttr = new IBA(it.texIndices, 1, 1),
-        texSizeAttr = new IBA(it.texSizes, 2, 1),
-        texOffsetAttr = new IBA(it.texOffsets, 2, 1),
-        translationAttr = new IBA(it.translations, 3, 1),
-        targetAttr = new IBA(it.targets, 3, 1),
-        colorAttr = new IBA(it.colors, 3, 1),
-        opacityAttr = new IBA(it.opacities, 1, 1);
+        sizeAttr = new IBA(it.sizes, 1, true, 1),
+        texIndexAttr = new IBA(it.texIndices, 1, true, 1),
+        texSizeAttr = new IBA(it.texSizes, 2, true, 1),
+        texOffsetAttr = new IBA(it.texOffsets, 2, true, 1),
+        translationAttr = new IBA(it.translations, 3, true, 1),
+        targetAttr = new IBA(it.targets, 3, true, 1),
+        colorAttr = new IBA(it.colors, 3, true, 1),
+        opacityAttr = new IBA(it.opacities, 1, true, 1);
     uvAttr.dynamic = true;
     positionAttr.dynamic = true;
     texIndexAttr.dynamic = true;
@@ -1123,7 +1124,7 @@ function Selector() {
 
 // get the texture on which off-screen rendering will happen
 Selector.prototype.getTexture = function() {
-  var windowSize = getWindowSize();
+  var windowSize = getCanvasSize();
   var tex = new THREE.WebGLRenderTarget(windowSize.w, windowSize.h);
   tex.texture.minFilter = THREE.LinearFilter;
   return tex;
@@ -1334,7 +1335,7 @@ LOD.prototype.toGridCoords = function(obj) {
 
 // load high-res images nearest the camera; called every frame by world.render
 LOD.prototype.update = function() {
-  if (!this.state.run || world.state.flying) return;
+  if (!this.state.run || world.state.flying || !world.state.displayed) return;
   this.updateGridPosition();
   this.loadNextImage();
   this.tick();
@@ -1439,19 +1440,18 @@ LOD.prototype.addCellToLodTexture = function(cell, coords) {
       topPad = cellSize.topPad * this.cellSizeScalar,
       leftPad = cellSize.leftPad * this.cellSizeScalar,
       // rectangle to clear for this cell in LOD texture
-      lodCellSize = config.size.lodCell,
       x = coords.x,
       y = coords.y,
       // cell to draw: source and target coordinates
       sX = 0,
       sY = 0,
-      sW = lodCellSize - (2*leftPad),
-      sH = lodCellSize - (2*topPad),
+      sW = config.size.lodCell - (2*leftPad),
+      sH = config.size.lodCell - (2*topPad),
       dX = x + leftPad,
       dY = y + topPad,
       dW = sW,
       dH = sH;
-  this.tex.ctx.clearRect(x, y, lodCellSize, lodCellSize);
+  this.tex.ctx.clearRect(x, y, config.size.lodCell, config.size.lodCell);
   this.tex.ctx.drawImage(img, sX, sY, sW, sH, dX, dY, dW, dH);
   cell.activate();
 }
@@ -1563,9 +1563,10 @@ Welcome.prototype.startWorld = function() {
   requestAnimationFrame(function() {
     world.init();
     selector.init();
-    requestAnimationFrame(function() {
+    setTimeout(function() {
       document.querySelector('#loader-scene').classList += 'hidden';
-    })
+      world.state.displayed = true;
+    }, 50);
   })
 }
 
@@ -1720,46 +1721,6 @@ Webgl.prototype.getLimits = function() {
 }
 
 /**
-* Manager for web workers
-**/
-
-function Manager() {
-  this.maxWorkers = navigator.hardwareConcurrency || 8;
-  this.path = 'assets/js/worker.js'; // path to web worker source
-  this.workers = [];
-  this.getWorkers();
-  //this.loadFiles();
-}
-
-Manager.prototype.getWorkers = function() {
-  var workerText = document.querySelector('#worker').textContent;
-  for (var i=0; i<this.maxWorkers; i++) {
-    var blob = new Blob([workerText], { type: 'text/javascript' }),
-        url = URL.createObjectURL(blob),
-        worker = new Worker(url);
-    worker.onmessage = this.onMessage.bind(this);
-    this.workers.push(worker);
-    URL.revokeObjectURL(url);
-  }
-}
-
-Manager.prototype.onMessage = function(event) {
-  switch (event.data.status) {
-    case 'complete':
-      this.onLoadComplete(event.data);
-      break;
-
-    case 'error':
-      this.onLoadError(event.data);
-      break;
-
-    case 'progress':
-      this.onLoadProgress(event.data);
-      break;
-  }
-}
-
-/**
 * Make an XHR get request for data
 *
 * @param {str} url: the url of the data to fetch
@@ -1833,13 +1794,14 @@ function getNested(obj, keyArr, ifEmpty) {
 }
 
 /**
-* Get the H,W to use for rendering
+* Get the H,W of the canvas to use for rendering
 **/
 
-function getWindowSize() {
+function getCanvasSize() {
+  var elem = document.querySelector('#canvas-target');
   return {
-    w: window.innerWidth,
-    h: window.innerHeight,
+    w: elem.clientWidth,
+    h: elem.clientHeight,
   }
 }
 

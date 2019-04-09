@@ -16,10 +16,6 @@ html {
   background: #000;
 }
 
-canvas {
-  transition: opacity 3s;
-}
-
 a {
   text-decoration: none;
   color: #eab755;
@@ -61,6 +57,22 @@ select::-ms-expand {
 select:disabled {
   cursor: default;
   opacity: 0.4;
+}
+
+#canvas-container {
+  position: absolute;
+  top: 60px;
+  left: 100px;
+  right: 0;
+  bottom: 0;
+}
+
+#canvas-target {
+  position: absolute;
+  top: -40px;
+  right: -40px;
+  bottom: -40px;
+  left: -40px;
 }
 
 /**
