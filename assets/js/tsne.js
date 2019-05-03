@@ -8,7 +8,7 @@ function Config() {
     spread: { // scale for positioning items on x,y axes
       x: 4000,
       y: 4000,
-      z: 1,
+      z: 4000,
     },
   };
   this.size = {
@@ -295,7 +295,7 @@ Cell.prototype.getLayouts = function() {
       options[i] = {
         x: pos[0] * config.data.spread.x,
         y: pos[1] * config.data.spread.y,
-        z: pos.length > 2 ? (pos[2] + Math.random()) * config.data.spread.z : this.idx % 50,
+        z: pos.length > 2 ? pos[2] * config.data.spread.z : this.idx % 50,
       }
     };
   }.bind(this))
@@ -572,6 +572,7 @@ Layout.prototype.onTransitionComplete = function(obj) {
     value: 0,
   };
   world.state.transitioning = false;
+  world.controls.target.z = getMinCellZ();
   // reindex cells in LOD and clear LOD state
   lod.clear();
   lod.indexCells();
@@ -619,8 +620,8 @@ function World() {
   **/
 
   self.getCamera = function() {
-    var windowSize = getCanvasSize();
-    var aspectRatio = windowSize.w / windowSize.h;
+    var canvasSize = getCanvasSize();
+    var aspectRatio = canvasSize.w /canvasSize.h;
     return new THREE.PerspectiveCamera(75, aspectRatio, 0.1, 100000);
   }
 
@@ -631,8 +632,8 @@ function World() {
   self.getRenderer = function() {
     var renderer = new THREE.WebGLRenderer({antialias: true});
     renderer.setPixelRatio(window.devicePixelRatio); // support retina displays
-    var windowSize = getCanvasSize(); // determine the size of the window
-    renderer.setSize(windowSize.w, windowSize.h); // set the renderer size
+    var canvasSize = getCanvasSize(); // determine the size of the window
+    renderer.setSize(canvasSize.w, canvasSize.h); // set the renderer size
     renderer.domElement.id = 'pixplot-canvas'; // give the canvas a unique id
     document.querySelector('#canvas-target').appendChild(renderer.domElement);
     return renderer;
@@ -672,11 +673,11 @@ function World() {
   }
 
   self.handleResize = function() {
-    var windowSize = getCanvasSize();
-    self.camera.aspect = windowSize.w / windowSize.h;
+    var canvasSize = getCanvasSize();
+    self.camera.aspect = canvasSize.w / canvasSize.h;
     self.camera.updateProjectionMatrix();
-    self.renderer.setSize(windowSize.w, windowSize.h);
-    selector.tex.setSize(windowSize.w, windowSize.h);
+    self.renderer.setSize(canvasSize.w, canvasSize.h);
+    selector.tex.setSize(canvasSize.w, canvasSize.h);
     self.controls.handleResize();
     self.setPointScalar();
     delete self.resizeTimeout;
@@ -716,18 +717,6 @@ function World() {
       x: (data.boundingBox.x.min + data.boundingBox.x.max) / 2,
       y: (data.boundingBox.y.min + data.boundingBox.y.max) / 2,
     }
-  }
-
-  /**
-  * Focus the camera and controls on a particular region of space
-  **/
-
-  self.setControls = function(obj) {
-    // position the camera in the plot's center
-    self.camera.position.set(obj.x, obj.y, obj.z);
-    self.camera.lookAt(obj.x, obj.y, 0);
-    // position the controls in the plot's center - should be beyond cam.pos.z
-    self.controls.target = new THREE.Vector3(obj.x, obj.y, 0);
   }
 
   /**
@@ -891,7 +880,8 @@ function World() {
 
   // Return an int specifying the scalar uniform for points
   self.getPointScale = function() {
-    return window.devicePixelRatio * window.innerHeight * 24;
+    var canvasSize = getCanvasSize()
+    return window.devicePixelRatio * canvasSize.h * 12;
   }
 
   /**
@@ -1049,11 +1039,12 @@ function World() {
         var q = camera.quaternion,
             p = camera.position,
             u = camera.up,
-            c = controls.target;
+            c = controls.target,
+            zMin = getMinCellZ();
         self.camera.position.set(p.x, p.y, p.z);
         self.camera.up.set(u.x, u.y, u.z);
         self.camera.quaternion.set(q.x, q.y, q.z, q.w);
-        self.controls.target = new THREE.Vector3(c.x, c.y, 0);
+        self.controls.target = new THREE.Vector3(c.x, c.y, zMin);
         self.controls.update();
         self.state.flying = false;
       },
@@ -1069,7 +1060,7 @@ function World() {
     return {
       x: self.center.x,
       y: self.center.y,
-      z: 5000,
+      z: config.data.spread.z,
     }
   }
 
@@ -1092,7 +1083,12 @@ function World() {
 
   self.init = function() {
     self.setCenter();
-    self.setControls(self.getInitialLocation());
+    // center the camera and position the controls
+    var loc = self.getInitialLocation();
+    self.camera.position.set(loc.x, loc.y, loc.z);
+    self.camera.lookAt(loc.x, loc.y, loc.z);
+    self.controls.target = new THREE.Vector3(loc.x, loc.y, 0);
+    // draw the points and start the render loop
     self.plot();
     self.render();
   }
@@ -1121,8 +1117,8 @@ function Selector() {
 
 // get the texture on which off-screen rendering will happen
 Selector.prototype.getTexture = function() {
-  var windowSize = getCanvasSize();
-  var tex = new THREE.WebGLRenderTarget(windowSize.w, windowSize.h);
+  var canvasSize = getCanvasSize();
+  var tex = new THREE.WebGLRenderTarget(canvasSize.w, canvasSize.h);
   tex.texture.minFilter = THREE.LinearFilter;
   return tex;
 }
@@ -1205,9 +1201,10 @@ Selector.prototype.closeModal = function() {
 Selector.prototype.getMouseWorldCoords = function() {
   var vector = new THREE.Vector3(),
       camera = world.camera,
-      mouse = new THREE.Vector2();
-  mouse.x = (this.mouse.x / window.innerWidth) * 2 - 1;
-  mouse.y = (this.mouse.y /  window.innerHeight) * 2 + 1;
+      mouse = new THREE.Vector2(),
+      canvasSize = getCanvasSize();
+  mouse.x = (this.mouse.x / canvasSize.w) * 2 - 1;
+  mouse.y = (this.mouse.y / canvasSize.h) * 2 + 1;
   vector.set(mouse.x, mouse.y, 0.5);
   vector.unproject(camera);
   var direction = vector.sub(camera.position).normalize(),
@@ -1739,6 +1736,16 @@ function get(url, handleSuccess, handleErr) {
   xmlhttp.open('GET', url, true);
   xmlhttp.send();
 };
+
+/**
+* Find the smallest z value among all cells
+**/
+
+function getMinCellZ() {
+  return Math.min.apply(Math, data.cells.map(function(d) {
+    return d.state.position.z;
+  }))
+}
 
 /**
 * Create an element

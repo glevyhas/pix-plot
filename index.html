@@ -65,13 +65,6 @@
     varying vec3 vColor;          // cell color
     varying float vOpacity;       // cell opacity
 
-    float scalePointZ(in vec4 world, in vec3 cameraPosition) {
-      float zDelta = pow(world[2] - cameraPosition[2], 2.0);
-      float delta  = pow(zDelta, 0.5);
-      float scaled = pointScale / delta;
-      return scaled;
-    }
-
     void main() {
       // pass varyings to fragment shader
       vTextureIndex = textureIndex;
@@ -89,7 +82,7 @@
       gl_Position = projectionMatrix * world;
 
       // use the unscaled point position and camera position to set point size
-      gl_PointSize = scalePointZ(world, cameraPosition);
+      gl_PointSize = (pointScale / -world.z);
     }
     </script>
 
