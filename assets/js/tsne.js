@@ -1710,8 +1710,8 @@ Webgl.prototype.getLimits = function() {
     if (extensions[ext + 'OES_element_index_uint']) maxIndex = 2**32 - 1;
   })
   return {
-    textureSize: this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE),
-    textureCount: this.gl.getParameter(this.gl.MAX_TEXTURE_IMAGE_UNITS),
+    textureSize: this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE) / 2,
+    textureCount: this.gl.getParameter(this.gl.MAX_TEXTURE_IMAGE_UNITS) / 2,
     vShaderTextures: this.gl.getParameter(this.gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS),
     indexedElements: maxIndex,
   }
