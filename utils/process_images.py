@@ -68,6 +68,7 @@ class PixPlot:
     self.create_image_thumbs()
     self.create_image_vectors()
     self.load_image_vectors()
+    self.build_clustering()
     self.write_json()
     self.create_atlas_files()
     print('Processed output for ' + \
@@ -279,7 +280,6 @@ class PixPlot:
     Use KMeans clustering to find n centroid images
     that represent the center of an image cluster
     '''
-    self.build_clustering()
     centroids = self.clustering.cluster_centers_
     labels = self.clustering.labels_
     X = np.array(self.image_vectors)
@@ -288,7 +288,6 @@ class PixPlot:
     centroid_paths = [self.vector_files[i] for i in closest]
     centroid_json = []
     for c, i in enumerate(centroid_paths):
-      print([item for item, label in enumerate(labels) if label == c])
       centroid_json.append({
         'img': get_filename(i),
         'label': 'Cluster ' + str(c+1),
