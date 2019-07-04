@@ -263,27 +263,36 @@ class PixPlot:
       ])
     return image_positions
 
+  def build_clustering(self):
+    '''
+    Use KMeans clustering to find n centroids
+    '''
+    print(' * calculating ' + str(self.n_clusters) + ' clusters')
+    model = KMeans(n_clusters=self.n_clusters)
+    X = np.array(self.image_vectors)
+    fit_model = model.fit(X)
+    self.clustering = fit_model
+
 
   def get_centroids(self):
     '''
     Use KMeans clustering to find n centroid images
     that represent the center of an image cluster
     '''
-    print(' * calculating ' + str(self.n_clusters) + ' clusters')
-    model = KMeans(n_clusters=self.n_clusters)
+    self.build_clustering()
+    centroids = self.clustering.cluster_centers_
+    labels = self.clustering.labels_
     X = np.array(self.image_vectors)
-    fit_model = model.fit(X)
-    centroids = fit_model.cluster_centers_
     # find the points closest to the cluster centroids
     closest, _ = pairwise_distances_argmin_min(centroids, X)
     centroid_paths = [self.vector_files[i] for i in closest]
     centroid_json = []
     for c, i in enumerate(centroid_paths):
-      print([item for item, label in enumerate(fit_model.labels_) if label == c])
+      print([item for item, label in enumerate(labels) if label == c])
       centroid_json.append({
         'img': get_filename(i),
         'label': 'Cluster ' + str(c+1),
-        'members': [item for item, label in enumerate(fit_model.labels_) if label == c]
+        'members': [item for item, label in enumerate(labels) if label == c]
       })
     return centroid_json
 
