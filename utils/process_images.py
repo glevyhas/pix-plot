@@ -279,9 +279,11 @@ class PixPlot:
     centroid_paths = [self.vector_files[i] for i in closest]
     centroid_json = []
     for c, i in enumerate(centroid_paths):
+      print([item for item, label in enumerate(fit_model.labels_) if label == c])
       centroid_json.append({
         'img': get_filename(i),
-        'label': 'Cluster ' + str(c+1)
+        'label': 'Cluster ' + str(c+1),
+        'members': [item for item, label in enumerate(fit_model.labels_) if label == c]
       })
     return centroid_json
 
