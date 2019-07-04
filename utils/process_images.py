@@ -254,19 +254,21 @@ class PixPlot:
       thumb_path = join(self.output_dir, 'thumbs', '32px', img)
       with Image.open(thumb_path) as image:
         width, height = image.size
-      # Add the image name, x offset, y offset
+      cluster = int(self.clustering.labels_[c]) + 1 # Because PixPlot.get_centroids() names them from 1 onwards
+      # Add the image name, x offset, y offset, cluster
       image_positions.append([
         os.path.splitext(os.path.basename(img))[0],
         int(i[0] * 100),
         int(i[1] * 100),
         width,
-        height
+        height,
+        cluster
       ])
     return image_positions
 
   def build_clustering(self):
     '''
-    Use KMeans clustering to find n centroids
+    Use KMeans clustering to find n centroids.
     '''
     print(' * calculating ' + str(self.n_clusters) + ' clusters')
     model = KMeans(n_clusters=self.n_clusters)
@@ -277,8 +279,7 @@ class PixPlot:
 
   def get_centroids(self):
     '''
-    Use KMeans clustering to find n centroid images
-    that represent the center of an image cluster
+    Find n centroid images that represent the center of an image cluster
     '''
     centroids = self.clustering.cluster_centers_
     labels = self.clustering.labels_
