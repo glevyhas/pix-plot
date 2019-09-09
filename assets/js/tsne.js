@@ -28,7 +28,7 @@ function Config() {
     preferences: ['grid', 'umap_2d', 'tsne_3d', 'tsne_2d'], // most to least preferable
   };
   this.transitions = {
-    duration: 3.5, // in seconds
+    duration: 1.5, // in seconds
     ease: {
       value: 1,
       ease: Power2.easeInOut,
