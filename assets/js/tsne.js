@@ -1,16 +1,66 @@
 /**
-* Config
+* General structure of this viewer
+*
+* The code below creates a webgl scene that visualizes many images. To do so,
+* it loads a series of "atlas" images (.jpg files that contain lots of smaller
+* image "cells", where each cell depicts a single input image in a small size).
+* Those atlases are combined into "textures", where each texture is just a 2D
+* canvas with image data from one or more atlas images. Those textures are fed
+* to the GPU to control the content that each individual image in the scene
+* will display.
+*
+* The positions of each cell are controlled by the data in plot_data.json,
+* which is created by utils/process_images.py. As users move through the scene,
+* higher detail images are requested for the images that are proximate to the
+* user's camera position. Those higher resolution images are loaded by the LOD()
+* "class" below.
+**/
+
+/**
+* Config: The master config for this visualization.
+*   Contains the following attributes:
+*
+* data:
+*   url: name of the directory where input data lives
+*   file: name of the file with positional data
+*   spread:
+*     x: spread of data along the x axis -- higher moves points apart
+*     y: spread of data along the x axis -- higher moves points apart
+*     z: spread of data along the x axis -- higher moves points apart
+* size:
+*   cell: height & width of each image (in px) within the small atlas
+*   lodCell: height & width of each image (in px) within the larger atlas
+*   atlas: height & width of each small atlas (in px)
+*   texture: height & width of each texture (in px)
+*   lodTexture: height & width of the large (detail) texture
+* lod:
+*   minZ: the minimum z dimension value for which we'll load detailed images
+*   radius: distance from user's cursor that we'll search in the level of
+*     detail (LOD) grid for images that need higher resolution textures loaded
+*   framesBetweenUpdates: number of frames to wait between LOD updates
+*   gridSpacing: the size of each unit in the LOD grid. Bigger means that more
+*     distant images will be loaded when a user is near a particular location
+* layout:
+*   preferences: list of strings, each denoting a possible layout. Controls
+*     the order of the layout options in the layout select within the nav.
+* transition:
+*   duration: number of seconds each layout transition should take
+*   ease: TweenLite ease config values for transitions
+* atlasesPerTex: number of atlases to include in each texture
+* cellsPerAtlas: number of cells to include in each atlas
+* cellsPerDrawCall: number of GL_POINT primitives to include in each draw call
 **/
 
 function Config() {
   this.data = {
-    url: 'output', // path to location where data lives
-    spread: { // scale for positioning items on x,y axes
+    dir: 'output',
+    file: 'plot_data.json',
+    spread: {
       x: 4000,
       y: 4000,
       z: 4000,
     },
-  };
+  }
   this.size = {
     cell: 32,
     lodCell: 128,
@@ -19,16 +69,16 @@ function Config() {
     lodTexture: 4096,
   }
   this.lod = {
-    minZ: 250,
+    minZ: 250, // todo - factor into distance function
     radius: 2,
     framesBetweenUpdates: 40,
     gridSpacing: 0.01,
-  },
+  }
   this.layout = {
-    preferences: ['grid', 'umap_2d', 'tsne_3d', 'tsne_2d'], // most to least preferable
-  };
+    preferences: ['grid', 'umap_2d', 'tsne_3d', 'tsne_2d'],
+  }
   this.transitions = {
-    duration: 1.5, // in seconds
+    duration: 1.5,
     ease: {
       value: 1,
       ease: Power2.easeInOut,
@@ -46,18 +96,27 @@ function Config() {
 }
 
 /**
-* Data
+* Data: Container for data consumed by application
+*
+* cellCount: total number of cells / images to render; specified in config.data.file
+* atlasCount: total number of atlases to load; specified in config.data.file
+* textureCount: total number of textures to create
+* textures: array of Texture objects to render. Each requires a draw call
+* cells: array of images to render. Each depicts a single input image
+* textureProgress: maps texture index to its loading progress (0:100)
+* textureCount: total number of textures to load
+* loadedTextures: number of textures loaded so far
+* boundingBox: the domains for the x and y axes. Used for setting initial
+*   camera position and creating the LOD grid
 **/
 
 function Data() {
-  this.file = 'plot_data.json';
+  this.cellCount = null;
   this.atlasCount = null;
-  this.positions = null;
-  this.images = [];
-  this.textures = [];
-  this.cells = [];
-  this.textureProgress = {};
   this.textureCount = null;
+  this.cells = [];
+  this.textures = [];
+  this.textureProgress = {};
   this.loadedTextures = 0;
   this.boundingBox = {
     x: {
@@ -72,18 +131,28 @@ function Data() {
   this.load();
 }
 
-// Get an array of the position data to pass to the texture at idx `texIdx`
-Data.prototype.getTextureCellIndices = function(texIdx) {
-  var cellsPerTex = config.cellsPerAtlas * config.atlasesPerTex;
-  return {
-    start: cellsPerTex * texIdx,
-    end: Math.min(cellsPerTex * (texIdx + 1), self.cellCount),
-  }
+// Load json data with chart element positions
+Data.prototype.load = function() {
+  get(config.data.dir + '/' + config.data.file, function(json) {
+    this.cellData = json.cells.data;
+    layout.setOptions(json.cells.layouts); // set available layouts
+    this.cellCount = this.cellData.length;
+    this.atlasCount = json.atlas_counts['32px'];
+    this.textureCount = Math.ceil(this.atlasCount / config.atlasesPerTex);;
+    // load each texture for this data set
+    for (var i=0; i<this.textureCount; i++) {
+      this.textures.push(new Texture({
+        idx: i,
+        onProgress: this.onTextureProgress.bind(this),
+        onLoad: this.onTextureLoad.bind(this),
+      }));
+    };
+  }.bind(this))
 }
 
 // When a texture's progress updates, update the aggregate progress
 Data.prototype.onTextureProgress = function(texIdx, progress) {
-  this.textureProgress[texIdx] = progress / this.textures[texIdx].atlasCount;
+  this.textureProgress[texIdx] = progress / this.textures[texIdx].getAtlasCount(texIdx);
   welcome.updateProgress();
 }
 
@@ -93,52 +162,33 @@ Data.prototype.onTextureLoad = function(texIdx) {
   welcome.updateProgress();
 }
 
-// Get the number of atlases to include in texture at index `idx`
-Data.prototype.getAtlasCount = function(texIdx) {
-  return this.atlasCount / config.atlasesPerTex > (texIdx + 1)
-    ? config.atlasesPerTex
-    : this.atlasCount % config.atlasesPerTex;
-}
-
-// Load json data with chart element positions
-Data.prototype.load = function() {
-  var self = this;
-  get(config.data.url + '/' + self.file, function(json) {
-    self.cellData = json.cells.data; // maps layout key to position array
-    layout.setOptions(json.cells.layouts); // set available layouts
-    self.cellCount = self.cellData.length;
-    self.atlasCount = json.atlas_counts['32px'];
-    self.textureCount = Math.ceil(self.atlasCount / config.atlasesPerTex);
-    self.gridSideCells = Math.ceil(Math.pow(self.cellCount, 0.5));
-    // load each texture for this data set
-    for (var i=0; i<self.textureCount; i++) {
-      self.textures.push(new Texture({
-        idx: i,
-        cellIndices: self.getTextureCellIndices.bind(self),
-        onProgress: self.onTextureProgress.bind(self),
-        onLoad: self.onTextureLoad.bind(self),
-        atlasCount: self.getAtlasCount(i),
-      }));
-    };
-  })
-}
-
 /**
-* Texture
+* Texture: Each texture contains one or more atlases, and each atlas contains
+*   many Cells, where each cell represents a single input image.
+*
+* idx: index of this texture within all textures
+* cellIndices: indices of the cells in this texture within data.cells
+* atlasProgress: map from this textures atlas id's to their load progress (0:100)
+* atlases: list of atlases used in this texture
+* atlasCount: number of atlases to load for this texture
+* onProgress: callback to tell Data() that this texture loaded a bit more
+* onLoad: callback to tell Data() that this texture finished loading
+* loadedAtlases: number of atlases loaded
+* canvas: the canvas on which each atlas in this texture will be rendered
+* ctx: the 2D context for drawing on this.canvas
+* offscreen: boolean indicating whether this canvas can be drawn offscreen
+*   (unused)
 **/
 
 function Texture(obj) {
   this.idx = obj.idx;
-  this.cellIndices = obj.cellIndices;
-  this.atlasProgress = {};
   this.atlases = [];
-  this.atlasCount = obj.atlasCount;
+  this.atlasProgress = {};
+  this.loadedAtlases = 0;
   this.onProgress = obj.onProgress;
   this.onLoad = obj.onLoad;
-  this.loadedAtlases = 0;
   this.canvas = null;
   this.ctx = null;
-  this.offscreen = false;
   this.load();
 }
 
@@ -148,35 +198,31 @@ Texture.prototype.setCanvas = function() {
     height: config.size.texture,
     id: 'texture-' + this.idx,
   })
-  if ('OffscreenCanvas' in window) this.offscreen = true;
   this.ctx = this.canvas.getContext('2d');
 }
 
 Texture.prototype.load = function() {
   this.setCanvas();
-  for (var i=0; i<this.atlasCount; i++) {
+  // load each atlas that is to be included in this texture
+  for (var i=0; i<this.getAtlasCount(this.idx); i++) {
     this.atlases.push(new Atlas({
-      idx: (config.atlasesPerTex * this.idx) + i,
-      cellIndices: this.getAtlasCellIndices(i),
-      size: config.size.atlas,
-      texIdx: this.idx,
+      idx: (config.atlasesPerTex * this.idx) + i, // atlas index among all atlases
       onProgress: this.onAtlasProgress.bind(this),
       onLoad: this.onAtlasLoad.bind(this),
     }))
   }
 }
 
-// Set the indices of cells within data.cellData for the atlas at position `idx`
-Texture.prototype.getAtlasCellIndices = function(atlasIdx) {
-  return {
-    start: config.cellsPerAtlas * atlasIdx,
-    end: Math.min(config.cellsPerAtlas * (atlasIdx + 1), data.cellCount),
-  }
+// Get the number of atlases to include in this texture
+Texture.prototype.getAtlasCount = function(texIdx) {
+  return data.atlasCount / config.atlasesPerTex > (texIdx + 1)
+    ? config.atlasesPerTex
+    : data.atlasCount % config.atlasesPerTex;
 }
 
-// Log the load progress of each atlas file
-Texture.prototype.onAtlasProgress = function(idx, progress) {
-  this.atlasProgress[idx] = progress;
+// Store the load progress of each atlas file
+Texture.prototype.onAtlasProgress = function(atlasIdx, progress) {
+  this.atlasProgress[atlasIdx] = progress;
   var textureProgress = valueSum(this.atlasProgress);
   this.onProgress(this.idx, textureProgress);
 }
@@ -186,102 +232,104 @@ Texture.prototype.onAtlasLoad = function(atlas) {
   // Add the loaded atlas file the texture's canvas
   var atlasSize = config.size.atlas,
       textureSize = config.size.texture,
-      idx = atlas.idx % config.atlasesPerTex;
-  // Get x and y offsets of this atlas within the canvas texture
-  var atlasX = (idx * atlasSize) % textureSize,
-      atlasY = Math.floor((idx * atlasSize) / textureSize) * atlasSize;
-  // draw the atlas on the canvas
-  var dx = atlasX,
-      dy = atlasY,
+      // atlas index within this texture
+      idx = atlas.idx % config.atlasesPerTex,
+      // x and y offsets within texture
+      dx = (idx * atlasSize) % textureSize,
+      dy = Math.floor((idx * atlasSize) / textureSize) * atlasSize,
       dw = config.size.atlas,
       dh = config.size.atlas;
   this.ctx.drawImage(atlas.image, dx, dy, dw, dh);
   // If all atlases are loaded, build the texture
-  if (++this.loadedAtlases == this.atlasCount) this.onLoad(this.idx);
+  if (++this.loadedAtlases == this.getAtlasCount()) this.onLoad(this.idx);
 }
 
 /**
-* Atlas
+* Atlas: Each atlas contains multiple Cells, and each Cell represents a single
+*   input image.
+*
+* idx: index of this atlas among all atlases
+* texIdx: index of this atlases texture among all textures
+* cellIndices: array of the indices in data.cells to be rendered by this atlas
+* size: height & width of this atlas (in px)
+* progress: total load progress for this atlas's image (0-100)
+* onProgress: callback to notify parent Texture that this atlas has loaded more
+* onLoad: callback to notify parent Texture that this atlas has finished loading
+* image: Image object with data to be rendered on this atlas
+* url: path to the image for this atlas
+* cells: list of the Cell objects rendered in this atlas
+* posInTex: the x & y offsets of this atlas in its texture (in px) from top left
 **/
 
 function Atlas(obj) {
-  this.texIdx = obj.texIdx;
   this.idx = obj.idx;
-  this.idxInTex = obj.idx % config.atlasesPerTex;
-  this.cellIndices = obj.cellIndices;
-  this.size = obj.size;
-  this.onLoad = obj.onLoad;
-  this.onProgress = obj.onProgress;
-  this.image = null;
   this.progress = 0;
-  this.url = config.data.url + '/atlas_files/32px/atlas-' + this.idx + '.jpg';
+  this.onProgress = obj.onProgress;
+  this.onLoad = obj.onLoad;
+  this.image = null;
+  this.url = config.data.dir + '/atlas_files/32px/atlas-' + this.idx + '.jpg';
   this.cells = [];
-  this.posInTex = {
-    x: (this.idxInTex % Math.pow(config.atlasesPerTex, 0.5)) * config.size.atlas,
-    y: Math.floor(this.idxInTex / Math.pow(config.atlasesPerTex, 0.5)) * config.size.atlas,
-  }
   this.setCells();
   this.load();
 }
 
+Atlas.prototype.setCells = function() {
+  var cellIndices = this.getAtlasCellIndices();
+  // find the index position of the first cell among all cells
+  for (var i=cellIndices.start; i<cellIndices.end; i++) {
+    this.cells.push(new Cell({idx: i})) // cell's index among all cells
+  }
+}
+
+// Return the start + end indices of the cells to be included in this atlas
+Atlas.prototype.getAtlasCellIndices = function() {
+  return {
+    start: config.cellsPerAtlas * this.idx,
+    end: Math.min(config.cellsPerAtlas * (this.idx + 1), data.cellCount),
+  }
+}
+
 Atlas.prototype.load = function() {
-  var self = this;
-  self.image = new Image;
-  self.image.onload = function() { self.onLoad(self); }
+  this.image = new Image;
+  this.image.onload = function() {
+    this.onLoad(this);
+  }.bind(this)
   var xhr = new XMLHttpRequest();
   xhr.onprogress = function(e) {
     var progress = parseInt((e.loaded / e.total) * 100);
-    self.onProgress(self.idx, progress);
-  };
+    this.onProgress(this.idx, progress);
+  }.bind(this);
   xhr.onload = function(e) {
-    self.image.src = window.URL.createObjectURL(this.response);
-  };
-  xhr.open('GET', self.url, true);
+    this.image.src = window.URL.createObjectURL(e.target.response);
+  }.bind(this);
+  xhr.open('GET', this.url, true);
   xhr.responseType = 'blob';
   xhr.send();
 }
 
-Atlas.prototype.setCells = function() {
-  var self = this;
-  // find the index position of the first cell among all cells
-  for (var i=self.cellIndices.start; i<self.cellIndices.end; i++) {
-    self.cells.push(new Cell({
-      idx: i,
-      atlasPosInTex: self.posInTex,
-      texIdx: self.texIdx,
-    }))
-  }
-}
-
 /**
-* Cell
+* Cell: Each cell represents a single input image.
+*
+* idx: index of this cell among all cells
+* name: the basename for this image (e.g. cats.jpg)
+* w: the width of this image in pixels
+* h: the height of this image in pixels
+* gridCoords: x,y coordinates of this image in the LOD grid -- set by LOD()
+* layouts: a map from layout name to obj with x, y, z positional values
+* state: the current state for this image
 **/
 
 function Cell(obj) {
   var d = Object.assign([], data.cellData[obj.idx]);
-  this.idx = obj.idx; // index among all cells
-  this.atlasPosInTex = obj.atlasPosInTex;
-  this.texIdx = obj.texIdx;
+  this.idx = obj.idx;
   this.name = d[0]; // name for image (for searching on page load)
   this.w = d[1];
   this.h = d[2];
   this.gridCoords = {}; // x, y pos of the cell in the lod grid (set by lod)
-  this.idxInAtlas = this.idx % config.cellsPerAtlas; // index of cell in atlas
-  this.idxInDrawCall = this.idx % config.cellsPerDrawCall; // index in draw call
-  this.drawCallIdx = Math.floor(this.idx / config.cellsPerDrawCall); // draw call index
-  this.posInAtlas = this.getPosInAtlas(); // position of cell in atlas
   this.layouts = this.getLayouts();
-  this.default = this.getDefaultState();
-  this.state = Object.assign({}, this.default);
+  this.state = Object.assign({}, this.getDefaultState());
   this.updateParentBoundingBox();
   data.cells[this.idx] = this; // augment window.data.cells
-}
-
-Cell.prototype.getPosInAtlas = function() {
-  return {
-    x: (this.idxInAtlas % Math.pow(config.cellsPerAtlas, 0.5)) * config.size.cell,
-    y: Math.floor(this.idxInAtlas / Math.pow(config.cellsPerAtlas, 0.5)) * config.size.cell,
-  }
 }
 
 Cell.prototype.getLayouts = function() {
@@ -300,7 +348,7 @@ Cell.prototype.getLayouts = function() {
     };
   }.bind(this))
   // compute grid position of cell
-  var perSide = data.gridSideCells, // n cells per row/col of grid layout
+  var perSide = Math.ceil(Math.pow(data.cellCount, 0.5)), // n cells per row/col of grid layout
       scalar = config.size.cell * 0.7,
       center = (scalar * perSide)/2;
   // add the grid position of the cell to the positional options for cell
@@ -317,7 +365,7 @@ Cell.prototype.getDefaultState = function() {
     position: this.layouts[layout.selected],
     target: this.layouts[layout.selected],
     size: this.getSize(),
-    texIdx: this.texIdx,
+    texIdx: this.getTextureIndex(),
     posInTex: this.getPosInTex(),
     isLarge: false,
   };
@@ -351,21 +399,70 @@ Cell.prototype.getSize = function() {
 }
 
 Cell.prototype.getPosInTex = function() {
+  var atlasIndex = this.getAtlasIndex(),
+      atlasPosInTex = this.getAtlasPosInTex(atlasIndex),
+      posInAtlas = this.getPosInAtlas();
   return {
-    x: this.posInAtlas.x + this.atlasPosInTex.x,
-    y: this.posInAtlas.y + this.atlasPosInTex.y,
+    x: atlasPosInTex.x + posInAtlas.x,
+    y: atlasPosInTex.y + posInAtlas.y,
   }
 }
 
+Cell.prototype.getAtlasPosInTex = function(atlasIdx) {
+  // atlas index in its texture
+  var idxInTex = this.getIndexInTexture();
+  return {
+    x: (idxInTex % Math.pow(config.atlasesPerTex, 0.5)) * config.size.atlas,
+    y: Math.floor(idxInTex / Math.pow(config.atlasesPerTex, 0.5)) * config.size.atlas,
+  }
+}
+
+Cell.prototype.getPosInAtlas = function() {
+  var idxInAtlas = this.getIndexInAtlas();
+  return {
+    x: (idxInAtlas % Math.pow(config.cellsPerAtlas, 0.5)) * config.size.cell,
+    y: Math.floor(idxInAtlas / Math.pow(config.cellsPerAtlas, 0.5)) * config.size.cell,
+  }
+}
+
+// get the index position of this cell's texture among all textures
+Cell.prototype.getTextureIndex = function() {
+  return Math.floor(this.idx / config.cellsPerTex);
+}
+
+// get the index position of this cell's atlas among all atlases
+Cell.prototype.getAtlasIndex = function() {
+  return Math.floor(this.idx / config.cellsPerAtlas);
+}
+
+// get the index position of this cell within its texture
+Cell.prototype.getIndexInTexture = function() {
+  return this.getAtlasIndex() % config.atlasesPerTex;
+}
+
+// get the index position of this cell within its atlas
+Cell.prototype.getIndexInAtlas = function() {
+  return this.idx % config.cellsPerAtlas;
+}
+
+// get the index position of this cell within its draw call
+Cell.prototype.getIndexInDrawCall = function() {
+  return this.idx % config.cellsPerDrawCall;
+}
+
+// get the index position of this cell's draw call within all draw calls
+Cell.prototype.getIndexOfDrawCall = function() {
+  return Math.floor(this.idx / config.cellsPerDrawCall);
+}
+
 Cell.prototype.updateParentBoundingBox = function() {
-  var self = this;
   ['x', 'y'].forEach(function(dim) {
-    if (self.state.position[dim] > data.boundingBox[dim].max) {
-      data.boundingBox[dim].max = self.state.position[dim];
-    } else if (self.state.position[dim] < data.boundingBox[dim].min) {
-      data.boundingBox[dim].min = self.state.position[dim];
+    if (this.state.position[dim] > data.boundingBox[dim].max) {
+      data.boundingBox[dim].max = this.state.position[dim];
+    } else if (this.state.position[dim] < data.boundingBox[dim].min) {
+      data.boundingBox[dim].min = this.state.position[dim];
     }
-  })
+  }.bind(this))
 }
 
 /**
@@ -374,19 +471,18 @@ Cell.prototype.updateParentBoundingBox = function() {
 
 // make the cell active in LOD by mutating its state
 Cell.prototype.activate = function() {
-  var self = this;
-  self.state = Object.assign({}, self.state, {
+  this.state = Object.assign({}, this.state, {
     isLarge: true,
     texIdx: -1,
     posInTex: {
-      x: lod.state.cellIdxToCoords[self.idx].x,
-      y: lod.state.cellIdxToCoords[self.idx].y,
+      x: lod.state.cellIdxToCoords[this.idx].x,
+      y: lod.state.cellIdxToCoords[this.idx].y,
     },
     size: {
       w: config.size.lodCell,
       h: config.size.lodCell,
-      topPad: self.state.size.topPad * lod.cellSizeScalar,
-      leftPad: self.state.size.leftPad * lod.cellSizeScalar,
+      topPad: this.state.size.topPad * lod.cellSizeScalar,
+      leftPad: this.state.size.leftPad * lod.cellSizeScalar,
       inTexture: config.size.lodCell / config.size.lodTexture,
       fullCell: config.size.lodCell,
     },
@@ -394,77 +490,81 @@ Cell.prototype.activate = function() {
   // mutate the cell buffer attributes
   var attrs = ['textureIndex', 'textureOffset', 'size'];
   for (var i=0; i<attrs.length; i++) {
-    self.mutateBuffer(attrs[i]);
+    this.mutateBuffer(attrs[i]);
   }
 }
 
 // deactivate the cell in LOD by mutating its state
 Cell.prototype.deactivate = function() {
-  var self = this;
   // pass in the current position and target in case they've changed
-  var lastState = Object.assign({}, self.state);
-  self.state = Object.assign({}, self.default, {
+  var lastState = Object.assign({}, this.state);
+  this.state = Object.assign({}, this.getDefaultState(), {
     position: lastState.position,
     target: lastState.target,
   });
   // mutate the cell buffer attributes
   var attrs = ['textureIndex', 'textureOffset', 'size'];
   for (var i=0; i<attrs.length; i++) {
-    self.mutateBuffer(attrs[i]);
+    this.mutateBuffer(attrs[i]);
   }
 }
 
+// update this cell's buffer values for bound attribute `attr`
 Cell.prototype.mutateBuffer = function(attr) {
-  var self = this;
   // find the buffer attributes that describe this cell to the GPU
   var group = world.scene.children[0],
-      attrs = group.children[self.drawCallIdx].geometry.attributes;
+      attrs = group.children[this.getIndexOfDrawCall()].geometry.attributes,
+      idxInDrawCall = this.getIndexInDrawCall();
 
   switch(attr) {
     case 'textureIndex':
       // set the texIdx to -1 to read from the uniforms.lodTexture
-      attrs.textureIndex.array[self.idxInDrawCall] = self.state.texIdx;
+      attrs.textureIndex.array[idxInDrawCall] = this.state.texIdx;
       return;
 
     case 'textureOffset':
       // find cell's position in the LOD texture then set x, y tex offsets
-      var x = self.state.posInTex.x / self.state.size.fullCell,
-          y = self.state.posInTex.y / self.state.size.fullCell;
+      var x = this.state.posInTex.x / this.state.size.fullCell,
+          y = this.state.posInTex.y / this.state.size.fullCell;
       // set the x then y texture offsets for this cell
-      attrs.textureOffset.array[(self.idxInDrawCall * 2)] = x;
-      attrs.textureOffset.array[(self.idxInDrawCall * 2) + 1] = y;
+      attrs.textureOffset.array[(idxInDrawCall * 2)] = x;
+      attrs.textureOffset.array[(idxInDrawCall * 2) + 1] = y;
       return;
 
     case 'size':
       // set the updated lod cell size
-      attrs.size.array[self.idxInDrawCall] = self.state.size.inTexture;
+      attrs.size.array[idxInDrawCall] = this.state.size.inTexture;
       return;
 
     case 'translation':
       // set the cell's translation
-      attrs.translation.array[(self.idxInDrawCall * 3)] = self.state.position.x;
-      attrs.translation.array[(self.idxInDrawCall * 3) + 1] = self.state.position.y;
-      attrs.translation.array[(self.idxInDrawCall * 3) + 2] = self.state.position.z;
+      attrs.translation.array[(idxInDrawCall * 3)] = this.state.position.x;
+      attrs.translation.array[(idxInDrawCall * 3) + 1] = this.state.position.y;
+      attrs.translation.array[(idxInDrawCall * 3) + 2] = this.state.position.z;
       return;
 
     case 'target':
       // set the cell's target translation
-      attrs.target.array[(self.idxInDrawCall * 3)] = self.state.target.x;
-      attrs.target.array[(self.idxInDrawCall * 3) + 1] = self.state.target.y;
-      attrs.target.array[(self.idxInDrawCall * 3) + 2] = self.state.target.z;
+      attrs.target.array[(idxInDrawCall * 3)] = this.state.target.x;
+      attrs.target.array[(idxInDrawCall * 3) + 1] = this.state.target.y;
+      attrs.target.array[(idxInDrawCall * 3) + 2] = this.state.target.z;
       return;
   }
 }
 
 /**
-* Create a controller for different layouts
+* Layout: contols the DOM element and state that identify the layout
+*   to be displayed
+*
+* elem: DOM element for the layout selector
+* selected: string identifying the currently selected layout
+* options: list of strings identifying valid layout options
 **/
 
 function Layout() {
-  var self = this;
-  self.elem = null;
-  self.selected = null;
-  self.options = [];
+  this.elem = null;
+  this.selected = null;
+  this.options = [];
 }
 
 /**
@@ -473,8 +573,8 @@ function Layout() {
 **/
 
 Layout.prototype.setOptions = function(options) {
-  this.options = Object.assign([], options).concat('grid'),
-      preferences = config.layout.preferences;
+  this.options = Object.assign([], options).concat('grid');
+  var preferences = config.layout.preferences;
   // set the initial layout - try to set the highest preference layout
   for (var i=0; i<preferences.length; i++) {
     if (this.options.indexOf(preferences[i]) > -1 && !this.selected) {
@@ -564,7 +664,7 @@ Layout.prototype.onTransitionComplete = function(obj) {
     attr.array[iter++] = cell.state.position.x;
     attr.array[iter++] = cell.state.position.y;
     attr.array[iter++] = cell.state.position.z;
-  })
+  }.bind(this))
   // update the positional attribute and time uniform on the mesh
   attr.needsUpdate = true;
   obj.mesh.material.uniforms.transitionPercent = {
@@ -579,530 +679,533 @@ Layout.prototype.onTransitionComplete = function(obj) {
 }
 
 /**
-* Create the Three.js scene
+* World: Container object for the THREE.js scene that renders all cells
+*
+* scene: a THREE.Scene() object
+* camera: a THREE.PerspectiveCamera() object
+* renderer: a THREE.WebGLRenderer() object
+* controls: a THREE.TrackballControls() object
+* stats: a Stats() object
+* color: a THREE.Color() object
+* center: a map identifying the midpoint of cells' positions in x,y dims
+* state: a map identifying internal state of the world
 **/
 
 function World() {
-  var self = this;
-  self.scene = null;
-  self.camera = null;
-  self.renderer = null;
-  self.controls = null;
-  self.stats = null;
-  self.color = new THREE.Color();
-  self.center = {};
-  self.state = {
+  this.scene = this.getScene();
+  this.camera = this.getCamera();
+  this.renderer = this.getRenderer();
+  this.controls = this.getControls();
+  this.stats = this.getStats();
+  this.color = new THREE.Color();
+  this.center = {};
+  this.state = {
     flying: false,
     transitioning: false,
     displayed: false,
   }
-
-  /**
-  * Return a scene object with a background color
-  **/
-
-  self.getScene = function() {
-    var scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x222222);
-    return scene;
-  }
-
-  /**
-  * Generate the camera to be used in the scene. Camera args:
-  *   [0] field of view: identifies the portion of the scene
-  *     visible at any time (in degrees)
-  *   [1] aspect ratio: identifies the aspect ratio of the
-  *     scene in width/height
-  *   [2] near clipping plane: objects closer than the near
-  *     clipping plane are culled from the scene
-  *   [3] far clipping plane: objects farther than the far
-  *     clipping plane are culled from the scene
-  **/
-
-  self.getCamera = function() {
-    var canvasSize = getCanvasSize();
-    var aspectRatio = canvasSize.w /canvasSize.h;
-    return new THREE.PerspectiveCamera(75, aspectRatio, 0.1, 100000);
-  }
-
-  /**
-  * Generate the renderer to be used in the scene
-  **/
-
-  self.getRenderer = function() {
-    var renderer = new THREE.WebGLRenderer({antialias: true});
-    renderer.setPixelRatio(window.devicePixelRatio); // support retina displays
-    var canvasSize = getCanvasSize(); // determine the size of the window
-    renderer.setSize(canvasSize.w, canvasSize.h); // set the renderer size
-    renderer.domElement.id = 'pixplot-canvas'; // give the canvas a unique id
-    document.querySelector('#canvas-target').appendChild(renderer.domElement);
-    return renderer;
-  }
-
-  /**
-  * Generate the controls to be used in the scene
-  * @param {obj} camera: the three.js camera for the scene
-  * @param {obj} renderer: the three.js renderer for the scene
-  **/
-
-  self.getControls = function() {
-    var controls = new THREE.TrackballControls(self.camera, self.renderer.domElement);
-    controls.zoomSpeed = 0.4;
-    controls.panSpeed = 0.4;
-    return controls;
-  }
-
-  /**
-  * Add event listeners, e.g. to resize canvas on window resize
-  **/
-
-  self.addEventListeners = function() {
-    self.addResizeListener();
-    self.addLostContextListener();
-  }
-
-  /**
-  * Resize event listeners
-  **/
-
-  self.addResizeListener = function() {
-    window.addEventListener('resize', function() {
-      if (self.resizeTimeout) window.clearTimeout(self.resizeTimeout);
-      self.resizeTimeout = window.setTimeout(self.handleResize, 300);
-    }, false);
-  }
-
-  self.handleResize = function() {
-    var canvasSize = getCanvasSize();
-    self.camera.aspect = canvasSize.w / canvasSize.h;
-    self.camera.updateProjectionMatrix();
-    self.renderer.setSize(canvasSize.w, canvasSize.h);
-    selector.tex.setSize(canvasSize.w, canvasSize.h);
-    self.controls.handleResize();
-    self.setPointScalar();
-    delete self.resizeTimeout;
-  }
-
-  // set the point size scalar as a uniform on all meshes
-  self.setPointScalar = function() {
-    // handle case of drag before scene renders
-    if (!self.scene || !self.scene.children.length) return;
-    var scalar = self.getPointScale();
-    var meshes = self.scene.children[0].children;
-    for (var i=0; i<meshes.length; i++) {
-      meshes[i].material.uniforms.pointScale.value = scalar;
-    }
-  }
-
-  /**
-  * Lost context event listener
-  **/
-
-  // listen for loss of webgl context; to manually lose context:
-  // world.renderer.context.getExtension('WEBGL_lose_context').loseContext();
-  self.addLostContextListener = function() {
-    var canvas = self.renderer.domElement;
-    canvas.addEventListener('webglcontextlost', function(e) {
-      e.preventDefault();
-      window.location.reload();
-    });
-  }
-
-  /**
-  * Set the center point of the scene
-  **/
-
-  self.setCenter = function() {
-    self.center = {
-      x: (data.boundingBox.x.min + data.boundingBox.x.max) / 2,
-      y: (data.boundingBox.y.min + data.boundingBox.y.max) / 2,
-    }
-  }
-
-  /**
-  * Draw each of the vertices
-  **/
-
-  self.plot = function() {
-    var group = new THREE.Group();
-    var cells = data.cells;
-    var drawCalls = Math.ceil(data.cellCount / config.cellsPerDrawCall);
-    for (var i=0; i<drawCalls; i++) {
-      var start = i * config.cellsPerDrawCall;
-      var end = (i+1) * config.cellsPerDrawCall;
-      var groupCells = cells.slice(start, end);
-      var attrs = self.getGroupAttributes(groupCells);
-      var geometry = new THREE.InstancedBufferGeometry();
-      geometry.addAttribute('uv', attrs.uv);
-      geometry.addAttribute('position', attrs.position);
-      geometry.addAttribute('size', attrs.size);
-      geometry.addAttribute('textureIndex', attrs.textureIndex);
-      geometry.addAttribute('textureSize', attrs.textureSize);
-      geometry.addAttribute('textureOffset', attrs.textureOffset);
-      geometry.addAttribute('translation', attrs.translation);
-      geometry.addAttribute('target', attrs.target);
-      geometry.addAttribute('color', attrs.color);
-      geometry.addAttribute('opacity', attrs.opacity);
-      var material = self.getShaderMaterial({
-        firstTex: attrs.texStartIdx,
-        textures: attrs.textures,
-        useColor: 0.0,
-      });
-      material.transparent = true;
-      var mesh = new THREE.Points(geometry, material);
-      selector.geometries.push(geometry);
-      selector.meshes.push(mesh);
-      mesh.frustumCulled = false;
-      group.add(mesh);
-    }
-    self.scene.add(group);
-  }
-
-  // Return attribute data for the initial draw call of a mesh
-  self.getGroupAttributes = function(cells) {
-    var it = self.getCellIterators(cells.length);
-    var texIndices = self.getTexIndices(cells);
-    for (var i=0; i<cells.length; i++) {
-      var cell = cells[i].state;
-      var rgb = self.color.setHex(cells[i].idx + 1); // use 1-based ids for colors
-      it.sizes[it.sizesIterator++] = cell.size.inTexture;
-      it.texIndices[it.texIndexIterator++] = cell.texIdx;
-      it.texSizes[it.texSizeIterator++] = cell.size.w / cell.size.fullCell;
-      it.texSizes[it.texSizeIterator++] = cell.size.h / cell.size.fullCell;
-      it.texOffsets[it.texOffsetIterator++] = cell.posInTex.x / cell.size.fullCell;
-      it.texOffsets[it.texOffsetIterator++] = cell.posInTex.y / cell.size.fullCell;
-      it.translations[it.translationIterator++] = cell.position.x;
-      it.translations[it.translationIterator++] = cell.position.y;
-      it.translations[it.translationIterator++] = cell.position.z;
-      it.targets[it.targetIterator++] = cell.target.x;
-      it.targets[it.targetIterator++] = cell.target.y;
-      it.targets[it.targetIterator++] = cell.target.z;
-      it.colors[it.colorIterator++] = rgb.r;
-      it.colors[it.colorIterator++] = rgb.g;
-      it.colors[it.colorIterator++] = rgb.b;
-      it.opacities[it.opacityIterator++] = 1.0;
-    }
-    // format the arrays into THREE attributes
-    var BA = THREE.BufferAttribute,
-        IBA = THREE.InstancedBufferAttribute,
-        uvAttr = new BA(new Float32Array([0, 0]), 2),
-        positionAttr = new BA(new Float32Array([0, 0, 0]), 3),
-        sizeAttr = new IBA(it.sizes, 1, true, 1),
-        texIndexAttr = new IBA(it.texIndices, 1, true, 1),
-        texSizeAttr = new IBA(it.texSizes, 2, true, 1),
-        texOffsetAttr = new IBA(it.texOffsets, 2, true, 1),
-        translationAttr = new IBA(it.translations, 3, true, 1),
-        targetAttr = new IBA(it.targets, 3, true, 1),
-        colorAttr = new IBA(it.colors, 3, true, 1),
-        opacityAttr = new IBA(it.opacities, 1, true, 1);
-    uvAttr.dynamic = true;
-    positionAttr.dynamic = true;
-    texIndexAttr.dynamic = true;
-    texSizeAttr.dynamic = true;
-    texOffsetAttr.dynamic = true;
-    translationAttr.dynamic = true;
-    targetAttr.dynamic = true;
-    opacityAttr.dynamic = true;
-    return {
-      uv: uvAttr,
-      size: sizeAttr,
-      position: positionAttr,
-      textureSize: texSizeAttr,
-      textureIndex: texIndexAttr,
-      textureOffset: texOffsetAttr,
-      translation: translationAttr,
-      target: targetAttr,
-      color: colorAttr,
-      opacity: opacityAttr,
-      textures: self.getTextures({
-        startIdx: texIndices.first,
-        endIdx: texIndices.last,
-      }),
-      texStartIdx: texIndices.first,
-      texEndIdx: texIndices.last
-    }
-  }
-
-  // Get the iterators required to store attribute data for `n` cells
-  self.getCellIterators = function(n) {
-    return {
-      sizes: new Float32Array(n),
-      texIndices: new Float32Array(n),
-      texSizes: new Float32Array(n * 2),
-      texOffsets: new Float32Array(n * 2),
-      translations: new Float32Array(n * 3),
-      targets: new Float32Array(n * 3),
-      colors: new Float32Array(n * 3),
-      opacities: new Float32Array(n),
-      sizesIterator: 0,
-      texSizeIterator: 0,
-      texIndexIterator: 0,
-      texOffsetIterator: 0,
-      translationIterator: 0,
-      targetIterator: 0,
-      colorIterator: 0,
-      opacityIterator: 0,
-    }
-  }
-
-  // Find the first and last non -1 tex indices from a list of cells
-  self.getTexIndices = function(cells) {
-    // find the first non -1 tex index
-    var f=0;
-    while (cells[f].state.texIdx == -1) f++;
-    // find the last non -1 tex index
-    var l=cells.length-1;
-    while (cells[l].state.texIdx == -1) l--;
-    // return the first and last non -1 tex indices
-    return {
-      first: cells[f].state.texIdx,
-      last: cells[l].state.texIdx,
-    };
-  }
-
-  // Return textures from `obj.startIdx` to `obj.endIdx` indices
-  self.getTextures = function(obj) {
-    var textures = [];
-    for (var i=obj.startIdx; i<=obj.endIdx; i++) {
-      var tex = self.getTexture(data.textures[i].canvas);
-      textures.push(tex);
-    }
-    return textures;
-  }
-
-  // Transform a canvas object into a THREE texture
-  self.getTexture = function(canvas) {
-    var tex = new THREE.Texture(canvas);
-    tex.needsUpdate = true;
-    tex.flipY = false;
-    return tex;
-  }
-
-  // Return an int specifying the scalar uniform for points
-  self.getPointScale = function() {
-    var canvasSize = getCanvasSize()
-    return window.devicePixelRatio * canvasSize.h * 12;
-  }
-
-  /**
-  * Build a RawShaderMaterial. For a list of all types, see:
-  *   https://github.com/mrdoob/three.js/wiki/Uniforms-types
-  *
-  * @params:
-  *   {obj}
-  *     textures {arr}: array of textures to use in fragment shader
-  *     useColor {float}: 0/1 determines whether to use color in frag shader
-  *     firstTex {int}: the index position of the first texture in `textures`
-  *       within data.textures
-  **/
-
-  self.getShaderMaterial = function(obj) {
-    var vertex = find('#vertex-shader').textContent;
-    var fragment = self.getFragmentShader(obj);
-    // set the uniforms and the shaders to use
-    return new THREE.RawShaderMaterial({
-      uniforms: {
-        textures: {
-          type: 'tv',
-          value: obj.textures,
-        },
-        lodTexture: {
-          type: 't',
-          value: lod.tex.texture,
-        },
-        transitionPercent: {
-          type: 'f',
-          value: 0,
-        },
-        pointScale: {
-          type: 'f',
-          value: self.getPointScale(),
-        },
-        useColor: {
-          type: 'f',
-          value: obj.useColor,
-        },
-      },
-      vertexShader: vertex,
-      fragmentShader: fragment,
-    });
-  }
-
-  /**
-  * Return the color fragment shader or prepare and return
-  * the texture fragment shader.
-  *
-  * @params:
-  *   {obj}
-  *     textures {arr}: array of textures to use in fragment shader
-  *     useColor {float}: 0/1 determines whether to use color in frag shader
-  *     firstTex {int}: the index position of the first texture in `textures`
-  *       within data.textures
-  **/
-
-  self.getFragmentShader = function(obj) {
-    var useColor = obj.useColor,
-        firstTex = obj.firstTex,
-        textures = obj.textures,
-        fragShader = find('#fragment-shader').textContent;
-    // the calling agent requested the color shader, used for selecting
-    if (useColor == 1.0) {
-      fragShader = fragShader.replace('uniform sampler2D textures[N_TEXTURES];', '');
-      fragShader = fragShader.replace('TEXTURE_LOOKUP_TREE', '');
-      return fragShader;
-    // the calling agent requested the textured shader
-    } else {
-      // get the texture lookup tree
-      var tree = self.getFragLeaf(0, 'textures[0]', true);
-      for (var i=firstTex; i<firstTex + textures.length-1; i++) {
-        tree += ' else ' + self.getFragLeaf(i, 'textures[' + i + ']', true);
-      }
-      // add the conditional for the lod texture
-      tree += ' else ' + self.getFragLeaf(i, 'lodTexture', false);
-      // replace the text in the fragment shader
-      fragShader = fragShader.replace('#define SELECTING\n', '');
-      fragShader = fragShader.replace('N_TEXTURES', textures.length);
-      fragShader = fragShader.replace('TEXTURE_LOOKUP_TREE', tree);
-      return fragShader;
-    }
-  }
-
-  /**
-  * Get the leaf component of a texture lookup tree
-  **/
-
-  self.getFragLeaf = function(texIdx, texture, includeIf) {
-    var ws = '        '; // whitespace (purely aesthetic)
-    var start = includeIf
-      ? 'if (textureIndex == ' + texIdx + ') {\n'
-      : '{\n';
-    return start +
-      ws + 'gl_FragColor = texture2D(' + texture + ', scaledUv);\n' +
-      ws + 'gl_FragColor.a = vOpacity;\n ' +
-      ws.substring(3) + '}'
-  }
-
-  /**
-  * Set the needsUpdate flag to true on each attribute in `attrs`
-  **/
-
-  self.attrsNeedUpdate = function(attrs) {
-    self.scene.children[0].children.forEach(function(mesh) {
-      attrs.forEach(function(attr) {
-        mesh.geometry.attributes[attr].needsUpdate = true;
-      })
-    })
-  }
-
-  /**
-  * Conditionally display render stats
-  **/
-
-  self.getStats = function() {
-    if (!window.location.href.includes('stats=true')) return null;
-    var stats = new Stats();
-    stats.domElement.id = 'stats';
-    stats.domElement.style.position = 'absolute';
-    stats.domElement.style.top = '65px';
-    stats.domElement.style.right = '5px';
-    stats.domElement.style.left = 'initial';
-    document.body.appendChild(stats.domElement);
-    return stats;
-  }
-
-  /**
-  * Fly the camera to a set of x,y,z coords
-  **/
-
-  self.flyTo = function(obj) {
-    if (self.state.flying) return;
-    self.state.flying = true;
-    // get a new camera to reset .up and .quaternion on self.camera
-    var camera = self.getCamera(),
-        controls = new THREE.TrackballControls(camera);
-    camera.position.set(obj.x, obj.y, obj.z);
-    controls.target.set(obj.x, obj.y, obj.z);
-    controls.update();
-    // prepare scope globals to transition camera
-    var time = 0,
-        q0 = self.camera.quaternion.clone();
-    TweenLite.to(self.camera.position, config.transitions.duration, {
-      x: obj.x,
-      y: obj.y,
-      z: obj.z,
-      onUpdate: function() {
-        time++;
-        var deg = time / (config.transitions.duration * 60); // scale time 0:1
-        THREE.Quaternion.slerp(q0, camera.quaternion, self.camera.quaternion, deg);
-      },
-      onComplete: function() {
-        var q = camera.quaternion,
-            p = camera.position,
-            u = camera.up,
-            c = controls.target,
-            zMin = getMinCellZ();
-        self.camera.position.set(p.x, p.y, p.z);
-        self.camera.up.set(u.x, u.y, u.z);
-        self.camera.quaternion.set(q.x, q.y, q.z, q.w);
-        self.controls.target = new THREE.Vector3(c.x, c.y, zMin);
-        self.controls.update();
-        self.state.flying = false;
-      },
-      ease: obj.ease || Power4.easeInOut,
-    });
-  }
-
-  /**
-  * Get the initial camera location
-  **/
-
-  self.getInitialLocation = function() {
-    return {
-      x: self.center.x,
-      y: self.center.y,
-      z: config.data.spread.z,
-    }
-  }
-
-  /**
-  * Initialize the render loop
-  **/
-
-  self.render = function() {
-    requestAnimationFrame(self.render);
-    self.renderer.render(self.scene, self.camera);
-    self.controls.update();
-    selector.select();
-    if (self.stats) self.stats.update();
-    lod.update();
-  }
-
-  /**
-  * Initialize the plotting
-  **/
-
-  self.init = function() {
-    self.setCenter();
-    // center the camera and position the controls
-    var loc = self.getInitialLocation();
-    self.camera.position.set(loc.x, loc.y, loc.z);
-    self.camera.lookAt(loc.x, loc.y, loc.z);
-    self.controls.target = new THREE.Vector3(loc.x, loc.y, 0);
-    // draw the points and start the render loop
-    self.plot();
-    self.render();
-  }
-
-  self.scene = self.getScene();
-  self.camera = self.getCamera();
-  self.renderer = self.getRenderer();
-  self.controls = self.getControls();
-  self.stats = self.getStats();
-  self.addEventListeners();
+  this.addEventListeners();
 }
 
 /**
-* Create mouse event handler using gpu picking
+* Return a scene object with a background color
+**/
+
+World.prototype.getScene = function() {
+  var scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x222222);
+  return scene;
+}
+
+/**
+* Generate the camera to be used in the scene. Camera args:
+*   [0] field of view: identifies the portion of the scene
+*     visible at any time (in degrees)
+*   [1] aspect ratio: identifies the aspect ratio of the
+*     scene in width/height
+*   [2] near clipping plane: objects closer than the near
+*     clipping plane are culled from the scene
+*   [3] far clipping plane: objects farther than the far
+*     clipping plane are culled from the scene
+**/
+
+World.prototype.getCamera = function() {
+  var canvasSize = getCanvasSize();
+  var aspectRatio = canvasSize.w /canvasSize.h;
+  return new THREE.PerspectiveCamera(75, aspectRatio, 0.1, 10000);
+}
+
+/**
+* Generate the renderer to be used in the scene
+**/
+
+World.prototype.getRenderer = function() {
+  var config = {antialias: true, powerPreference: 'high-performance'},
+      renderer = new THREE.WebGLRenderer(config);
+  renderer.setPixelRatio(window.devicePixelRatio); // support retina displays
+  var canvasSize = getCanvasSize(); // determine the size of the window
+  renderer.setSize(canvasSize.w, canvasSize.h); // set the renderer size
+  renderer.domElement.id = 'pixplot-canvas'; // give the canvas a unique id
+  document.querySelector('#canvas-target').appendChild(renderer.domElement);
+  return renderer;
+}
+
+/**
+* Generate the controls to be used in the scene
+* @param {obj} camera: the three.js camera for the scene
+* @param {obj} renderer: the three.js renderer for the scene
+**/
+
+World.prototype.getControls = function() {
+  var controls = new THREE.TrackballControls(this.camera, this.renderer.domElement);
+  controls.zoomSpeed = 0.4;
+  controls.panSpeed = 0.4;
+  return controls;
+}
+
+/**
+* Add event listeners, e.g. to resize canvas on window resize
+**/
+
+World.prototype.addEventListeners = function() {
+  this.addResizeListener();
+  this.addLostContextListener();
+}
+
+/**
+* Resize event listeners
+**/
+
+World.prototype.addResizeListener = function() {
+  window.addEventListener('resize', function() {
+    if (this.resizeTimeout) window.clearTimeout(this.resizeTimeout);
+    this.resizeTimeout = window.setTimeout(this.handleResize.bind(this), 300);
+  }.bind(this), false);
+}
+
+World.prototype.handleResize = function() {
+  var canvasSize = getCanvasSize();
+  this.camera.aspect = canvasSize.w / canvasSize.h;
+  this.camera.updateProjectionMatrix();
+  this.renderer.setSize(canvasSize.w, canvasSize.h);
+  selector.tex.setSize(canvasSize.w, canvasSize.h);
+  this.controls.handleResize();
+  this.setPointScalar();
+  delete this.resizeTimeout;
+}
+
+// set the point size scalar as a uniform on all meshes
+World.prototype.setPointScalar = function() {
+  // handle case of drag before scene renders
+  if (!this.scene || !this.scene.children.length) return;
+  var scalar = this.getPointScale();
+  var meshes = this.scene.children[0].children;
+  for (var i=0; i<meshes.length; i++) {
+    meshes[i].material.uniforms.pointScale.value = scalar;
+  }
+}
+
+/**
+* Lost context event listener
+**/
+
+// listen for loss of webgl context; to manually lose context:
+// world.renderer.context.getExtension('WEBGL_lose_context').loseContext();
+World.prototype.addLostContextListener = function() {
+  var canvas = this.renderer.domElement;
+  canvas.addEventListener('webglcontextlost', function(e) {
+    e.preventDefault();
+    window.location.reload();
+  });
+}
+
+/**
+* Set the center point of the scene
+**/
+
+World.prototype.setCenter = function() {
+  this.center = {
+    x: (data.boundingBox.x.min + data.boundingBox.x.max) / 2,
+    y: (data.boundingBox.y.min + data.boundingBox.y.max) / 2,
+  }
+}
+
+/**
+* Draw each of the vertices
+**/
+
+World.prototype.plot = function() {
+  var group = new THREE.Group();
+  var cells = data.cells;
+  var drawCalls = Math.ceil(data.cellCount / config.cellsPerDrawCall);
+  for (var i=0; i<drawCalls; i++) {
+    var start = i * config.cellsPerDrawCall;
+    var end = (i+1) * config.cellsPerDrawCall;
+    var groupCells = cells.slice(start, end);
+    var attrs = this.getGroupAttributes(groupCells);
+    var geometry = new THREE.InstancedBufferGeometry();
+    geometry.addAttribute('uv', attrs.uv);
+    geometry.addAttribute('position', attrs.position);
+    geometry.addAttribute('size', attrs.size);
+    geometry.addAttribute('textureIndex', attrs.textureIndex);
+    geometry.addAttribute('textureSize', attrs.textureSize);
+    geometry.addAttribute('textureOffset', attrs.textureOffset);
+    geometry.addAttribute('translation', attrs.translation);
+    geometry.addAttribute('target', attrs.target);
+    geometry.addAttribute('color', attrs.color);
+    geometry.addAttribute('opacity', attrs.opacity);
+    var material = this.getShaderMaterial({
+      firstTex: attrs.texStartIdx,
+      textures: attrs.textures,
+      useColor: 0.0,
+    });
+    material.transparent = true;
+    var mesh = new THREE.Points(geometry, material);
+    selector.geometries.push(geometry);
+    selector.meshes.push(mesh);
+    mesh.frustumCulled = false;
+    group.add(mesh);
+  }
+  this.scene.add(group);
+}
+
+// Return attribute data for the initial draw call of a mesh
+World.prototype.getGroupAttributes = function(cells) {
+  var it = this.getCellIterators(cells.length);
+  var texIndices = this.getTexIndices(cells);
+  for (var i=0; i<cells.length; i++) {
+    var cell = cells[i].state;
+    var rgb = this.color.setHex(cells[i].idx + 1); // use 1-based ids for colors
+    it.sizes[it.sizesIterator++] = cell.size.inTexture;
+    it.texIndices[it.texIndexIterator++] = cell.texIdx;
+    it.texSizes[it.texSizeIterator++] = cell.size.w / cell.size.fullCell;
+    it.texSizes[it.texSizeIterator++] = cell.size.h / cell.size.fullCell;
+    it.texOffsets[it.texOffsetIterator++] = cell.posInTex.x / cell.size.fullCell;
+    it.texOffsets[it.texOffsetIterator++] = cell.posInTex.y / cell.size.fullCell;
+    it.translations[it.translationIterator++] = cell.position.x;
+    it.translations[it.translationIterator++] = cell.position.y;
+    it.translations[it.translationIterator++] = cell.position.z;
+    it.targets[it.targetIterator++] = cell.target.x;
+    it.targets[it.targetIterator++] = cell.target.y;
+    it.targets[it.targetIterator++] = cell.target.z;
+    it.colors[it.colorIterator++] = rgb.r;
+    it.colors[it.colorIterator++] = rgb.g;
+    it.colors[it.colorIterator++] = rgb.b;
+    it.opacities[it.opacityIterator++] = 1.0;
+  }
+  // format the arrays into THREE attributes
+  var BA = THREE.BufferAttribute,
+      IBA = THREE.InstancedBufferAttribute,
+      uvAttr = new BA(new Float32Array([0, 0]), 2),
+      positionAttr = new BA(new Float32Array([0, 0, 0]), 3),
+      sizeAttr = new IBA(it.sizes, 1, true, 1),
+      texIndexAttr = new IBA(it.texIndices, 1, true, 1),
+      texSizeAttr = new IBA(it.texSizes, 2, true, 1),
+      texOffsetAttr = new IBA(it.texOffsets, 2, true, 1),
+      translationAttr = new IBA(it.translations, 3, true, 1),
+      targetAttr = new IBA(it.targets, 3, true, 1),
+      colorAttr = new IBA(it.colors, 3, true, 1),
+      opacityAttr = new IBA(it.opacities, 1, true, 1);
+  uvAttr.dynamic = true;
+  positionAttr.dynamic = true;
+  texIndexAttr.dynamic = true;
+  texSizeAttr.dynamic = true;
+  texOffsetAttr.dynamic = true;
+  translationAttr.dynamic = true;
+  targetAttr.dynamic = true;
+  opacityAttr.dynamic = true;
+  return {
+    uv: uvAttr,
+    size: sizeAttr,
+    position: positionAttr,
+    textureSize: texSizeAttr,
+    textureIndex: texIndexAttr,
+    textureOffset: texOffsetAttr,
+    translation: translationAttr,
+    target: targetAttr,
+    color: colorAttr,
+    opacity: opacityAttr,
+    textures: this.getTextures({
+      startIdx: texIndices.first,
+      endIdx: texIndices.last,
+    }),
+    texStartIdx: texIndices.first,
+    texEndIdx: texIndices.last
+  }
+}
+
+// Get the iterators required to store attribute data for `n` cells
+World.prototype.getCellIterators = function(n) {
+  return {
+    sizes: new Float32Array(n),
+    texIndices: new Float32Array(n),
+    texSizes: new Float32Array(n * 2),
+    texOffsets: new Float32Array(n * 2),
+    translations: new Float32Array(n * 3),
+    targets: new Float32Array(n * 3),
+    colors: new Float32Array(n * 3),
+    opacities: new Float32Array(n),
+    sizesIterator: 0,
+    texSizeIterator: 0,
+    texIndexIterator: 0,
+    texOffsetIterator: 0,
+    translationIterator: 0,
+    targetIterator: 0,
+    colorIterator: 0,
+    opacityIterator: 0,
+  }
+}
+
+// Find the first and last non -1 tex indices from a list of cells
+World.prototype.getTexIndices = function(cells) {
+  // find the first non -1 tex index
+  var f=0;
+  while (cells[f].state.texIdx == -1) f++;
+  // find the last non -1 tex index
+  var l=cells.length-1;
+  while (cells[l].state.texIdx == -1) l--;
+  // return the first and last non -1 tex indices
+  return {
+    first: cells[f].state.texIdx,
+    last: cells[l].state.texIdx,
+  };
+}
+
+// Return textures from `obj.startIdx` to `obj.endIdx` indices
+World.prototype.getTextures = function(obj) {
+  var textures = [];
+  for (var i=obj.startIdx; i<=obj.endIdx; i++) {
+    var tex = this.getTexture(data.textures[i].canvas);
+    textures.push(tex);
+  }
+  return textures;
+}
+
+// Transform a canvas object into a THREE texture
+World.prototype.getTexture = function(canvas) {
+  var tex = new THREE.Texture(canvas);
+  tex.needsUpdate = true;
+  tex.flipY = false;
+  return tex;
+}
+
+// Return an int specifying the scalar uniform for points
+World.prototype.getPointScale = function() {
+  var canvasSize = getCanvasSize()
+  return window.devicePixelRatio * canvasSize.h * 12;
+}
+
+/**
+* Build a RawShaderMaterial. For a list of all types, see:
+*   https://github.com/mrdoob/three.js/wiki/Uniforms-types
+*
+* @params:
+*   {obj}
+*     textures {arr}: array of textures to use in fragment shader
+*     useColor {float}: 0/1 determines whether to use color in frag shader
+*     firstTex {int}: the index position of the first texture in `textures`
+*       within data.textures
+**/
+
+World.prototype.getShaderMaterial = function(obj) {
+  var vertex = find('#vertex-shader').textContent;
+  var fragment = this.getFragmentShader(obj);
+  // set the uniforms and the shaders to use
+  return new THREE.RawShaderMaterial({
+    uniforms: {
+      textures: {
+        type: 'tv',
+        value: obj.textures,
+      },
+      lodTexture: {
+        type: 't',
+        value: lod.tex.texture,
+      },
+      transitionPercent: {
+        type: 'f',
+        value: 0,
+      },
+      pointScale: {
+        type: 'f',
+        value: this.getPointScale(),
+      },
+      useColor: {
+        type: 'f',
+        value: obj.useColor,
+      },
+    },
+    vertexShader: vertex,
+    fragmentShader: fragment,
+  });
+}
+
+/**
+* Return the color fragment shader or prepare and return
+* the texture fragment shader.
+*
+* @params:
+*   {obj}
+*     textures {arr}: array of textures to use in fragment shader
+*     useColor {float}: 0/1 determines whether to use color in frag shader
+*     firstTex {int}: the index position of the first texture in `textures`
+*       within data.textures
+**/
+
+World.prototype.getFragmentShader = function(obj) {
+  var useColor = obj.useColor,
+      firstTex = obj.firstTex,
+      textures = obj.textures,
+      fragShader = find('#fragment-shader').textContent;
+  // the calling agent requested the color shader, used for selecting
+  if (useColor == 1.0) {
+    fragShader = fragShader.replace('uniform sampler2D textures[N_TEXTURES];', '');
+    fragShader = fragShader.replace('TEXTURE_LOOKUP_TREE', '');
+    return fragShader;
+  // the calling agent requested the textured shader
+  } else {
+    // get the texture lookup tree
+    var tree = this.getFragLeaf(0, 'textures[0]', true);
+    for (var i=firstTex; i<firstTex + textures.length-1; i++) {
+      tree += ' else ' + this.getFragLeaf(i, 'textures[' + i + ']', true);
+    }
+    // add the conditional for the lod texture
+    tree += ' else ' + this.getFragLeaf(i, 'lodTexture', false);
+    // replace the text in the fragment shader
+    fragShader = fragShader.replace('#define SELECTING\n', '');
+    fragShader = fragShader.replace('N_TEXTURES', textures.length);
+    fragShader = fragShader.replace('TEXTURE_LOOKUP_TREE', tree);
+    return fragShader;
+  }
+}
+
+/**
+* Get the leaf component of a texture lookup tree
+**/
+
+World.prototype.getFragLeaf = function(texIdx, texture, includeIf) {
+  var ws = '        '; // whitespace (purely aesthetic)
+  var start = includeIf
+    ? 'if (textureIndex == ' + texIdx + ') {\n'
+    : '{\n';
+  return start +
+    ws + 'gl_FragColor = texture2D(' + texture + ', scaledUv);\n' +
+    ws + 'gl_FragColor.a = vOpacity;\n ' +
+    ws.substring(3) + '}'
+}
+
+/**
+* Set the needsUpdate flag to true on each attribute in `attrs`
+**/
+
+World.prototype.attrsNeedUpdate = function(attrs) {
+  this.scene.children[0].children.forEach(function(mesh) {
+    attrs.forEach(function(attr) {
+      mesh.geometry.attributes[attr].needsUpdate = true;
+    })
+  }.bind(this))
+}
+
+/**
+* Conditionally display render stats
+**/
+
+World.prototype.getStats = function() {
+  if (!window.location.href.includes('stats=true')) return null;
+  var stats = new Stats();
+  stats.domElement.id = 'stats';
+  stats.domElement.style.position = 'absolute';
+  stats.domElement.style.top = '65px';
+  stats.domElement.style.right = '5px';
+  stats.domElement.style.left = 'initial';
+  document.body.appendChild(stats.domElement);
+  return stats;
+}
+
+/**
+* Fly the camera to a set of x,y,z coords
+**/
+
+World.prototype.flyTo = function(obj) {
+  if (this.state.flying) return;
+  this.state.flying = true;
+  // get a new camera to reset .up and .quaternion on this.camera
+  var camera = this.getCamera(),
+      controls = new THREE.TrackballControls(camera);
+  camera.position.set(obj.x, obj.y, obj.z);
+  controls.target.set(obj.x, obj.y, obj.z);
+  controls.update();
+  // prepare scope globals to transition camera
+  var time = 0,
+      q0 = this.camera.quaternion.clone();
+  TweenLite.to(this.camera.position, config.transitions.duration, {
+    x: obj.x,
+    y: obj.y,
+    z: obj.z,
+    onUpdate: function() {
+      time++;
+      var deg = time / (config.transitions.duration * 60); // scale time 0:1
+      THREE.Quaternion.slerp(q0, camera.quaternion, this.camera.quaternion, deg);
+    }.bind(this),
+    onComplete: function() {
+      var q = camera.quaternion,
+          p = camera.position,
+          u = camera.up,
+          c = controls.target,
+          zMin = getMinCellZ();
+      this.camera.position.set(p.x, p.y, p.z);
+      this.camera.up.set(u.x, u.y, u.z);
+      this.camera.quaternion.set(q.x, q.y, q.z, q.w);
+      this.controls.target = new THREE.Vector3(c.x, c.y, zMin);
+      this.controls.update();
+      this.state.flying = false;
+    }.bind(this),
+    ease: obj.ease || Power4.easeInOut,
+  });
+}
+
+/**
+* Get the initial camera location
+**/
+
+World.prototype.getInitialLocation = function() {
+  return {
+    x: this.center.x,
+    y: this.center.y,
+    z: config.data.spread.z,
+  }
+}
+
+/**
+* Initialize the render loop
+**/
+
+World.prototype.render = function() {
+  requestAnimationFrame(this.render.bind(this));
+  this.renderer.render(this.scene, this.camera);
+  this.controls.update();
+  selector.select();
+  if (this.stats) this.stats.update();
+  lod.update();
+}
+
+/**
+* Initialize the plotting
+**/
+
+World.prototype.init = function() {
+  this.setCenter();
+  // center the camera and position the controls
+  var loc = this.getInitialLocation();
+  this.camera.position.set(loc.x, loc.y, loc.z);
+  this.camera.lookAt(loc.x, loc.y, loc.z);
+  this.controls.target = new THREE.Vector3(loc.x, loc.y, 0);
+  // draw the points and start the render loop
+  this.plot();
+  this.render();
+}
+
+/**
+* Selector: Mouse event handler that uses gpu picking
 **/
 
 function Selector() {
@@ -1152,7 +1255,7 @@ Selector.prototype.onMouseUp = function(e) {
   this.showModal(selected);
 }
 
-// called via self.onClick; shows the full-size selected image
+// called via this.onClick; shows the full-size selected image
 Selector.prototype.showModal = function(selected) {
 
   // select elements that will be updated
@@ -1167,7 +1270,7 @@ Selector.prototype.showModal = function(selected) {
       download = find('#download-icon');
   // fetch data for the selected record
   var filename = data.cells[selected].name + '.json';
-  get(config.data.url + '/metadata/' + filename, function(data) {
+  get(config.data.dir + '/metadata/' + filename, function(data) {
     var image = new Image();
     image.onload = function() {
       // compile the template and remove whitespace for FF formatting
@@ -1187,7 +1290,7 @@ Selector.prototype.showModal = function(selected) {
       if (data.title || data.description || data.tags) meta.style.display = 'block';
     }
     // set or get the image src and load the image
-    if (!data.src) data.src = config.data.url + '/originals/' + data.filename;
+    if (!data.src) data.src = config.data.dir + '/originals/' + data.filename;
     image.src = data.src;
   });
 }
@@ -1350,7 +1453,7 @@ LOD.prototype.updateGridPosition = function() {
 }
 
 // if there's a loadQueue, load the next image, else load neighbors
-// nb: don't mutate loadQueue, as that deletes items from self.grid.coords
+// nb: don't mutate loadQueue, as that deletes items from this.grid.coords
 LOD.prototype.loadNextImage = function() {
   var cellIdx = this.state.loadQueue[0];
   this.state.loadQueue = this.state.loadQueue.slice(1);
@@ -1385,7 +1488,7 @@ LOD.prototype.loadImage = function(cellIdx) {
         this.state.cellsToActivate = this.state.cellsToActivate.concat(cellIdx);
       }
     }.bind(this, cellIdx);
-    image.src = config.data.url + '/thumbs/128px/' + data.cells[cellIdx].name;
+    image.src = config.data.dir + '/thumbs/128px/' + data.cells[cellIdx].name;
   }
 }
 
@@ -1557,11 +1660,12 @@ Welcome.prototype.startWorld = function() {
   requestAnimationFrame(function() {
     world.init();
     selector.init();
+    delete data.cellData; // clear up memory
     setTimeout(function() {
       document.querySelector('#loader-scene').classList += 'hidden';
       world.state.displayed = true;
-    }, 50);
-  })
+    }.bind(this), 50);
+  }.bind(this))
 }
 
 /**
@@ -1569,59 +1673,54 @@ Welcome.prototype.startWorld = function() {
 **/
 
 function Filters() {
-  var self = this;
-  self.filters = [];
-  self.loadFilters();
+  this.filters = [];
+  this.loadFilters();
 }
 
 Filters.prototype.loadFilters = function() {
-  var self = this;
-  var url = config.data.url + '/filters/filters.json';
+  var url = config.data.dir + '/filters/filters.json';
   get(url, function(data) {
     for (var i=0; i<data.length; i++) {
       var filter = new Filter(data[i]);
-      self.filters.push(filter);
+      this.filters.push(filter);
     }
-  })
+  }.bind(this))
 }
 
 function Filter(obj) {
-  var self = this;
-  self.values = obj.filter_values || [];
-  self.name = obj.filter_name || '';
-  if (self.values.length > 1) self.createSelect();
+  this.values = obj.filter_values || [];
+  this.name = obj.filter_name || '';
+  if (this.values.length > 1) this.createSelect();
 }
 
 Filter.prototype.createSelect = function() {
-  var self = this,
-      select = document.createElement('select'),
+  var select = document.createElement('select'),
       option = document.createElement('option');
   option.textContent = 'All Values';
   select.appendChild(option);
 
-  for (var i=0; i<self.values.length; i++) {
+  for (var i=0; i<this.values.length; i++) {
     var option = document.createElement('option');
-    option.textContent = self.values[i];
+    option.textContent = this.values[i];
     select.appendChild(option);
   }
-  select.onchange = self.onChange.bind(self);
+  select.onchange = this.onChange.bind(this);
   find('#filters').appendChild(select);
 }
 
 Filter.prototype.onChange = function(e) {
-  var self = this,
-      val = e.target.value;
+  var val = e.target.value;
   // case where user selected the 'All Values' option
   if (val === 'All Values') {
-    self.filterCells( data.cells.reduce(function(arr, cell) {
+    this.filterCells(data.cells.reduce(function(arr, cell) {
       arr.push(cell.name); return arr;
-    }, []) )
+    }.bind(this), []))
   // case where user selected a specific option
   } else {
     // each {{ level-name }}.json file should use hyphens instead of whitespace
     var filename = val.replace(/\//g, '-').replace(/ /g, '-') + '.json',
-        url = config.data.url + '/filters/option_values/' + filename;
-    get(url, self.filterCells);
+        url = config.data.dir + '/filters/option_values/' + filename;
+    get(url, this.filterCells);
   }
 }
 
@@ -1632,12 +1731,12 @@ Filter.prototype.filterCells = function(names) {
   }, {}); // facilitate O(1) lookups
 
   data.cells.forEach(function(cell, idx) {
-    var opacity = cell.name in names ? 1 : 0.1;
-    // find the buffer attributes that describe this cell to the GPU
+    // update the buffer attributes that describe this cell to the GPU
     var group = world.scene.children[0],
-        attrs = group.children[cell.drawCallIdx].geometry.attributes;
-    attrs.opacity.array[cell.idxInDrawCall] = opacity;
-  })
+        attrs = group.children[cell.getIndexOfDrawCall()].geometry.attributes,
+        opacity = cell.name in names ? 1 : 0.1;
+    attrs.opacity.array[cell.getIndexInDrawCall()] = opacity;
+  }.bind(this))
 
   world.attrsNeedUpdate(['opacity']);
 }
@@ -1654,7 +1753,7 @@ function Hotspots() {
 }
 
 Hotspots.prototype.init = function() {
-  get(config.data.url + '/centroids.json', function(json) {
+  get(config.data.dir + '/centroids.json', function(json) {
     this.centroids = json;
     this.target.innerHTML = _.template(this.template.innerHTML)({
       hotspots: json,

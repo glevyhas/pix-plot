@@ -338,7 +338,7 @@ class PixPlot:
       if img_filename in self.errored_images: continue
       with Image.open(i) as image: w, h = image.size
       # get all layouts for this image
-      layouts = [[float(j) for j in layout_models[k][idx]] for k in layout_keys]
+      layouts = [[limit_float(j) for j in layout_models[k][idx]] for k in layout_keys]
       # add this image's data to the outgoing packet
       position_data['data'].append([
         img_filename,
@@ -587,11 +587,11 @@ def ensure_dir_exists(directory):
     os.makedirs(directory)
 
 
-def limit_float(f):
+def limit_float(f, decimal_places=4):
   '''
   Limit the float point precision of float value f
   '''
-  return int(f*10000)/10000
+  return int(float(f)*10**decimal_places)/10**decimal_places
 
 
 def center_features(arr):
