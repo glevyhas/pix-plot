@@ -1,6 +1,8 @@
-__pycache__
-*.pem
-*.swp
 *.DS_Store
-data
+*.pyc
+*.swp
+*.pem
+dist
+build
+*.egg-info
 output

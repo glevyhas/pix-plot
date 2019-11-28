@@ -13,7 +13,7 @@ canvas {
 
 body,
 html {
-  background: #222222;
+  background: #111;
 }
 
 a {
@@ -42,7 +42,7 @@ select {
   padding: 3px 6px;
   border-radius: 5px;
   background-color: #c3c3c3;
-  background-image: url(/assets/images/icons/caret-icon.png);
+  background-image: url(../images/icons/caret-icon.png);
   background-size: 20px;
   background-repeat: no-repeat;
   background-position: 95%;
@@ -75,6 +75,15 @@ select:disabled {
   left: 0;
 }
 
+#lod-canvas {
+  position: absolute;
+  top: 60px;
+  left: 100px;
+  z-index: 100;
+  background: #000;
+  max-height: 90%;
+}
+
 /**
 * Header
 **/
@@ -86,7 +95,7 @@ select:disabled {
   top: 0px;
   z-index: 2;
   overflow: hidden;
-  box-shadow: 2px 1px 2px #000;
+  box-shadow: 2px 1px 2px rgba(39, 39, 39, 0.2);
 }
 
 .header,
@@ -144,7 +153,7 @@ select:disabled {
 .header-controls {
   display: inline-block;
   position: absolute;
-  right: 0;
+  right: 20px;
   top: 18px;
   min-width: 280px;
 }
@@ -200,6 +209,7 @@ nav.hidden {
 .nav-inner {
   height: 100%;
   max-height: 100%;
+  overflow-x: hidden;
   overflow-y: auto;
   padding: 10px;
   background: #222;
@@ -236,6 +246,7 @@ nav h2 {
   background-position: 50% 11%;
   margin: 0 5%;
   background-repeat: no-repeat;
+  background-size: cover;
 }
 
 /**
@@ -254,6 +265,7 @@ nav h2 {
   z-index: 3;
   background: #000;
   max-height: 100%;
+  overflow: auto;
 }
 
 #loader-scene.hidden {
@@ -427,7 +439,8 @@ noscript {
   right: 0;
   bottom: 0;
   text-align: center;
-  height: 100%;
+  height: auto;
+  width: auto;
 }
 
 .backdrop {
@@ -440,22 +453,28 @@ noscript {
   opacity: 0.7;
 }
 
-.modal-image-sizer {
-  position: absolute;
-  top: 10%;
-  left: 0;
-  bottom: 260px;
-  right: 0;
-}
-
-.modal-content {
+.modal-image-content {
   display: inline-block;
-  height: 100%;
   transition: transform 0.5s;
   white-space: nowrap;
+  padding-bottom: 115px;
+  max-height: 100%;
+  box-sizing: border-box;
+}
+
+#selected-image-container {
+  padding-bottom: 215px;
+  box-sizing: border-box;
+  padding-top: 100px;
+  height: 100%;
+  width: 100%;
+  position: relative;
+  z-index: 10;
+  display: inline-block;
 }
 
 #selected-image {
+  max-width: 90%;
   max-height: 100%;
   box-sizing: border-box;
 }
@@ -466,7 +485,7 @@ noscript {
 
 .icons {
   display: inline-block;
-  width: 50px;
+  width: 40px;
   position: relative;
   bottom: 6px;
   white-space: initial;
@@ -494,15 +513,17 @@ noscript {
 #selected-image-meta {
   position: absolute;
   bottom: 0;
-  left: 100px;
+  left: 0;
   right: 0;
-  z-index: 2;
+  z-index: 11;
+  text-align: left;
+  background: #353535;
+  color: #f9f9f9;
+  min-height: 115px;
 }
 
 .meta-content {
   padding: 24px 40px;
-  background: #353535;
-  color: #f9f9f9;
   transition: transform 0.3s;
 }
 
@@ -533,7 +554,7 @@ noscript {
 }
 
 @media (max-width: 1250px) {
-  .meta-left: {
+  .meta-left {
     width: 40%;
   }
 
@@ -597,7 +618,7 @@ noscript {
 #meta-input-add {
   background: #666;
   display: inline-block;
-  padding: 0.55em 10px;
+  padding: 0.5em 10px;
   margin-left: -4px;
   cursor: not-allowed;
   font-size: 13px;

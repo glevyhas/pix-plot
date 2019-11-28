@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang='en'>
   <head>
     <link href='https://fonts.googleapis.com/css?family=Open+Sans:300,400,600' rel='stylesheet'>
     <link rel='stylesheet' type='text/css' href='assets/css/style.css'>
@@ -46,38 +46,37 @@
     uniform vec3 cameraPosition;
     uniform float transitionPercent;
     uniform float pointScale;
-    uniform float useColor;
 
     attribute vec3 position;      // base x y z position for all points
-    attribute vec3 translation;   // x y z position offsets for an instance
-    attribute vec3 target;        // x y z position to which we're transitioning
-    attribute vec2 textureSize;   // w h percents of the cell's texture size
-    attribute float textureIndex; // index of an instance's texture
-    attribute vec2 textureOffset; // offset of the texture coords for an instance
-    attribute float size;         // size of each side of the current instance
+    attribute vec3 pos0;          // x y z position offsets for an instance
+    attribute vec3 pos1;          // x y z position to which we're transitioning
     attribute vec3 color;         // unique color for cell; used for raycasting
+    attribute float width;        // px width of cell in lod texture
+    attribute float height;       // px height of cell in lod texture
+    attribute vec2 offset;        // px offset in tex from left, top
     attribute float opacity;      // opacity value for cell
+    attribute float textureIndex; // index of an instance's texture among all textures
 
-    varying float vTextureIndex;  // cell texture idx (varyings can't be int)
-    varying vec2 vTextureOffset;  // cell texture offset
-    varying vec2 vTextureSize;    // cell texture size (in w h percents)
-    varying vec2 vCellSize;       // cell size
     varying vec3 vColor;          // cell color
+    varying vec2 vOffset;         // px of cell offset left, top in texture
+    varying float vWidth;         // px width of cell in lod texture
+    varying float vHeight;        // px height of cell in lod texture
     varying float vOpacity;       // cell opacity
+    varying float vTextureIndex;  // cell texture idx (varyings can't be int)
 
     void main() {
       // pass varyings to fragment shader
       vTextureIndex = textureIndex;
-      vTextureSize = textureSize;
-      vTextureOffset = textureOffset;
-      vCellSize = vec2(size, size);
       vColor = color;
+      vWidth = width;
+      vHeight = height;
+      vOffset = offset;
       vOpacity = opacity;
 
       // set point position as a mixture between the position + target
-      vec3 currentPos = position + translation;
-      vec3 targetPos = position + target;
-      vec3 pos = mix(currentPos, targetPos, clamp(transitionPercent, 0.0, 1.0));
+      vec3 pos0 = position + pos0;
+      vec3 pos1 = position + pos1;
+      vec3 pos = mix(pos0, pos1, clamp(transitionPercent, 0.0, 1.0));
       vec4 world = modelViewMatrix * vec4(pos, 1.0);
       gl_Position = projectionMatrix * world;
 
@@ -104,43 +103,58 @@
 
     precision highp float;
 
+    uniform float useColor;
+    uniform float cellAtlasPxPerSide;
+    uniform float lodAtlasPxPerSide;
+    uniform float cellPxHeight;
+    uniform float lodPxHeight;
+
+    varying vec3 vColor;         // cell's color (for gpu picking)
+    varying vec2 vOffset;        // cell's offset in px from left, top of tex
+    varying float vWidth;        // cell's width in lod tex in px
+    varying float vHeight;       // cell's height in lod tex in px
+    varying float vOpacity;      // cell's opacity
+    varying float vTextureIndex; // cell's texture index
+
     // textures contains an array of sampler2Ds
     #ifndef SELECTING
       uniform sampler2D textures[N_TEXTURES];
       uniform sampler2D lodTexture;
     #endif
-    uniform float useColor;
 
-    varying float vTextureIndex; // cell's texture index
-    varying vec2 vTextureSize;   // cell's texture w, h {0:1}
-    varying vec2 vTextureOffset; // cell's uv offsets in the texture
-    varying vec2 vCellSize;      // cell's size
-    varying vec3 vColor;         // cell's color
-    varying float vOpacity;      // cell's opacity
+    vec2 getCellWH(in float vWidth, in float vHeight, in float vTextureIndex) {
+      // if this cell is from a cell atlas, its height is
+      // lodPxHeight and width must be converted
+      if (vTextureIndex > -0.5) {
+        float h = cellPxHeight;
+        float w = vWidth/vHeight*cellPxHeight;
+        return vec2(w,h);
+      } else {
+        return vec2(vWidth,vHeight);
+      }
+    }
 
     void main() {
-      // width and height margins for texture size
-      float wMargin = (1.0 - vTextureSize[0]) / 2.0;
-      float hMargin = (1.0 - vTextureSize[1]) / 2.0;
-      if (
-        gl_PointCoord.x < wMargin ||
-        gl_PointCoord.x > (vTextureSize[0] + wMargin)) {
-        discard;
-      } else if (
-        gl_PointCoord.y < hMargin ||
-        gl_PointCoord.y > (vTextureSize[1] + hMargin)) {
-        discard;
-      } else if (vOpacity < 0.5) {
-        discard;
-      }
+      vec2 wh = getCellWH(vWidth, vHeight, vTextureIndex);
+      float w = wh[0];
+      float h = wh[1];
 
-      if (useColor == 1.) {
+      // if this cell's image is portrait clip right margin
+      if (h > w && gl_PointCoord.x > (w/h)) discard;
+      // if this cell's image is landscape clip bottom margin
+      else if (w > h && gl_PointCoord.y > (h/w)) discard;
+
+      // if this shader is using vColor attributes skip texture processing
+      if (int(useColor) == 1) {
         gl_FragColor = vec4(vColor, 1.0);
       } else {
+        //vec2 uv = vTextureIndex > -0.5 ? vOffset + (gl_PointCoord * max(w, h)) : vOffset + (gl_PointCoord * lodPxHeight);
+
+        vec2 uv = vOffset + gl_PointCoord * max(w, h);
+        vec2 scaledUv = vTextureIndex > -0.5 ? uv/cellAtlasPxPerSide : uv/lodAtlasPxPerSide;
         int textureIndex = int(vTextureIndex);
-        vec2 uv = vTextureOffset + vec2(gl_PointCoord.x, gl_PointCoord.y);
-        vec2 scaledUv = uv * vCellSize;
         TEXTURE_LOOKUP_TREE
+        gl_FragColor.a = vOpacity;
       }
     }
     </script>
@@ -243,7 +257,7 @@
           <% _.forEach(hotspots, function(hotspot) { %>
             <div class='hotspot'>
               <div class='background-image'
-                style='background-image: url("output/thumbs/128px/<%= hotspot.img %>")'></div>
+                style='background-image: url("data/thumbs/<%= hotspot.img %>")'></div>
               <div><%= hotspot.label %></div>
             </div>
           <% }); %>
@@ -253,42 +267,39 @@
     <!-- Selected Image -->
     <div id='selected-image-modal'>
       <div class='backdrop'></div>
-      <div class='modal-image-sizer'>
-        <div class='modal-content'>
-          <div id='close-modal'></div>
-          <img id='selected-image' />
-          <div class='icons'>
-            <a target='_blank' id='eye-icon'>
-              <img src='assets/images/icons/eye-icon.png' />
-            </a>
-            <a id='download-icon'>
-              <img src='assets/images/icons/download-icon.png' />
-            </a>
-            <a id='copyright-icon' href='#'>
-              <img src='assets/images/icons/copyright-icon.png' />
-            </a>
-          </div>
+      <div id='selected-image-container'>
+        <img id='selected-image' src='data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=' alt='Image selected by user' />
+        <div class='icons'>
+          <a target='_blank' id='eye-icon' href='#'>
+            <img src='assets/images/icons/eye-icon.png' alt='eye icon' />
+          </a>
+          <a id='download-icon' href='#'>
+            <img src='assets/images/icons/download-icon.png' alt='download icon' />
+          </a>
+          <a id='copyright-icon' href='#'>
+            <img src='assets/images/icons/copyright-icon.png' alt='copyright icon' />
+          </a>
         </div>
       </div>
-    </div>
-    <!-- Selected Image Metadata -->
-    <div id='selected-image-meta'>
-      <div class='meta-content'>
-        <div class='meta-left'>
-          <div id='image-title'>Full Image Title Here</div>
-          <div id='image-text'>There are many variations of passages of Lorem Ipsum available, but the majority have suffered alteration in some form, by injected humour, or randomised words which don't look even slightly believable. If you are going to use a passage of Lorem Ipsum, you need to be sure there isn't anything embarrassing hidden in the middle of text.</div>
-        </div>
-        <div class='meta-right'>
-          <script type='text/html' id='tag-template'>
-            <% _.forEach(tags, function(tag) { %>
-              <div class='meta-tag'><%- tag %></div>
-            <% }); %>
-          </script>
-          <div id='meta-tags'></div>
-          <div class='meta-input-container'>
-            <input id='meta-input' placeholder='New tags' />
-            <div id='meta-input-add'>Add</div>
-            <div class='pencil-icon'></div>
+      <!-- Selected Image Metadata -->
+      <div id='selected-image-meta'>
+        <div class='meta-content'>
+          <div class='meta-left'>
+            <div id='image-title'>Full Image Title Here</div>
+            <div id='image-text'>There are many variations of passages of Lorem Ipsum available, but the majority have suffered alteration in some form, by injected humour, or randomised words which don't look even slightly believable. If you are going to use a passage of Lorem Ipsum, you need to be sure there isn't anything embarrassing hidden in the middle of text.</div>
+          </div>
+          <div class='meta-right'>
+            <script type='text/html' id='tag-template'>
+              <% _.forEach(tags, function(tag) { %>
+                <div class='meta-tag'><%- tag %></div>
+              <% }); %>
+            </script>
+            <div id='meta-tags'></div>
+            <div class='meta-input-container'>
+              <input id='meta-input' placeholder='New tags' />
+              <div id='meta-input-add'>Add</div>
+              <div class='pencil-icon'></div>
+            </div>
           </div>
         </div>
       </div>

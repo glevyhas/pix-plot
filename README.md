@@ -10,13 +10,7 @@ This repository contains code that can be used to visualize tens of thousands of
 To install the Python dependencies, you can run (ideally in a virtual environment):
 
 ```bash
-pip install -r utils/requirements.txt
-```
-
-Image resizing utilities require ImageMagick compiled with jpg support:
-
-```bash
-brew uninstall imagemagick && brew install imagemagick
+pip install pixplot
 ```
 
 The HTML viewer requires a WebGL-enabled browser.
@@ -27,8 +21,7 @@ The HTML viewer requires a WebGL-enabled browser.
 If you have a WebGL-enabled browser and a directory full of images to process, you can prepare the data for the viewer by installing the dependencies above then running:
 
 ```bash
-git clone https://github.com/YaleDHLab/pix-plot && cd pix-plot
-python utils/process_images.py "path/to/images/*.jpg"
+pixplot --images "path/to/images/*.jpg"
 ```
 
 To see the results of this process, you can start a web server by running:
@@ -41,26 +34,26 @@ python -m http.server 5000
 python -m SimpleHTTPServer 5000
 ```
 
-The visualization will then be available on port 5000.
+The visualization will then be available at `http://localhost:5000/output`.
 
 
 ## Curating Automatic Hotspots
 
 By default, PixPlot uses [*K*-Means Clustering](https://en.wikipedia.org/wiki/K-means_clustering) to find twenty hotspots in the visualization.  You can adjust the number of discovered hotspots by adding ` --clusters=n` to the processing script, where `n` is set to the desired number of clusters.
 
-After processing, you can curate the discovered hotspots by editing the resulting `output/centoids.json` file. The hotspots each have a label (by default 'Cluster *N*') and the name of an image that represents the centroid of the discovered hotspot.
+After processing, you can curate the discovered hotspots by editing the resulting `output/centoids/hash.json` file. The hotspots each have a label (by default 'Cluster *N*') and the name of an image that represents the centroid of the discovered hotspot.
 
-You can add, remove or re-order these, change the labels to make them more meaningful, and/or adjust the image that symbolizes each hotspot in the left-hand **Hotspots** menu. *Hint: to get the name of an image that you feel better reflects the cluster, click on it in the visualization and it will appear suffixed to the URL.*
+You can add, remove or re-order these, change the labels to make them more meaningful, and/or adjust the image that symbolizes each hotspot in the left-hand **Hotspots** menu. *Hint: to get the name of an image that you feel better reflects the cluster, click on it in the visualization and it will appear in a lightbox viewer*
 
 
 ## Adding Metadata
 
 If you have metadata associated with each of your images, you can pass in that metadata when running the data processing script. Doing so will allow the PixPlot viewer to display the metadata associated with an image when a user clicks on that image.
 
-To specify the metadata for your image collection, you can add ` --csv=path-to-metadata.csv` to the command you use to call the processing script. For example, you might specify:
+To specify the metadata for your image collection, you can add ` --metadata=path/to/metadata.csv` to the command you use to call the processing script. For example, you might specify:
 
 ```bash
-python utils/process_images.py "path/to/images/*.jpg" --csv="data/metadata.csv"
+pixplot --images "path/to/images/*.jpg" --metadata "path/to/metadata.csv"
 ```
 
 Your metadata should be in a comma-separated value file (CSV), should contain one row for each of your input images, and should contain exactly the following columns in the following order.
@@ -70,14 +63,6 @@ Your metadata should be in a comma-separated value file (CSV), should contain on
 | bees.jpg | honey|yellow  | bees' knees | https://... |
 
 The CSV should contain no headers.
-
-## Overlapping Points
-
-For both performance and aesthetic reasons, it can make sense to minimize the degree to which images overlap in the z-dimension (depth into the scene). To separate overlapping points, one can supply a `lloyd_iterations` argument to the command line utility, either while creating a pixplot or thereafter. For example, one can run:
-
-```
-python utils/process_images.py --image_files="data/*.jpg" --lloyd_iterations=20
-```
 
 ## Demonstrations
 

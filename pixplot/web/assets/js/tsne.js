@@ -1,4 +1,5 @@
 /**
+*
 * General structure of this viewer
 *
 * The code below creates a webgl scene that visualizes many images. To do so,
@@ -14,6 +15,7 @@
 * higher detail images are requested for the images that are proximate to the
 * user's camera position. Those higher resolution images are loaded by the LOD()
 * "class" below.
+*
 **/
 
 /**
@@ -23,10 +25,7 @@
 * data:
 *   url: name of the directory where input data lives
 *   file: name of the file with positional data
-*   spread:
-*     x: spread of data along the x axis -- higher moves points apart
-*     y: spread of data along the x axis -- higher moves points apart
-*     z: spread of data along the x axis -- higher moves points apart
+*   spread: spread of data along each axis
 * size:
 *   cell: height & width of each image (in px) within the small atlas
 *   lodCell: height & width of each image (in px) within the larger atlas
@@ -40,42 +39,30 @@
 *   framesBetweenUpdates: number of frames to wait between LOD updates
 *   gridSpacing: the size of each unit in the LOD grid. Bigger means that more
 *     distant images will be loaded when a user is near a particular location
-* layout:
-*   preferences: list of strings, each denoting a possible layout. Controls
-*     the order of the layout options in the layout select within the nav.
 * transition:
 *   duration: number of seconds each layout transition should take
 *   ease: TweenLite ease config values for transitions
 * atlasesPerTex: number of atlases to include in each texture
-* cellsPerAtlas: number of cells to include in each atlas
-* cellsPerDrawCall: number of GL_POINT primitives to include in each draw call
 **/
 
 function Config() {
   this.data = {
-    dir: 'output',
-    file: 'plot_data.json',
-    spread: {
-      x: 4000,
-      y: 4000,
-      z: 4000,
-    },
+    dir: 'data',
+    file: 'manifest.json',
+    spread: 4000, // set below
   }
   this.size = {
-    cell: 32,
-    lodCell: 128,
-    atlas: 2048,
+    cell: 32, // height of each cell in atlas
+    lodCell: 128, // height of each cell in LOD
+    atlas: 2048, // height of each atlas
     texture: webgl.limits.textureSize,
-    lodTexture: 4096,
+    lodTexture: 2048,
   }
   this.lod = {
-    minZ: 250, // todo - factor into distance function
+    minZ: 250,
     radius: 2,
     framesBetweenUpdates: 40,
-    gridSpacing: 0.01,
-  }
-  this.layout = {
-    preferences: ['grid', 'umap_2d', 'tsne_3d', 'tsne_2d'],
+    gridSpacing: 100,
   }
   this.transitions = {
     duration: 1.5,
@@ -84,24 +71,17 @@ function Config() {
       ease: Power2.easeInOut,
     }
   }
-  this.atlasesPerTex = Math.pow((this.size.texture / this.size.atlas), 2);
-  this.cellsPerAtlas = Math.pow((this.size.atlas / this.size.cell), 2);
-  this.cellsPerTex = this.cellsPerAtlas * this.atlasesPerTex;
-  this.cellsPerDrawCall = Math.min(
-    // case where elements per draw call is limiting factor
-    webgl.limits.indexedElements,
-    // case where textures are limiting factor (-1 to fit high res tex in calls)
-    (webgl.limits.textureCount - 1) * this.cellsPerTex,
-  );
+  this.atlasesPerTex = (this.size.texture / this.size.atlas)**2;
 }
 
 /**
 * Data: Container for data consumed by application
 *
-* cellCount: total number of cells / images to render; specified in config.data.file
 * atlasCount: total number of atlases to load; specified in config.data.file
 * textureCount: total number of textures to create
 * textures: array of Texture objects to render. Each requires a draw call
+* layout: string layout for the currently active layout in json.layouts
+* layouts: array of layouts, each with 2 or 3D positional attributes per cell
 * cells: array of images to render. Each depicts a single input image
 * textureProgress: maps texture index to its loading progress (0:100)
 * textureCount: total number of textures to load
@@ -111,22 +91,17 @@ function Config() {
 **/
 
 function Data() {
-  this.cellCount = null;
   this.atlasCount = null;
   this.textureCount = null;
+  this.initialLayout = 'grid'; // string label for selected layout
+  this.layouts = [];
   this.cells = [];
   this.textures = [];
   this.textureProgress = {};
   this.loadedTextures = 0;
   this.boundingBox = {
-    x: {
-      min: Number.POSITIVE_INFINITY,
-      max: Number.NEGATIVE_INFINITY,
-    },
-    y: {
-      min: Number.POSITIVE_INFINITY,
-      max: Number.NEGATIVE_INFINITY,
-    },
+    x: { min: Number.POSITIVE_INFINITY, max: Number.NEGATIVE_INFINITY, },
+    y: { min: Number.POSITIVE_INFINITY, max: Number.NEGATIVE_INFINITY, },
   };
   this.load();
 }
@@ -134,11 +109,23 @@ function Data() {
 // Load json data with chart element positions
 Data.prototype.load = function() {
   get(config.data.dir + '/' + config.data.file, function(json) {
-    this.cellData = json.cells.data;
-    layout.setOptions(json.cells.layouts); // set available layouts
-    this.cellCount = this.cellData.length;
-    this.atlasCount = json.atlas_counts['32px'];
-    this.textureCount = Math.ceil(this.atlasCount / config.atlasesPerTex);;
+    this.json = json;
+    // set the data spread
+    config.data.spread = 4000;
+    // set config vals
+    config.size.cell = json.config.sizes.cell;
+    config.size.atlas = json.config.sizes.atlas;
+    config.size.lodCell = json.config.sizes.lod;
+    // set number of atlases and textures
+    this.atlasCount = json.atlas.count;
+    this.textureCount = Math.ceil(json.atlas.count / config.atlasesPerTex);
+    // set layout values
+    this.layouts = json.layouts;
+    this.initialLayout = this.initialLayout ? this.initialLayout : Object.keys(this.layouts)[0];
+    this.hotspots = new Hotspots();
+    layout.setOptions(Object.keys(this.layouts));
+    // load the filter options if metadata present
+    if (json.metadata) filters.loadFilters();
     // load each texture for this data set
     for (var i=0; i<this.textureCount; i++) {
       this.textures.push(new Texture({
@@ -147,6 +134,10 @@ Data.prototype.load = function() {
         onLoad: this.onTextureLoad.bind(this),
       }));
     };
+    // add cells to the world
+    get(getPath(this.layouts[this.initialLayout].positions), function(json) {
+      this.addCells(json)
+    }.bind(this))
   }.bind(this))
 }
 
@@ -160,6 +151,41 @@ Data.prototype.onTextureProgress = function(texIdx, progress) {
 Data.prototype.onTextureLoad = function(texIdx) {
   this.loadedTextures += 1;
   welcome.updateProgress();
+}
+
+// Add all cells to the world
+Data.prototype.addCells = function(positions) {
+  // datastore indicating data in current draw call
+  var drawcall = {
+    idx: 0, // idx of draw call among all draw calls
+    textures: [], // count of textures in current draw call
+    vertices: 0, // count of vertices in current draw call
+  }
+  // create all cells
+  var idx = 0; // index of cell among all cells
+  for (var i=0; i<this.json.cell_sizes.length; i++) { // atlas index
+    for (var j=0; j<this.json.cell_sizes[i].length; j++) { // cell index within atlas
+      drawcall.vertices++;
+      var texIdx = Math.floor(i/config.atlasesPerTex),
+          worldPos = positions[idx], // position of cell in world -1:1
+          atlasPos = this.json.atlas.positions[i][j], // idx-th cell position in atlas
+          atlasOffset = getAtlasOffset(i),
+          size = this.json.cell_sizes[i][j];
+      this.cells.push(new Cell({
+        idx: idx, // index of cell among all cells
+        w:  size[0], // width of cell in lod atlas
+        h:  size[1], // height of cell in lod atlas
+        dx: atlasPos[0] + atlasOffset.x, // x offset of cell in atlas
+        dy: atlasPos[1] + atlasOffset.y, // y offset of cell in atlas
+        x:  worldPos[0], // x position of cell in world
+        y:  worldPos[1], // y position of cell in world
+        z:  worldPos[2] || null, // z position of cell in world
+      }))
+      idx++;
+    }
+  }
+  // add the cells to a searchable LOD texture
+  lod.indexCells();
 }
 
 /**
@@ -204,7 +230,7 @@ Texture.prototype.setCanvas = function() {
 Texture.prototype.load = function() {
   this.setCanvas();
   // load each atlas that is to be included in this texture
-  for (var i=0; i<this.getAtlasCount(this.idx); i++) {
+  for (var i=0; i<this.getAtlasCount(); i++) {
     this.atlases.push(new Atlas({
       idx: (config.atlasesPerTex * this.idx) + i, // atlas index among all atlases
       onProgress: this.onAtlasProgress.bind(this),
@@ -214,8 +240,8 @@ Texture.prototype.load = function() {
 }
 
 // Get the number of atlases to include in this texture
-Texture.prototype.getAtlasCount = function(texIdx) {
-  return data.atlasCount / config.atlasesPerTex > (texIdx + 1)
+Texture.prototype.getAtlasCount = function() {
+  return (data.atlasCount / config.atlasesPerTex) > (this.idx + 1)
     ? config.atlasesPerTex
     : data.atlasCount % config.atlasesPerTex;
 }
@@ -227,7 +253,7 @@ Texture.prototype.onAtlasProgress = function(atlasIdx, progress) {
   this.onProgress(this.idx, textureProgress);
 }
 
-// Add each cell from the loaded atlas to the texture's canvas
+// Draw the loaded atlas image to this texture's canvas
 Texture.prototype.onAtlasLoad = function(atlas) {
   // Add the loaded atlas file the texture's canvas
   var atlasSize = config.size.atlas,
@@ -235,13 +261,22 @@ Texture.prototype.onAtlasLoad = function(atlas) {
       // atlas index within this texture
       idx = atlas.idx % config.atlasesPerTex,
       // x and y offsets within texture
-      dx = (idx * atlasSize) % textureSize,
-      dy = Math.floor((idx * atlasSize) / textureSize) * atlasSize,
-      dw = config.size.atlas,
-      dh = config.size.atlas;
-  this.ctx.drawImage(atlas.image, dx, dy, dw, dh);
+      d = getAtlasOffset(idx),
+      w = config.size.atlas,
+      h = config.size.atlas;
+  this.ctx.drawImage(atlas.image, d.x, d.y, w, h);
   // If all atlases are loaded, build the texture
   if (++this.loadedAtlases == this.getAtlasCount()) this.onLoad(this.idx);
+}
+
+// get the offset of an atlas within its texture
+function getAtlasOffset(idx) {
+  var atlasSize = config.size.atlas,
+      textureSize = config.size.texture;
+  return {
+    x: (idx * atlasSize) % textureSize,
+    y: Math.floor((idx * atlasSize) / textureSize) * atlasSize,
+  }
 }
 
 /**
@@ -267,33 +302,13 @@ function Atlas(obj) {
   this.onProgress = obj.onProgress;
   this.onLoad = obj.onLoad;
   this.image = null;
-  this.url = config.data.dir + '/atlas_files/32px/atlas-' + this.idx + '.jpg';
-  this.cells = [];
-  this.setCells();
+  this.url = config.data.dir + '/atlases/atlas-' + this.idx + '.jpg';
   this.load();
-}
-
-Atlas.prototype.setCells = function() {
-  var cellIndices = this.getAtlasCellIndices();
-  // find the index position of the first cell among all cells
-  for (var i=cellIndices.start; i<cellIndices.end; i++) {
-    this.cells.push(new Cell({idx: i})) // cell's index among all cells
-  }
-}
-
-// Return the start + end indices of the cells to be included in this atlas
-Atlas.prototype.getAtlasCellIndices = function() {
-  return {
-    start: config.cellsPerAtlas * this.idx,
-    end: Math.min(config.cellsPerAtlas * (this.idx + 1), data.cellCount),
-  }
 }
 
 Atlas.prototype.load = function() {
   this.image = new Image;
-  this.image.onload = function() {
-    this.onLoad(this);
-  }.bind(this)
+  this.image.onload = function() { this.onLoad(this); }.bind(this)
   var xhr = new XMLHttpRequest();
   xhr.onprogress = function(e) {
     var progress = parseInt((e.loaded / e.total) * 100);
@@ -316,238 +331,141 @@ Atlas.prototype.load = function() {
 * h: the height of this image in pixels
 * gridCoords: x,y coordinates of this image in the LOD grid -- set by LOD()
 * layouts: a map from layout name to obj with x, y, z positional values
-* state: the current state for this image
 **/
 
 function Cell(obj) {
-  var d = Object.assign([], data.cellData[obj.idx]);
-  this.idx = obj.idx;
-  this.name = d[0]; // name for image (for searching on page load)
-  this.w = d[1];
-  this.h = d[2];
+  this.idx = obj.idx; // idx among all cells
+  this.texIdx = this.getIndexOfTexture();
   this.gridCoords = {}; // x, y pos of the cell in the lod grid (set by lod)
-  this.layouts = this.getLayouts();
-  this.state = Object.assign({}, this.getDefaultState());
+  this.x = obj.x * config.data.spread;
+  this.y = obj.y * config.data.spread;
+  this.z = obj.z || this.getZ();
+  this.tx = this.x; // target x position
+  this.ty = this.y; // target y position
+  this.tz = this.z; // target z position
+  this.dx = obj.dx;
+  this.dy = obj.dy;
+  this.w = obj.w; // width of lod cell
+  this.h = obj.h; // heiht of lod cell
   this.updateParentBoundingBox();
-  data.cells[this.idx] = this; // augment window.data.cells
 }
 
-Cell.prototype.getLayouts = function() {
-  // build up the positional vals for this cell
-  var options = {},
-      d = Object.assign([], data.cellData[this.idx]),
-      positions = d[3]; // cell position arrays
-  layout.options.forEach(function(i, idx) {
-    if (i != 'grid') { //skip grid key as it doesn't come from server
-      var pos = positions[idx];
-      options[i] = {
-        x: pos[0] * config.data.spread.x,
-        y: pos[1] * config.data.spread.y,
-        z: pos.length > 2 ? pos[2] * config.data.spread.z : this.idx % 50,
-      }
-    };
-  }.bind(this))
-  // compute grid position of cell
-  var perSide = Math.ceil(Math.pow(data.cellCount, 0.5)), // n cells per row/col of grid layout
-      scalar = config.size.cell * 0.7,
-      center = (scalar * perSide)/2;
-  // add the grid position of the cell to the positional options for cell
-  options.grid = {
-    x: (this.idx % perSide * scalar) - center,
-    y: (Math.floor(this.idx / perSide) * scalar) - center,
-    z: 0,
-  }
-  return options;
-}
-
-Cell.prototype.getDefaultState = function() {
-  return {
-    position: this.layouts[layout.selected],
-    target: this.layouts[layout.selected],
-    size: this.getSize(),
-    texIdx: this.getTextureIndex(),
-    posInTex: this.getPosInTex(),
-    isLarge: false,
-  };
-}
-
-Cell.prototype.getSize = function() {
-  if (this.w == this.h) {
-    var topPad = 0,
-        leftPad = 0,
-        w = config.size.cell,
-        h = config.size.cell;
-  } else if (this.w > this.h) {
-    var topPad = Math.ceil(((this.w - this.h)/(this.w)) * config.size.cell / 2),
-        leftPad = 0,
-        w = config.size.cell,
-        h = this.h/this.w*config.size.cell;
-  } else if (this.h > this.w) {
-    var topPad = 0,
-        leftPad = Math.ceil(((this.h - this.w)/(this.h)) * config.size.cell / 2),
-        w = this.w/this.h*config.size.cell,
-        h = config.size.cell;
-  }
-  return {
-    w: w,
-    h: h,
-    topPad: topPad,
-    leftPad: leftPad,
-    fullCell: config.size.cell,
-    inTexture: config.size.cell / config.size.texture,
-  }
-}
-
-Cell.prototype.getPosInTex = function() {
-  var atlasIndex = this.getAtlasIndex(),
-      atlasPosInTex = this.getAtlasPosInTex(atlasIndex),
-      posInAtlas = this.getPosInAtlas();
-  return {
-    x: atlasPosInTex.x + posInAtlas.x,
-    y: atlasPosInTex.y + posInAtlas.y,
-  }
-}
-
-Cell.prototype.getAtlasPosInTex = function(atlasIdx) {
-  // atlas index in its texture
-  var idxInTex = this.getIndexInTexture();
-  return {
-    x: (idxInTex % Math.pow(config.atlasesPerTex, 0.5)) * config.size.atlas,
-    y: Math.floor(idxInTex / Math.pow(config.atlasesPerTex, 0.5)) * config.size.atlas,
-  }
-}
-
-Cell.prototype.getPosInAtlas = function() {
-  var idxInAtlas = this.getIndexInAtlas();
-  return {
-    x: (idxInAtlas % Math.pow(config.cellsPerAtlas, 0.5)) * config.size.cell,
-    y: Math.floor(idxInAtlas / Math.pow(config.cellsPerAtlas, 0.5)) * config.size.cell,
-  }
-}
-
-// get the index position of this cell's texture among all textures
-Cell.prototype.getTextureIndex = function() {
-  return Math.floor(this.idx / config.cellsPerTex);
-}
-
-// get the index position of this cell's atlas among all atlases
-Cell.prototype.getAtlasIndex = function() {
-  return Math.floor(this.idx / config.cellsPerAtlas);
-}
-
-// get the index position of this cell within its texture
-Cell.prototype.getIndexInTexture = function() {
-  return this.getAtlasIndex() % config.atlasesPerTex;
-}
-
-// get the index position of this cell within its atlas
-Cell.prototype.getIndexInAtlas = function() {
-  return this.idx % config.cellsPerAtlas;
-}
-
-// get the index position of this cell within its draw call
-Cell.prototype.getIndexInDrawCall = function() {
-  return this.idx % config.cellsPerDrawCall;
-}
-
-// get the index position of this cell's draw call within all draw calls
-Cell.prototype.getIndexOfDrawCall = function() {
-  return Math.floor(this.idx / config.cellsPerDrawCall);
+Cell.prototype.getZ = function() {
+  return layout.selected == 'umap'
+    ? (this.idx % config.data.spread*0.01)
+    : 0
 }
 
 Cell.prototype.updateParentBoundingBox = function() {
-  ['x', 'y'].forEach(function(dim) {
-    if (this.state.position[dim] > data.boundingBox[dim].max) {
-      data.boundingBox[dim].max = this.state.position[dim];
-    } else if (this.state.position[dim] < data.boundingBox[dim].min) {
-      data.boundingBox[dim].min = this.state.position[dim];
-    }
+  var bb = data.boundingBox;
+  ['x', 'y'].forEach(function(d) {
+    bb[d].max = Math.max(bb[d].max, this[d]);
+    bb[d].min = Math.min(bb[d].min, this[d]);
   }.bind(this))
+}
+
+// return the index of this atlas among all atlases
+Cell.prototype.getIndexOfAtlas = function() {
+  var i=0; // accumulate cells per atlas until we find this cell's atlas
+  for (var j=0; j<data.json.atlas.positions.length; j++) {
+    i += data.json.atlas.positions[j].length;
+    if (i > this.idx) return j;
+  }
+  return j;
+}
+
+// return the index of this cell within its atlas
+Cell.prototype.getIndexInAtlas = function() {
+  var atlasIdx = this.getIndexOfAtlas();
+  var i=0; // determine the number of cells in all atlases prior to current
+  for (var j=0; j<atlasIdx; j++) {
+    i += data.json.atlas.positions[j].length;
+  }
+  return this.idx - i;
+}
+
+// return the index of this cell's initial (non-lod) texture among all textures
+Cell.prototype.getIndexOfTexture = function() {
+  return Math.floor(this.getIndexOfAtlas() / config.atlasesPerTex);
+}
+
+// return the index of this cell among cells in its initial (non-lod) texture
+Cell.prototype.getIndexInTexture = function() {
+  var i=0; // index of starting cell in atlas within texture
+  for (var j=0; j<this.getIndexOfAtlas(); j++) {
+    if ((j%config.atlaesPerTex)==0) i = 0;
+    i += data.json.atlas.positions[i].length;
+  }
+  return i + this.getIndexInAtlas();
+}
+
+// return the index of this cell's draw call among all draw calls
+Cell.prototype.getIndexOfDrawCall = function() {
+  return Math.floor(this.idx/webgl.limits.indexedElements);
+}
+
+// return the index of this cell within its draw call
+Cell.prototype.getIndexInDrawCall = function() {
+  return this.idx % webgl.limits.indexedElements;
 }
 
 /**
 * Cell activation / deactivation
 **/
 
-// make the cell active in LOD by mutating its state
+// make the cell active in LOD
 Cell.prototype.activate = function() {
-  this.state = Object.assign({}, this.state, {
-    isLarge: true,
-    texIdx: -1,
-    posInTex: {
-      x: lod.state.cellIdxToCoords[this.idx].x,
-      y: lod.state.cellIdxToCoords[this.idx].y,
-    },
-    size: {
-      w: config.size.lodCell,
-      h: config.size.lodCell,
-      topPad: this.state.size.topPad * lod.cellSizeScalar,
-      leftPad: this.state.size.leftPad * lod.cellSizeScalar,
-      inTexture: config.size.lodCell / config.size.lodTexture,
-      fullCell: config.size.lodCell,
-    },
-  })
-  // mutate the cell buffer attributes
-  var attrs = ['textureIndex', 'textureOffset', 'size'];
-  for (var i=0; i<attrs.length; i++) {
-    this.mutateBuffer(attrs[i]);
-  }
+  this.dx = lod.state.cellIdxToCoords[this.idx].x;
+  this.dy = lod.state.cellIdxToCoords[this.idx].y;
+  this.texIdx = -1;
+  ['textureIndex', 'offset'].forEach(this.mutateBuffer.bind(this));
 }
 
-// deactivate the cell in LOD by mutating its state
+// deactivate the cell in LOD
 Cell.prototype.deactivate = function() {
-  // pass in the current position and target in case they've changed
-  var lastState = Object.assign({}, this.state);
-  this.state = Object.assign({}, this.getDefaultState(), {
-    position: lastState.position,
-    target: lastState.target,
-  });
-  // mutate the cell buffer attributes
-  var attrs = ['textureIndex', 'textureOffset', 'size'];
-  for (var i=0; i<attrs.length; i++) {
-    this.mutateBuffer(attrs[i]);
-  }
+  var atlasIndex = this.getIndexOfAtlas(),
+      indexInAtlas = this.getIndexInAtlas(),
+      atlasOffset = getAtlasOffset(atlasIndex)
+      d = data.json.atlas.positions[atlasIndex][indexInAtlas];
+  this.dx = d[0] + atlasOffset.x;
+  this.dy = d[1] + atlasOffset.y;
+  this.texIdx = this.getIndexOfTexture();
+  ['textureIndex', 'offset'].forEach(this.mutateBuffer.bind(this));
 }
 
 // update this cell's buffer values for bound attribute `attr`
 Cell.prototype.mutateBuffer = function(attr) {
   // find the buffer attributes that describe this cell to the GPU
-  var group = world.scene.children[0],
-      attrs = group.children[this.getIndexOfDrawCall()].geometry.attributes,
+  var meshes = world.scene.children[0],
+      attrs = meshes.children[this.getIndexOfDrawCall()].geometry.attributes,
       idxInDrawCall = this.getIndexInDrawCall();
 
   switch(attr) {
     case 'textureIndex':
       // set the texIdx to -1 to read from the uniforms.lodTexture
-      attrs.textureIndex.array[idxInDrawCall] = this.state.texIdx;
+      attrs.textureIndex.array[idxInDrawCall] = this.texIdx;
       return;
 
-    case 'textureOffset':
+    case 'offset':
       // find cell's position in the LOD texture then set x, y tex offsets
-      var x = this.state.posInTex.x / this.state.size.fullCell,
-          y = this.state.posInTex.y / this.state.size.fullCell;
+      var texSize = this.texIdx == -1 ? config.size.lodTexture : config.size.texture;
       // set the x then y texture offsets for this cell
-      attrs.textureOffset.array[(idxInDrawCall * 2)] = x;
-      attrs.textureOffset.array[(idxInDrawCall * 2) + 1] = y;
+      attrs.offset.array[(idxInDrawCall * 2)] = this.dx;
+      attrs.offset.array[(idxInDrawCall * 2) + 1] = this.dy;
       return;
 
-    case 'size':
-      // set the updated lod cell size
-      attrs.size.array[idxInDrawCall] = this.state.size.inTexture;
-      return;
-
-    case 'translation':
+    case 'pos0':
       // set the cell's translation
-      attrs.translation.array[(idxInDrawCall * 3)] = this.state.position.x;
-      attrs.translation.array[(idxInDrawCall * 3) + 1] = this.state.position.y;
-      attrs.translation.array[(idxInDrawCall * 3) + 2] = this.state.position.z;
+      attrs.pos0.array[(idxInDrawCall * 3)] = this.x;
+      attrs.pos0.array[(idxInDrawCall * 3) + 1] = this.y;
+      attrs.pos0.array[(idxInDrawCall * 3) + 2] = this.z;
       return;
 
     case 'target':
       // set the cell's target translation
-      attrs.target.array[(idxInDrawCall * 3)] = this.state.target.x;
-      attrs.target.array[(idxInDrawCall * 3) + 1] = this.state.target.y;
-      attrs.target.array[(idxInDrawCall * 3) + 2] = this.state.target.z;
+      attrs.target.array[(idxInDrawCall * 3)] = this.tx;
+      attrs.target.array[(idxInDrawCall * 3) + 1] = this.ty;
+      attrs.target.array[(idxInDrawCall * 3) + 2] = this.tz;
       return;
   }
 }
@@ -573,16 +491,9 @@ function Layout() {
 **/
 
 Layout.prototype.setOptions = function(options) {
-  this.options = Object.assign([], options).concat('grid');
-  var preferences = config.layout.preferences;
-  // set the initial layout - try to set the highest preference layout
-  for (var i=0; i<preferences.length; i++) {
-    if (this.options.indexOf(preferences[i]) > -1 && !this.selected) {
-      this.selected = preferences[i];
-    }
-  }
-  if (!this.selected) this.selected = this.options[0];
-  if (this.options.length > 1) this.render();
+  this.options = options;
+  this.selected = data.initialLayout;
+  this.render();
 }
 
 Layout.prototype.render = function() {
@@ -604,7 +515,7 @@ Layout.prototype.render = function() {
 
 // Transition to a new layout; layout must be an attr on Cell.layouts
 Layout.prototype.set = function(layoutKey) {
-   // disallow new transitions when we're transitioning
+  // disallow new transitions when we're transitioning
   if (world.state.transitioning) return;
   world.state.transitioning = true;
   this.elem.disabled = true;
@@ -621,56 +532,54 @@ Layout.prototype.set = function(layoutKey) {
 
 Layout.prototype.transition = function(layoutKey) {
   this.selected = layoutKey;
-  // set the target locations of each point
-  data.cells.forEach(function(cell) {
-    cell.state.target = Object.assign({}, cell.layouts[this.selected]);
+  get(getPath(data.layouts[layoutKey].positions), function(pos) {
+    // set the target locations of each point
+    for (var i=0; i<data.cells.length; i++) {
+      data.cells[i].tx = pos[i][0] * config.data.spread;
+      data.cells[i].ty = pos[i][1] * config.data.spread;
+      data.cells[i].tz = pos[i][2] || data.cells[i].getZ();
+    }
+    // get the draw call indices of each cell
+    var drawCallToCells = world.getDrawCallToCells()
+    for (var drawCall in drawCallToCells) {
+      var cells = drawCallToCells[drawCall];
+      var mesh = world.scene.children[0].children[drawCall];
+      // transition the transitionPercent attribute on the mesh
+      TweenLite.to(mesh.material.uniforms.transitionPercent,
+        config.transitions.duration, config.transitions.ease);
+      // update the target positional attributes on each cell
+      var iter = 0;
+      cells.forEach(function(cell) {
+        mesh.geometry.attributes.pos1.array[iter++] = cell.tx;
+        mesh.geometry.attributes.pos1.array[iter++] = cell.ty;
+        mesh.geometry.attributes.pos1.array[iter++] = cell.tz;
+      }.bind(this))
+      mesh.geometry.attributes.pos1.needsUpdate = true;
+      // set the cell's new position to enable future transitions
+      setTimeout(this.onTransitionComplete.bind(this, {
+        mesh: mesh,
+        cells: cells,
+      }), config.transitions.duration * 1000);
+    }
   }.bind(this))
-  // iterate over each mesh to be updated
-  var meshes = world.scene.children[0].children;
-  for (var i=0; i<meshes.length; i++) {
-    // transition the transitionPercent attribute on the mesh
-    TweenLite.to(meshes[i].material.uniforms.transitionPercent,
-      config.transitions.duration, config.transitions.ease);
-    // update the target positional attribute
-    var iter = 0,
-        start = i*config.cellsPerDrawCall, // start and end cells
-        end = (i+1)*config.cellsPerDrawCall;
-    data.cells.slice(start, end).forEach(function(cell) {
-      meshes[i].geometry.attributes.target.array[iter++] = cell.state.target.x;
-      meshes[i].geometry.attributes.target.array[iter++] = cell.state.target.y;
-      meshes[i].geometry.attributes.target.array[iter++] = cell.state.target.z;
-    })
-    meshes[i].geometry.attributes.target.needsUpdate = true;
-    // set the cell's new position to enable future transitions
-    setTimeout(this.onTransitionComplete.bind(this, {
-      mesh: meshes[i],
-      cells: data.cells.slice(start, end),
-    }), config.transitions.duration * 1000);
-  }
 }
 
 // reset the cell translation buffers, update cell state
 // and reset the time uniforms after a positional transition completes
 Layout.prototype.onTransitionComplete = function(obj) {
   this.elem.disabled = false;
-  var attr = obj.mesh.geometry.attributes.translation,
-      iter = 0;
+  var iter = 0;
   obj.cells.forEach(function(cell) {
-    cell.state.position = {
-      x: cell.state.target.x,
-      y: cell.state.target.y,
-      z: cell.state.target.z,
-    }
-    attr.array[iter++] = cell.state.position.x;
-    attr.array[iter++] = cell.state.position.y;
-    attr.array[iter++] = cell.state.position.z;
+    cell.x = cell.tx;
+    cell.y = cell.ty;
+    cell.z = cell.tz;
+    obj.mesh.geometry.attributes.pos0.array[iter++] = cell.x;
+    obj.mesh.geometry.attributes.pos0.array[iter++] = cell.y;
+    obj.mesh.geometry.attributes.pos0.array[iter++] = cell.z;
   }.bind(this))
+  obj.mesh.geometry.attributes.pos0.needsUpdate = true;
   // update the positional attribute and time uniform on the mesh
-  attr.needsUpdate = true;
-  obj.mesh.material.uniforms.transitionPercent = {
-    type: 'f',
-    value: 0,
-  };
+  obj.mesh.material.uniforms.transitionPercent = { type: 'f', value: 0, };
   world.state.transitioning = false;
   world.controls.target.z = getMinCellZ();
   // reindex cells in LOD and clear LOD state
@@ -713,7 +622,7 @@ function World() {
 
 World.prototype.getScene = function() {
   var scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x222222);
+  scene.background = new THREE.Color(0x111111);
   return scene;
 }
 
@@ -740,7 +649,7 @@ World.prototype.getCamera = function() {
 **/
 
 World.prototype.getRenderer = function() {
-  var config = {antialias: true, powerPreference: 'high-performance'},
+  var config = {antialias: true}, // powerPreference breaks safari
       renderer = new THREE.WebGLRenderer(config);
   renderer.setPixelRatio(window.devicePixelRatio); // support retina displays
   var canvasSize = getCanvasSize(); // determine the size of the window
@@ -835,29 +744,27 @@ World.prototype.setCenter = function() {
 **/
 
 World.prototype.plot = function() {
+  // add the cells for each draw call
+  var drawCallToCells = this.getDrawCallToCells();
   var group = new THREE.Group();
-  var cells = data.cells;
-  var drawCalls = Math.ceil(data.cellCount / config.cellsPerDrawCall);
-  for (var i=0; i<drawCalls; i++) {
-    var start = i * config.cellsPerDrawCall;
-    var end = (i+1) * config.cellsPerDrawCall;
-    var groupCells = cells.slice(start, end);
-    var attrs = this.getGroupAttributes(groupCells);
-    var geometry = new THREE.InstancedBufferGeometry();
+  for (var drawCallIdx in drawCallToCells) {
+    var meshCells = drawCallToCells[drawCallIdx],
+        attrs = this.getGroupAttributes(meshCells),
+        geometry = new THREE.InstancedBufferGeometry();
     geometry.addAttribute('uv', attrs.uv);
-    geometry.addAttribute('position', attrs.position);
-    geometry.addAttribute('size', attrs.size);
-    geometry.addAttribute('textureIndex', attrs.textureIndex);
-    geometry.addAttribute('textureSize', attrs.textureSize);
-    geometry.addAttribute('textureOffset', attrs.textureOffset);
-    geometry.addAttribute('translation', attrs.translation);
-    geometry.addAttribute('target', attrs.target);
+    geometry.addAttribute('pos0', attrs.pos0);
+    geometry.addAttribute('pos1', attrs.pos1);
     geometry.addAttribute('color', attrs.color);
+    geometry.addAttribute('width', attrs.width);
+    geometry.addAttribute('height', attrs.height);
+    geometry.addAttribute('offset', attrs.offset);
     geometry.addAttribute('opacity', attrs.opacity);
+    geometry.addAttribute('position', attrs.position);
+    geometry.addAttribute('textureIndex', attrs.textureIndex);
     var material = this.getShaderMaterial({
       firstTex: attrs.texStartIdx,
       textures: attrs.textures,
-      useColor: 0.0,
+      useColor: false,
     });
     material.transparent = true;
     var mesh = new THREE.Points(geometry, material);
@@ -869,62 +776,73 @@ World.prototype.plot = function() {
   this.scene.add(group);
 }
 
+// find the index of each cell's draw call
+World.prototype.getDrawCallToCells = function() {
+  var drawCallToCells = {};
+  for (var i=0; i<data.cells.length; i++) {
+    var cell = data.cells[i],
+        drawCall = cell.getIndexOfDrawCall();
+    if (!(drawCall in drawCallToCells)) drawCallToCells[drawCall] = [cell]
+    else drawCallToCells[drawCall].push(cell);
+  }
+  return drawCallToCells;
+}
+
 // Return attribute data for the initial draw call of a mesh
 World.prototype.getGroupAttributes = function(cells) {
   var it = this.getCellIterators(cells.length);
-  var texIndices = this.getTexIndices(cells);
   for (var i=0; i<cells.length; i++) {
-    var cell = cells[i].state;
+    var cell = cells[i];
     var rgb = this.color.setHex(cells[i].idx + 1); // use 1-based ids for colors
-    it.sizes[it.sizesIterator++] = cell.size.inTexture;
-    it.texIndices[it.texIndexIterator++] = cell.texIdx;
-    it.texSizes[it.texSizeIterator++] = cell.size.w / cell.size.fullCell;
-    it.texSizes[it.texSizeIterator++] = cell.size.h / cell.size.fullCell;
-    it.texOffsets[it.texOffsetIterator++] = cell.posInTex.x / cell.size.fullCell;
-    it.texOffsets[it.texOffsetIterator++] = cell.posInTex.y / cell.size.fullCell;
-    it.translations[it.translationIterator++] = cell.position.x;
-    it.translations[it.translationIterator++] = cell.position.y;
-    it.translations[it.translationIterator++] = cell.position.z;
-    it.targets[it.targetIterator++] = cell.target.x;
-    it.targets[it.targetIterator++] = cell.target.y;
-    it.targets[it.targetIterator++] = cell.target.z;
-    it.colors[it.colorIterator++] = rgb.r;
-    it.colors[it.colorIterator++] = rgb.g;
-    it.colors[it.colorIterator++] = rgb.b;
-    it.opacities[it.opacityIterator++] = 1.0;
+    it.texIndex[it.texIndexIterator++] = cell.texIdx; // index of texture among all textures -1 means LOD texture
+    it.pos0[it.pos0Iterator++] = cell.x; // current position.x
+    it.pos0[it.pos0Iterator++] = cell.y; // current position.y
+    it.pos0[it.pos0Iterator++] = cell.z; // current position.z
+    it.pos1[it.pos1Iterator++] = cell.tx; // target position.x
+    it.pos1[it.pos1Iterator++] = cell.ty; // target position.y
+    it.pos1[it.pos1Iterator++] = cell.tz; // target position.z
+    it.color[it.colorIterator++] = rgb.r; // could be single float
+    it.color[it.colorIterator++] = rgb.g; // unique color for GPU picking
+    it.color[it.colorIterator++] = rgb.b; // unique color for GPU picking
+    it.opacity[it.opacityIterator++] = 1.0;
+    it.width[it.widthIterator++] = cell.w; // px width of cell in lod atlas
+    it.height[it.heightIterator++] = cell.h; // px height of cell in lod atlas
+    it.offset[it.offsetIterator++] = cell.dx; // px offset of cell from left of tex
+    it.offset[it.offsetIterator++] = cell.dy; // px offset of cell from top of tex
   }
+
   // format the arrays into THREE attributes
   var BA = THREE.BufferAttribute,
       IBA = THREE.InstancedBufferAttribute,
-      uvAttr = new BA(new Float32Array([0, 0]), 2),
-      positionAttr = new BA(new Float32Array([0, 0, 0]), 3),
-      sizeAttr = new IBA(it.sizes, 1, true, 1),
-      texIndexAttr = new IBA(it.texIndices, 1, true, 1),
-      texSizeAttr = new IBA(it.texSizes, 2, true, 1),
-      texOffsetAttr = new IBA(it.texOffsets, 2, true, 1),
-      translationAttr = new IBA(it.translations, 3, true, 1),
-      targetAttr = new IBA(it.targets, 3, true, 1),
-      colorAttr = new IBA(it.colors, 3, true, 1),
-      opacityAttr = new IBA(it.opacities, 1, true, 1);
-  uvAttr.dynamic = true;
-  positionAttr.dynamic = true;
-  texIndexAttr.dynamic = true;
-  texSizeAttr.dynamic = true;
-  texOffsetAttr.dynamic = true;
-  translationAttr.dynamic = true;
-  targetAttr.dynamic = true;
-  opacityAttr.dynamic = true;
+      position = new BA(new Float32Array([0, 0, 0]), 3),
+      uv = new BA(new Float32Array([0, 0]), 2),
+      pos0 = new IBA(it.pos0, 3, true, 1),
+      pos1 = new IBA(it.pos1, 3, true, 1),
+      color = new IBA(it.color, 3, true, 1),
+      opacity = new IBA(it.opacity, 1, true, 1),
+      texIndex = new IBA(it.texIndex, 1, true, 1),
+      width = new IBA(it.width, 1, true, 1),
+      height = new IBA(it.height, 1, true, 1),
+      offset = new IBA(it.offset, 2, true, 1);
+  uv.dynamic = false;
+  position.dynamic = false;
+  texIndex.dynamic = true;
+  pos0.dynamic = true;
+  pos1.dynamic = true;
+  opacity.dynamic = true;
+  offset.dynamic = true;
+  var texIndices = this.getTexIndices(cells);
   return {
-    uv: uvAttr,
-    size: sizeAttr,
-    position: positionAttr,
-    textureSize: texSizeAttr,
-    textureIndex: texIndexAttr,
-    textureOffset: texOffsetAttr,
-    translation: translationAttr,
-    target: targetAttr,
-    color: colorAttr,
-    opacity: opacityAttr,
+    uv: uv,
+    pos0: pos0,
+    pos1: pos1,
+    color: color,
+    width: width,
+    height: height,
+    offset: offset,
+    opacity: opacity,
+    position: position,
+    textureIndex: texIndex,
     textures: this.getTextures({
       startIdx: texIndices.first,
       endIdx: texIndices.last,
@@ -937,37 +855,35 @@ World.prototype.getGroupAttributes = function(cells) {
 // Get the iterators required to store attribute data for `n` cells
 World.prototype.getCellIterators = function(n) {
   return {
-    sizes: new Float32Array(n),
-    texIndices: new Float32Array(n),
-    texSizes: new Float32Array(n * 2),
-    texOffsets: new Float32Array(n * 2),
-    translations: new Float32Array(n * 3),
-    targets: new Float32Array(n * 3),
-    colors: new Float32Array(n * 3),
-    opacities: new Float32Array(n),
-    sizesIterator: 0,
-    texSizeIterator: 0,
-    texIndexIterator: 0,
-    texOffsetIterator: 0,
-    translationIterator: 0,
-    targetIterator: 0,
+    pos0: new Float32Array(n * 3),
+    pos1: new Float32Array(n * 3),
+    color: new Float32Array(n * 3),
+    width: new Float32Array(n),
+    height: new Float32Array(n),
+    offset: new Float32Array(n * 2),
+    opacity: new Float32Array(n),
+    texIndex: new Float32Array(n),
+    pos0Iterator: 0,
+    pos1Iterator: 0,
     colorIterator: 0,
+    widthIterator: 0,
+    heightIterator: 0,
+    offsetIterator: 0,
     opacityIterator: 0,
+    texIndexIterator: 0,
   }
 }
 
 // Find the first and last non -1 tex indices from a list of cells
 World.prototype.getTexIndices = function(cells) {
   // find the first non -1 tex index
-  var f=0;
-  while (cells[f].state.texIdx == -1) f++;
+  var f=0; while (cells[f].texIdx == -1) f++;
   // find the last non -1 tex index
-  var l=cells.length-1;
-  while (cells[l].state.texIdx == -1) l--;
+  var l=cells.length-1; while (cells[l].texIdx == -1) l--;
   // return the first and last non -1 tex indices
   return {
-    first: cells[f].state.texIdx,
-    last: cells[l].state.texIdx,
+    first: cells[f].texIdx,
+    last: cells[l].texIdx,
   };
 }
 
@@ -1002,7 +918,7 @@ World.prototype.getPointScale = function() {
 * @params:
 *   {obj}
 *     textures {arr}: array of textures to use in fragment shader
-*     useColor {float}: 0/1 determines whether to use color in frag shader
+*     useColor {bool}: determines whether to use color in frag shader
 *     firstTex {int}: the index position of the first texture in `textures`
 *       within data.textures
 **/
@@ -1031,8 +947,24 @@ World.prototype.getShaderMaterial = function(obj) {
       },
       useColor: {
         type: 'f',
-        value: obj.useColor,
+        value: obj.useColor ? 1.0 : 0.0,
       },
+      cellAtlasPxPerSide: {
+        type: 'f',
+        value: config.size.texture,
+      },
+      lodAtlasPxPerSide: {
+        type: 'f',
+        value: config.size.lodTexture,
+      },
+      cellPxHeight: {
+        type: 'f',
+        value: config.size.cell,
+      },
+      lodPxHeight: {
+        type: 'f',
+        value: config.size.lodCell,
+      }
     },
     vertexShader: vertex,
     fragmentShader: fragment,
@@ -1057,19 +989,18 @@ World.prototype.getFragmentShader = function(obj) {
       textures = obj.textures,
       fragShader = find('#fragment-shader').textContent;
   // the calling agent requested the color shader, used for selecting
-  if (useColor == 1.0) {
+  if (useColor) {
     fragShader = fragShader.replace('uniform sampler2D textures[N_TEXTURES];', '');
     fragShader = fragShader.replace('TEXTURE_LOOKUP_TREE', '');
     return fragShader;
   // the calling agent requested the textured shader
   } else {
     // get the texture lookup tree
-    var tree = this.getFragLeaf(0, 'textures[0]', true);
+    var tree = this.getFragLeaf(-1, 'lodTexture');
+    tree += ' else ' + this.getFragLeaf(0, 'textures[0]');
     for (var i=firstTex; i<firstTex + textures.length-1; i++) {
-      tree += ' else ' + this.getFragLeaf(i, 'textures[' + i + ']', true);
+      tree += ' else ' + this.getFragLeaf(i, 'textures[' + i + ']');
     }
-    // add the conditional for the lod texture
-    tree += ' else ' + this.getFragLeaf(i, 'lodTexture', false);
     // replace the text in the fragment shader
     fragShader = fragShader.replace('#define SELECTING\n', '');
     fragShader = fragShader.replace('N_TEXTURES', textures.length);
@@ -1079,18 +1010,13 @@ World.prototype.getFragmentShader = function(obj) {
 }
 
 /**
-* Get the leaf component of a texture lookup tree
+* Get the leaf component of a texture lookup tree (whitespace is aesthetic)
 **/
 
-World.prototype.getFragLeaf = function(texIdx, texture, includeIf) {
-  var ws = '        '; // whitespace (purely aesthetic)
-  var start = includeIf
-    ? 'if (textureIndex == ' + texIdx + ') {\n'
-    : '{\n';
-  return start +
-    ws + 'gl_FragColor = texture2D(' + texture + ', scaledUv);\n' +
-    ws + 'gl_FragColor.a = vOpacity;\n ' +
-    ws.substring(3) + '}'
+World.prototype.getFragLeaf = function(texIdx, tex) {
+  return 'if (textureIndex == ' + texIdx + ') {\n          ' +
+    'gl_FragColor = texture2D(' + tex + ', scaledUv);\n        }';
+
 }
 
 /**
@@ -1101,7 +1027,7 @@ World.prototype.attrsNeedUpdate = function(attrs) {
   this.scene.children[0].children.forEach(function(mesh) {
     attrs.forEach(function(attr) {
       mesh.geometry.attributes[attr].needsUpdate = true;
-    })
+    }.bind(this))
   }.bind(this))
 }
 
@@ -1171,7 +1097,7 @@ World.prototype.getInitialLocation = function() {
   return {
     x: this.center.x,
     y: this.center.y,
-    z: config.data.spread.z,
+    z: config.data.spread * 2,
   }
 }
 
@@ -1235,29 +1161,28 @@ Selector.prototype.onMouseDown = function(e) {
 
 // on canvas click, show detailed modal with clicked image
 Selector.prototype.onMouseUp = function(e) {
-  var selected = this.select({x: e.clientX, y: e.clientY});
+  var cellIdx = this.select({x: e.clientX, y: e.clientY});
   // if click hit background, close the modal
   if (e.target.className == 'modal-image-sizer' ||
       e.target.className == 'modal-content' ||
-      e.target.className == 'backdrop') {
-    this.closeModal();
-    return;
+      e.target.className == 'backdrop' ||
+      e.target.id == 'selected-image-container') {
+    return this.closeModal();
   }
   // if mouseup isn't in the last mouse position,
   // user is dragging
   // if the click wasn't on the canvas, quit
   if (e.clientX !== this.mouseDown.x ||
       e.clientY !== this.mouseDown.y || // m.down and m.up != means user is dragging
-      selected == -1 || // selected == -1 means the user didn't click on a cell
+      cellIdx == -1 || // cellIdx == -1 means the user didn't click on a cell
       e.target.id !== 'pixplot-canvas') { // whether the click hit the gl canvas
     return;
   }
-  this.showModal(selected);
+  this.showModal(cellIdx);
 }
 
 // called via this.onClick; shows the full-size selected image
-Selector.prototype.showModal = function(selected) {
-
+Selector.prototype.showModal = function(cellIdx) {
   // select elements that will be updated
   var img = find('#selected-image'),
       title = find('#image-title'),
@@ -1267,32 +1192,39 @@ Selector.prototype.showModal = function(selected) {
       modal = find('#selected-image-modal'),
       meta = find('#selected-image-meta'),
       deeplink = find('#eye-icon'),
-      download = find('#download-icon');
-  // fetch data for the selected record
-  var filename = data.cells[selected].name + '.json';
-  get(config.data.dir + '/metadata/' + filename, function(data) {
+      download = find('#download-icon'),
+      filename = data.json.images[cellIdx]; // filename for the clicked image
+
+  function showModal(data) {
+    // set the clicked image as the source for the modal
+    var source = config.data.dir + '/originals/' + filename; // source for the image in the modal
+    img.src = source;
+    deeplink.href = data.permalink ? data.permalink : source;
+    download.href = img.src;
+    download.download = filename;
     var image = new Image();
     image.onload = function() {
-      // compile the template and remove whitespace for FF formatting
-      var compiled = _.template(template.textContent)({tags: data.tags});
-      compiled = compiled.replace(/\s\s+/g, '');
-      // set metadata attributes
-      img.src = data.src ? data.src : '';
-      title.textContent = data.title ? data.title : data.filename ? data.filename : '';
-      description.textContent = data.description ? data.description : '';
-      tags.innerHTML = compiled ? compiled : '';
-      // update action buttons
-      deeplink.href = data.permalink ? data.permalink : '#';
-      download.href = img.src;
-      download.download = data.filename ? data.filename : Math.random();
-      // show/hide the modal
-      if (data.src) modal.style.display = 'block';
-      if (data.title || data.description || data.tags) meta.style.display = 'block';
+      if (data) {
+        var t = template.textContent,
+            compiled = _.template(t)({tags: data.tags}).replace(/\s\s+/g, '');
+        // set metadata attributes
+        tags.innerHTML = compiled ? compiled : '';
+        title.textContent = data.title ? data.title : data.filename ? data.filename : '';
+        description.textContent = data.description ? data.description : '';
+        if (data.tags || data.title || data.description) meta.style.display = 'block';
+      }
+      // display the modal
+      modal.style.display = 'block';
     }
-    // set or get the image src and load the image
-    if (!data.src) data.src = config.data.dir + '/originals/' + data.filename;
-    image.src = data.src;
-  });
+    image.src = source; // only used to ensure modal image loads
+  }
+  // try to fetch metadata for this image if metadata is provided
+  if (data.json.metadata) {
+    var path = config.data.dir + '/metadata/file/' + filename + '.json';
+    get(path, showModal, function(err) { showModal({}); console.warn(err); })
+  } else {
+    showModal({})
+  }
 }
 
 Selector.prototype.closeModal = function() {
@@ -1314,7 +1246,7 @@ Selector.prototype.getMouseWorldCoords = function() {
       distance = - camera.position.z / direction.z,
       scaled = direction.multiplyScalar(distance),
       coords = camera.position.clone().add(scaled);
-  console.log(' * selector location:', coords);
+  // coord contain the selector's location
 }
 
 // get the mesh in which to render picking elements
@@ -1324,7 +1256,7 @@ Selector.prototype.init = function() {
   document.body.addEventListener('mouseup', this.onMouseUp.bind(this));
   for (var i=0; i<this.meshes.length; i++) {
     var mesh = this.meshes[i].clone();
-    var material = world.getShaderMaterial({ useColor: 1.0, })
+    var material = world.getShaderMaterial({useColor: true})
     mesh.material = material;
     this.scene.add(mesh);
   }
@@ -1345,8 +1277,8 @@ Selector.prototype.select = function(obj) {
       y = this.tex.height - obj.y;
   world.renderer.readRenderTargetPixels(this.tex, x, y, 1, 1, pixelBuffer);
   var id = (pixelBuffer[0] << 16) | (pixelBuffer[1] << 8) | (pixelBuffer[2]),
-      selected = id-1; // ids use id+1 as the id of null selections is 0
-  return selected;
+      cellIdx = id-1; // ids use id+1 as the id of null selections is 0
+  return cellIdx;
 }
 
 /**
@@ -1354,13 +1286,11 @@ Selector.prototype.select = function(obj) {
 **/
 
 function LOD() {
+  this.cellIdxToImage = {}; // map from cell idx to loaded image data (cache)
+  this.tex = this.getCanvas(config.size.lodTexture); // texture to which all images will be written
+  this.cell = this.getCanvas(config.size.lodCell); // small canvas for drawing images to be transfered to tex
   this.gridPos = { x: null, y: null }; // grid coords of current camera position
-  this.cellIdxToImage = {};
   this.cellSizeScalar = config.size.lodCell / config.size.cell;
-  this.framesBetweenUpdates = config.lod.framesBetweenUpdates; // frames that elapse between texture updates
-  this.minZ = config.lod.minZ; // minimum camera.z to trigger texture updates
-  this.radius = config.lod.radius;
-  this.tex = this.getTexture();
   this.state = {
     loadQueue: [],
     neighborsRequested: false,
@@ -1374,35 +1304,30 @@ function LOD() {
   this.grid = {
     coords: {}, // set by LOD.indexCells();
     size: {
-      x: config.data.spread.x * config.lod.gridSpacing,
-      y: config.data.spread.y * config.lod.gridSpacing,
+      x: config.data.spread / config.lod.gridSpacing,
+      y: config.data.spread / config.lod.gridSpacing,
     },
-  };
-};
-
-LOD.prototype.getTexture = function() {
-  var canvas = getElem('canvas', {
-    width: config.size.lodTexture,
-    height: config.size.lodTexture,
-    id: 'lod-canvas',
-  })
-  return {
-    canvas: canvas,
-    ctx: canvas.getContext('2d'),
-    texture: world.getTexture(canvas),
   }
 }
 
-// initialize the array of tex coordinates available for writing
+LOD.prototype.getCanvas = function(size) {
+  var canvas = getElem('canvas', { width: size, height: size, id: 'lod-canvas', }),
+      texture = world.getTexture(canvas);
+  return {
+    canvas: canvas,
+    ctx: canvas.getContext('2d'),
+    texture: texture,
+  }
+}
+
+// initialize the array of LOD tex coordinates available for writing
 LOD.prototype.getOpenTexCoords = function() {
   var perDimension = config.size.lodTexture / config.size.lodCell,
-      openCoords = [];
+      openCoords = [],
+      s = config.size.lodCell;
   for (var y=0; y<perDimension; y++) {
     for (var x=0; x<perDimension; x++) {
-      openCoords.push({
-        x: x * config.size.lodCell,
-        y: y * config.size.lodCell,
-      });
+      openCoords.push({ x: x*s, y: y*s, });
     }
   }
   return openCoords;
@@ -1412,7 +1337,7 @@ LOD.prototype.getOpenTexCoords = function() {
 LOD.prototype.indexCells = function() {
   var coords = {};
   data.cells.forEach(function(cell) {
-    cell.gridCoords = this.toGridCoords(cell.state.position);
+    cell.gridCoords = this.toGridCoords(cell);
     var x = cell.gridCoords.x,
         y = cell.gridCoords.y;
     if (!coords[x]) coords[x] = {};
@@ -1432,7 +1357,7 @@ LOD.prototype.toGridCoords = function(obj) {
 
 // load high-res images nearest the camera; called every frame by world.render
 LOD.prototype.update = function() {
-  if (!this.state.run || world.state.flying || !world.state.displayed) return;
+  if (!this.state.run || world.state.flying) return;
   this.updateGridPosition();
   this.loadNextImage();
   this.tick();
@@ -1440,14 +1365,14 @@ LOD.prototype.update = function() {
 
 LOD.prototype.updateGridPosition = function() {
   // determine the current grid position of the user / camera
-  var pos = this.toGridCoords(world.camera.position);
+  var camPos = this.toGridCoords(world.camera.position);
   // user is in a new grid position; unload old images and load new
-  if (this.gridPos.x !== pos.x || this.gridPos.y !== pos.y) {
-    this.gridPos = pos;
+  if (this.gridPos.x !== camPos.x || this.gridPos.y !== camPos.y) {
+    this.gridPos = camPos;
     this.state.neighborsRequested = false;
     this.unload();
-    if (world.camera.position.z < this.minZ) {
-      this.state.loadQueue = getNested(this.grid.coords, [pos.x, pos.y], []);
+    if (world.camera.position.z < config.lod.minZ) {
+      this.state.loadQueue = getNested(this.grid.coords, [camPos.x, camPos.y], []);
     }
   }
 }
@@ -1457,19 +1382,14 @@ LOD.prototype.updateGridPosition = function() {
 LOD.prototype.loadNextImage = function() {
   var cellIdx = this.state.loadQueue[0];
   this.state.loadQueue = this.state.loadQueue.slice(1);
-  if (Number.isInteger(cellIdx)) {
-    this.loadImage(cellIdx);
-  } else if (!this.state.neighborsRequested) {
-    this.loadGridNeighbors();
-  }
+  if (Number.isInteger(cellIdx)) this.loadImage(cellIdx);
+  else if (!this.state.neighborsRequested) this.loadGridNeighbors();
 }
 
 // update the frame number and conditionally activate loaded images
 LOD.prototype.tick = function() {
-  this.state.frame += 1;
-  var isDrawFrame = this.state.frame % this.framesBetweenUpdates == 0;
-  if (!isDrawFrame) return;
-  world.camera.position.z < this.minZ
+  if (++this.state.frame % config.lod.framesBetweenUpdates != 0) return;
+  world.camera.position.z < config.lod.minZ
     ? this.addCellsToLodTexture()
     : this.unload();
 }
@@ -1488,7 +1408,7 @@ LOD.prototype.loadImage = function(cellIdx) {
         this.state.cellsToActivate = this.state.cellsToActivate.concat(cellIdx);
       }
     }.bind(this, cellIdx);
-    image.src = config.data.dir + '/thumbs/128px/' + data.cells[cellIdx].name;
+    image.src = config.data.dir + '/thumbs/' + data.json.images[cellIdx];
   }
 }
 
@@ -1502,12 +1422,12 @@ LOD.prototype.addCellsToLodTexture = function(cell) {
         xDelta = Math.abs(cell.gridCoords.x - this.gridPos.x),
         yDelta = Math.abs(cell.gridCoords.y - this.gridPos.y);
     // don't load the cell if it's already been loaded
-    if (this.state.cellIdxToCoords[cell.idx]) return;
+    if (this.state.cellIdxToCoords[cellIdx]) return;
     // don't load the cell if it's too far from the camera
-    if ((xDelta > this.radius * 2) || (yDelta > this.radius)) return;
+    if ((xDelta > config.lod.radius * 2) || (yDelta > config.lod.radius)) return;
     // return if there are no open coordinates in the LOD texture
     var coords = this.state.openCoords.shift();
-    if (!coords) { console.log('TODO: lod texture full'); return; }
+    // if (!cords), the LOD texture is full
     textureNeedsUpdate = true;
     this.addCellToLodTexture(cell, coords);
   }.bind(this))
@@ -1516,7 +1436,7 @@ LOD.prototype.addCellsToLodTexture = function(cell) {
   // only update the texture and attributes if the lod tex changed
   if (textureNeedsUpdate) {
     this.tex.texture.needsUpdate = true;
-    world.attrsNeedUpdate(['textureOffset', 'textureIndex', 'size']);
+    world.attrsNeedUpdate(['textureIndex', 'offset']);
   }
 }
 
@@ -1524,40 +1444,24 @@ LOD.prototype.addCellsToLodTexture = function(cell) {
 LOD.prototype.addCellToLodTexture = function(cell, coords) {
   var gridKey = cell.gridCoords.x + '.' + cell.gridCoords.y,
       gridStore = this.state.gridPosToCoords;
-  // store the cell's index with its coords data
-  coords.cellIdx = cell.idx;
   // initialize this grid key in the grid position to coords map
   if (!gridStore[gridKey]) gridStore[gridKey] = [];
+  // store the cell's index with its coords data
+  coords.cellIdx = cell.idx;
   // add the cell data to the data stores
   this.state.gridPosToCoords[gridKey].push(coords);
   this.state.cellIdxToCoords[cell.idx] = coords;
-  // draw the cell's image in the lod texture
-  var img = this.cellIdxToImage[cell.idx],
-      cellSize = Object.assign({}, cell.state.size),
-      topPad = cellSize.topPad * this.cellSizeScalar,
-      leftPad = cellSize.leftPad * this.cellSizeScalar,
-      // rectangle to clear for this cell in LOD texture
-      x = coords.x,
-      y = coords.y,
-      // cell to draw: source and target coordinates
-      sX = 0,
-      sY = 0,
-      sW = config.size.lodCell - (2*leftPad),
-      sH = config.size.lodCell - (2*topPad),
-      dX = x + leftPad,
-      dY = y + topPad,
-      dW = sW,
-      dH = sH;
-  this.tex.ctx.clearRect(x, y, config.size.lodCell, config.size.lodCell);
-  this.tex.ctx.drawImage(img, sX, sY, sW, sH, dX, dY, dW, dH);
+  // draw the cell's image in a new canvas
+  this.tex.ctx.clearRect(coords.x, coords.y, config.size.lodCell, config.size.lodCell);
+  this.tex.ctx.drawImage(this.cellIdxToImage[cell.idx], coords.x, coords.y);
   cell.activate();
 }
 
 // load the next nearest grid of cell images
 LOD.prototype.loadGridNeighbors = function() {
   this.state.neighborsRequested = true;
-  for (var x=-this.radius*2; x<=this.radius*2; x++) {
-    for (var y=-this.radius; y<=this.radius; y++) {
+  for (var x=-config.lod.radius*2; x<=config.lod.radius*2; x++) {
+    for (var y=-config.lod.radius; y<=config.lod.radius; y++) {
       var coords = [
         this.gridPos.x + x,
         this.gridPos.y + y,
@@ -1581,7 +1485,7 @@ LOD.prototype.unload = function() {
         y = parseInt(split[1]),
         xDelta = Math.abs(this.gridPos.x - x),
         yDelta = Math.abs(this.gridPos.y - y);
-    if ((xDelta + yDelta) > this.radius) this.unloadGridPos(gridPos)
+    if ((xDelta + yDelta) > config.lod.radius) this.unloadGridPos(gridPos)
   }.bind(this));
 }
 
@@ -1593,7 +1497,7 @@ LOD.prototype.unloadGridPos = function(gridPos) {
     try {
       data.cells[coords.cellIdx].deactivate();
       delete this.state.cellIdxToCoords[coords.cellIdx];
-    } catch(err) {console.warn(coords.cellIdx + ' cleared')}
+    } catch(err) {}
   }.bind(this))
   // remove the old grid position from the list of active grid positions
   delete this.state.gridPosToCoords[gridPos];
@@ -1604,9 +1508,8 @@ LOD.prototype.unloadGridPos = function(gridPos) {
 // clear the LOD state entirely
 LOD.prototype.clear = function() {
   Object.keys(this.state.gridPosToCoords).forEach(this.unloadGridPos.bind(this));
-  var inf = Number.POSITIVE_INFINITY;
-  this.gridPos = { x: inf, y: inf };
-  world.attrsNeedUpdate(['textureOffset', 'textureIndex', 'size']);
+  this.gridPos = { x: Number.POSITIVE_INFINITY, y: Number.POSITIVE_INFINITY };
+  world.attrsNeedUpdate(['offset', 'textureIndex']);
 }
 
 /**
@@ -1656,11 +1559,9 @@ Welcome.prototype.updateProgress = function() {
 }
 
 Welcome.prototype.startWorld = function() {
-  lod.indexCells();
   requestAnimationFrame(function() {
     world.init();
     selector.init();
-    delete data.cellData; // clear up memory
     setTimeout(function() {
       document.querySelector('#loader-scene').classList += 'hidden';
       world.state.displayed = true;
@@ -1674,16 +1575,12 @@ Welcome.prototype.startWorld = function() {
 
 function Filters() {
   this.filters = [];
-  this.loadFilters();
 }
 
 Filters.prototype.loadFilters = function() {
-  var url = config.data.dir + '/filters/filters.json';
+  var url = config.data.dir + '/metadata/filters/filters.json';
   get(url, function(data) {
-    for (var i=0; i<data.length; i++) {
-      var filter = new Filter(data[i]);
-      this.filters.push(filter);
-    }
+    for (var i=0; i<data.length; i++) this.filters.push(new Filter(data[i]));
   }.bind(this))
 }
 
@@ -1701,7 +1598,7 @@ Filter.prototype.createSelect = function() {
 
   for (var i=0; i<this.values.length; i++) {
     var option = document.createElement('option');
-    option.textContent = this.values[i];
+    option.textContent = this.values[i].replace(/__/g, ' ');
     select.appendChild(option);
   }
   select.onchange = this.onChange.bind(this);
@@ -1712,14 +1609,14 @@ Filter.prototype.onChange = function(e) {
   var val = e.target.value;
   // case where user selected the 'All Values' option
   if (val === 'All Values') {
-    this.filterCells(data.cells.reduce(function(arr, cell) {
-      arr.push(cell.name); return arr;
+    this.filterCells(data.cells.reduce(function(arr, cell, cellIdx) {
+      arr.push(data.json.images[cellIdx]); return arr;
     }.bind(this), []))
   // case where user selected a specific option
   } else {
-    // each {{ level-name }}.json file should use hyphens instead of whitespace
-    var filename = val.replace(/\//g, '-').replace(/ /g, '-') + '.json',
-        url = config.data.dir + '/filters/option_values/' + filename;
+    // each {{ level-name }}.json file should use double underscore instead of whitespace
+    var level = val.replace(/\//g, '-').replace(/ /g, '__') + '.json',
+        url = config.data.dir + '/metadata/options/' + level;
     get(url, this.filterCells);
   }
 }
@@ -1732,12 +1629,11 @@ Filter.prototype.filterCells = function(names) {
 
   data.cells.forEach(function(cell, idx) {
     // update the buffer attributes that describe this cell to the GPU
-    var group = world.scene.children[0],
-        attrs = group.children[cell.getIndexOfDrawCall()].geometry.attributes,
-        opacity = cell.name in names ? 1 : 0.1;
+    var meshes = world.scene.children[0],
+        attrs = meshes.children[cell.getIndexOfDrawCall()].geometry.attributes,
+        opacity = data.json.images[idx] in names ? 1 : 0.1;
     attrs.opacity.array[cell.getIndexInDrawCall()] = opacity;
   }.bind(this))
-
   world.attrsNeedUpdate(['opacity']);
 }
 
@@ -1748,24 +1644,23 @@ Filter.prototype.filterCells = function(names) {
 function Hotspots() {
   this.template = find('#hotspot-template');
   this.target = find('#hotspots');
-  this.centroids = null;
   this.init();
 }
 
 Hotspots.prototype.init = function() {
-  get(config.data.dir + '/centroids.json', function(json) {
-    this.centroids = json;
+  get(getPath(data.json.layouts[data.initialLayout].centroids), function(json) {
+    this.json = json;
     this.target.innerHTML = _.template(this.template.innerHTML)({
-      hotspots: json,
+      hotspots: this.json,
     });
     var hotspots = findAll('.hotspot');
     for (var i=0; i<hotspots.length; i++) {
       hotspots[i].addEventListener('click', function(idx) {
-        var position = data.cells[this.centroids[idx].idx].state.position;
+        var cell = data.cells[data.hotspots.json[idx].idx];
         world.flyTo({
-          x: position.x,
-          y: position.y,
-          z: position.z + 100,
+          x: cell.x,
+          y: cell.y,
+          z: cell.z + 100,
         })
       }.bind(this, i))
     }
@@ -1805,10 +1700,15 @@ Webgl.prototype.getLimits = function() {
   ['', 'MOZ_', 'WEBKIT_'].forEach(function(ext) {
     if (extensions[ext + 'OES_element_index_uint']) maxIndex = 2**32 - 1;
   })
+  // for stats see e.g. https://webglstats.com/webgl/parameter/MAX_TEXTURE_SIZE
   return {
-    textureSize: this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE) / 2,
-    textureCount: this.gl.getParameter(this.gl.MAX_TEXTURE_IMAGE_UNITS) / 2,
+    // max h,w of textures in px
+    textureSize: Math.min(this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE), 2**13),
+    // max textures that can be used in fragment shader
+    textureCount: this.gl.getParameter(this.gl.MAX_TEXTURE_IMAGE_UNITS),
+    // max textures that can be used in vertex shader
     vShaderTextures: this.gl.getParameter(this.gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS),
+    // max number of indexed elements
     indexedElements: maxIndex,
   }
 }
@@ -1841,9 +1741,7 @@ function get(url, handleSuccess, handleErr) {
 **/
 
 function getMinCellZ() {
-  return Math.min.apply(Math, data.cells.map(function(d) {
-    return d.state.position.z;
-  }))
+  return Math.min.apply(Math, data.cells.map(function(d) {return d.z;}))
 }
 
 /**
@@ -1909,6 +1807,17 @@ function getCanvasSize() {
 }
 
 /**
+* Get the user's current url route
+**/
+
+function getPath(path) {
+  var base = window.location.origin;
+  base += window.location.pathname.replace('index.html', '');
+  base += path.replace('output', '');
+  return base;
+}
+
+/**
 * Main
 **/
 
@@ -1920,5 +1829,4 @@ var selector = new Selector();
 var layout = new Layout();
 var world = new World();
 var lod = new LOD();
-var hotspots = new Hotspots();
 var data = new Data();
