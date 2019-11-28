@@ -62,6 +62,7 @@ def process_images(**kwargs):
   kwargs['atlas_positions'] = get_atlas_positions(**kwargs)
   get_manifest(**kwargs)
   write_images(**kwargs)
+  print(' * done!')
 
 
 def stream_images(*args, **kwargs):
@@ -258,10 +259,13 @@ def save_atlas(*args, **kwargs):
 def get_positions(*args, **kwargs):
   '''Get the image positions in each projection'''
   vecs = vectorize_images(**kwargs)
+  umap = get_umap_projection(vecs=vecs, **kwargs)
+  rasterfairy = get_rasterfairy_projection(umap=umap, **kwargs)
+  grid = get_grid_projection(**kwargs)
   return {
-    'rasterfairy': get_rasterfairy_projection(vecs=vecs, **kwargs),
-    'umap': get_umap_projection(vecs=vecs, **kwargs),
-    'grid': get_grid_projection(**kwargs),
+    'umap': umap,
+    'grid': grid,
+    'rasterfairy': rasterfairy,
   }
 
 
@@ -297,14 +301,9 @@ def get_rasterfairy_projection(**kwargs):
   out_dir = join(kwargs['out_dir'], 'layouts')
   out_path = join(out_dir, 'rasterfairy-{}.json'.format(hash(**kwargs)))
   if os.path.exists(out_path): return out_path
-  pos = rasterfairy.transformPointCloud2D(kwargs['vecs'][:,:2])[0]
-  x, y = np.array(list(zip(*pos)))
-  sizes = [i.resize_to_max(kwargs['lod_cell_height']).shape for i in stream_images(**kwargs)]
-  w, h, c = np.array(list(zip(*sizes))) # width, height, colors of images
-  #x += ((config['lod_cell_height'] - w)/2)/config['lod_cell_height']
-  #y += ((config['lod_cell_height'] - h)/2)/config['lod_cell_height']
-  z = np.swapaxes(np.array([x, y]), 0, 1)
-  path = write_json(out_path, z, **kwargs)
+  umap = np.array(json.load(open(kwargs['umap'])))
+  pos = rasterfairy.transformPointCloud2D(umap)[0]
+  path = write_json(out_path, pos, **kwargs)
   return path
 
 
