@@ -2,7 +2,7 @@
 
 This repository contains code that can be used to visualize tens of thousands of images in a two-dimensional projection within which similar images are clustered together. The image analysis uses Tensorflow's Inception bindings, and the visualization layer uses a custom WebGL viewer.
 
-![App preview](./assets/images/preview.png?raw=true)
+![App preview](./pixplot/web/assets/images/preview.png?raw=true)
 
 
 ## Dependencies
