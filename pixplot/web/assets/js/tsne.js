@@ -49,7 +49,8 @@ function Config() {
   this.data = {
     dir: 'data',
     file: 'manifest.json',
-    spread: 4000, // set below
+    spread: 4000,
+    pointScalar: 12,
   }
   this.size = {
     cell: 32, // height of each cell in atlas
@@ -110,8 +111,6 @@ function Data() {
 Data.prototype.load = function() {
   get(config.data.dir + '/' + config.data.file, function(json) {
     this.json = json;
-    // set the data spread
-    config.data.spread = 4000;
     // set config vals
     config.size.cell = json.config.sizes.cell;
     config.size.atlas = json.config.sizes.atlas;
@@ -908,7 +907,7 @@ World.prototype.getTexture = function(canvas) {
 // Return an int specifying the scalar uniform for points
 World.prototype.getPointScale = function() {
   var canvasSize = getCanvasSize()
-  return window.devicePixelRatio * canvasSize.h * 12;
+  return window.devicePixelRatio * canvasSize.h * config.data.pointScalar;
 }
 
 /**
@@ -1097,7 +1096,7 @@ World.prototype.getInitialLocation = function() {
   return {
     x: this.center.x,
     y: this.center.y,
-    z: config.data.spread * 2,
+    z: config.data.spread,
   }
 }
 
@@ -1813,8 +1812,41 @@ function getCanvasSize() {
 function getPath(path) {
   var base = window.location.origin;
   base += window.location.pathname.replace('index.html', '');
-  base += path.replace('output', '');
+  base += path.replace('/output/', '');
   return base;
+}
+
+/**
+* Scale each dimension of an array -1:1
+**/
+
+function scale(arr) {
+  var max = Number.POSITIVE_INFINITY,
+      min = Number.NEGATIVE_INFINITY,
+      domX = {min: max, max: min},
+      domY = {min: max, max: min},
+      domZ = {min: max, max: min};
+  // find the min, max of each dimension
+  for (var i=0; i<arr.length; i++) {
+    var x = arr[i][0],
+        y = arr[i][1],
+        z = arr[i][2] || 0;
+    if (x < domX.min) domX.min = x;
+    if (x > domX.max) domX.max = x;
+    if (y < domY.min) domY.min = y;
+    if (y > domY.max) domY.max = y;
+    if (z < domZ.min) domZ.min = z;
+    if (z > domZ.max) domZ.max = z;
+  }
+  var centered = [];
+  for (var i=0; i<arr.length; i++) {
+    var cx = (((arr[i][0]-domX.min)/(domX.max-domX.min))*2)-1,
+        cy = (((arr[i][1]-domY.min)/(domY.max-domY.min))*2)-1,
+        cz = (((arr[i][2]-domZ.min)/(domZ.max-domZ.min))*2)-1 || null;
+    if (arr[i].length == 3) centered.push([cx, cy, cz]);
+    else centered.push([cx, cy]);
+  }
+  return centered;
 }
 
 /**

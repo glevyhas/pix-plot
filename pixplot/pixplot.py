@@ -5,6 +5,7 @@ from keras.applications import Xception, VGG19, InceptionV3, imagenet_utils
 from os.path import basename, join, exists, dirname, realpath
 from keras.applications.inception_v3 import preprocess_input
 from sklearn.metrics import pairwise_distances_argmin_min
+from sklearn.preprocessing import maxabs_scale
 from keras_preprocessing.image import load_img
 from collections import defaultdict, Counter
 from distutils.dir_util import copy_tree
@@ -302,6 +303,7 @@ def get_rasterfairy_projection(**kwargs):
   out_path = join(out_dir, 'rasterfairy-{}.json'.format(hash(**kwargs)))
   if os.path.exists(out_path): return out_path
   umap = np.array(json.load(open(kwargs['umap'])))
+  umap = (umap + 1) * 100 # make positive and upscale
   pos = rasterfairy.transformPointCloud2D(umap)[0]
   path = write_json(out_path, pos, **kwargs)
   return path
@@ -325,18 +327,8 @@ def get_grid_projection(**kwargs):
   return path
 
 
-def scale_axes(arr):
-  '''Scale numpy `arr` -1:1 among dimensions'''
-  z = np.zeros(arr.shape)
-  for i in range(arr.shape[1]):
-    a = arr[:,i]
-    z[:,i] = (((a-np.min(a))/(np.max(a)-np.min(a)))-0.5)*2 # scale -1:1
-  return z
-
-
 def add_z_dim(X, val=0.001):
   '''Given X with shape (n,2) return (n,3) with val as X[:,2]'''
-  X = scale_axes(X)
   if X.shape[1] == 2:
     z = np.zeros((X.shape[0], 3)) + val
     for idx, i in enumerate(X): z[idx] += np.array((i[0], i[1], 0))
@@ -346,7 +338,7 @@ def add_z_dim(X, val=0.001):
 
 def write_json(path, obj, precision=4, sub_dir='layouts', **kwargs):
   '''Write json object `o` to disk and return the path to that file'''
-  obj = scale_axes(obj)
+  obj = maxabs_scale(obj)
   out_dir, filename = os.path.split(path)
   if not os.path.exists(out_dir): os.makedirs(out_dir)
   if precision: obj = [[round(float(j), precision) for j in i] for i in obj]
