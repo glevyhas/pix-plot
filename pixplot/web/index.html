@@ -148,11 +148,10 @@
       if (int(useColor) == 1) {
         gl_FragColor = vec4(vColor, 1.0);
       } else {
-        //vec2 uv = vTextureIndex > -0.5 ? vOffset + (gl_PointCoord * max(w, h)) : vOffset + (gl_PointCoord * lodPxHeight);
-
         vec2 uv = vOffset + gl_PointCoord * max(w, h);
         vec2 scaledUv = vTextureIndex > -0.5 ? uv/cellAtlasPxPerSide : uv/lodAtlasPxPerSide;
-        int textureIndex = int(vTextureIndex);
+        int textureIndex = vTextureIndex > -0.5 ? int(vTextureIndex) : -1;
+
         TEXTURE_LOOKUP_TREE
         gl_FragColor.a = vOpacity;
       }
