@@ -64,12 +64,13 @@ Your metadata should be in a comma-separated value file (CSV), should contain on
 
 The CSV should contain no headers.
 
-## Demonstrations
+## Demonstrations (Developed with PixPlot 2.0 codebase)
 
-| Collection | # Images | Collection Info | Image Source |
-| ---------- | -------- | --------------- | ------------ |
-| [Per Bagge](http://dh.library.yale.edu/projects/pixplot/bagge/) | 10,889 | [Bio](http://www.alvin-portal.org/alvin/view.jsf?pid=alvin-person%3A29409) | [Lund University](http://www.alvin-portal.org/alvin/resultList.jsf?dswid=6772&af=%5B%22RES_facet%3Astill_image%22%2C%22ARCHIVE_ORG_ID_facet%3A8%22%5D&p=1&fs=true&searchType=EXTENDED&sortString=relevance_sort_desc&noOfRows=10&query=&aq=%5B%5B%7B%22PER_PID%22%3A%22alvin-person%3A29409%22%7D%5D%2C%5B%7B%22SWD_PER%22%3A%22alvin-person%3A29409%22%7D%5D%5D&aqe=%5B%5D) |
-| [Meserve-Kunhardt](https://s3-us-west-2.amazonaws.com/lab-apps/pix-plot/index.html) | 27,000 | [Finding Aid](http://drs.library.yale.edu/HLTransformer/HLTransServlet?stylename=yul.ead2002.xhtml.xsl&pid=beinecke:meservekunhardt&clear-stylesheet-cache=yes&big=y) | [Beinecke (Partial)](https://brbl-dl.library.yale.edu/vufind/Search/Results?lookfor=GEN_MSS_1430&type=CallNumber) |
+| Link | Image Count | Collection Info | Browse Images | Download for PixPlot
+| ---------- | -------- | --------------- | ------------ | ------------ | 
+| [NewsPlot: 1910-1912](http://pixplot.yale.edu/v2/loc/) | 24,026 | [George Grantham Bain Collection](https://www.loc.gov/pictures/collection/ggbain/) | [News in the 1910s](https://www.flickr.com/photos/library_of_congress/albums/72157603624867509/with/2163445674/) | [Images](http://pixplot.yale.edu/datasets/bain/photos.tar), [Metadata](http://pixplot.yale.edu/datasets/bain/metadata.csv) |
+| [Bildefelt i Oslo](http://pixplot.yale.edu/v2/oslo/) | 31,097 | [oslobilder](http://oslobilder.no) | [Advanced search, 1860-1924](http://oslobilder.no/search?advanced_search=1&query=&place=&from_year=1860&to_year=1924&id=&name=&title=&owner_filter=&producer=&depicted_person=&material=&technique=&event_desc=) | [Images](http://pixplot.yale.edu/datasets/oslo/photos.tar), [Metadata](http://pixplot.yale.edu/datasets/oslo/metadata.csv) |
+
 
 
 ## Acknowledgements
