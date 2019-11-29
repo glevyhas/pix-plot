@@ -140,7 +140,7 @@ def get_manifest(**kwargs):
 
 def filter_images(**kwargs):
   '''Main method for filtering images given user metadata (if provided)'''
-  image_paths = glob2.glob(kwargs['images'])
+  image_paths = sorted(glob2.glob(kwargs['images']))
   if not image_paths:
     print('\nError: No input images were found. Please check your --images glob')
     sys.exit()
