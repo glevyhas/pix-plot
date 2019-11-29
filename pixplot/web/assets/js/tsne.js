@@ -1015,7 +1015,6 @@ World.prototype.getFragmentShader = function(obj) {
 World.prototype.getFragLeaf = function(texIdx, tex) {
   return 'if (textureIndex == ' + texIdx + ') {\n          ' +
     'gl_FragColor = texture2D(' + tex + ', scaledUv);\n        }';
-
 }
 
 /**
