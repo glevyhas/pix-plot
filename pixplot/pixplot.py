@@ -5,7 +5,7 @@ from keras.applications import Xception, VGG19, InceptionV3, imagenet_utils
 from os.path import basename, join, exists, dirname, realpath
 from keras.applications.inception_v3 import preprocess_input
 from sklearn.metrics import pairwise_distances_argmin_min
-from sklearn.preprocessing import maxabs_scale
+from sklearn.preprocessing import minmax_scale
 from keras_preprocessing.image import load_img
 from collections import defaultdict, Counter
 from distutils.dir_util import copy_tree
@@ -14,6 +14,7 @@ from keras.models import Model
 from hashlib import sha224
 import keras.backend as K
 from umap import UMAP
+import pkg_resources
 import rasterfairy
 import numpy as np
 import distutils
@@ -115,6 +116,7 @@ def get_manifest(**kwargs):
     'images': [clean_filename(i) for i in kwargs['image_paths']],
     'metadata': True if kwargs['metadata'] else False,
     'creation_date': datetime.datetime.today().strftime('%d-%B-%Y-%H:%M:%S'),
+    'version': pkg_resources.get_distribution('pixplot').version,
   }
   # compute centroids for each layout and add to manifest
   for label, position_path in get_positions(**kwargs).items():
@@ -338,7 +340,7 @@ def add_z_dim(X, val=0.001):
 
 def write_json(path, obj, precision=4, sub_dir='layouts', **kwargs):
   '''Write json object `o` to disk and return the path to that file'''
-  obj = maxabs_scale(obj)
+  obj = minmax_scale(obj)
   out_dir, filename = os.path.split(path)
   if not os.path.exists(out_dir): os.makedirs(out_dir)
   if precision: obj = [[round(float(j), precision) for j in i] for i in obj]
