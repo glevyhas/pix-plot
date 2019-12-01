@@ -37,7 +37,7 @@ import codecs
 from tqdm import tqdm
 
 # configure command line interface arguments
-flags = tf.app.flags
+flags = tf.compat.v1.flags
 flags.DEFINE_string('model_dir', '/tmp/imagenet', 'The location of downloaded pre-trained Inception model')
 flags.DEFINE_string('image_files', '', 'A glob path of images to process')
 flags.DEFINE_integer('clusters', 20, 'The number of clusters to display in the image browser')
@@ -491,4 +491,4 @@ def main(*args, **kwargs):
   PixPlot(image_glob)
 
 if __name__ == '__main__':
-  tf.app.run()
+  tf.compat.v1.app.run()
