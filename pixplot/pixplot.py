@@ -9,6 +9,7 @@ from sklearn.preprocessing import minmax_scale
 from keras_preprocessing.image import load_img
 from collections import defaultdict, Counter
 from distutils.dir_util import copy_tree
+from iiif_downloader import Manifest
 from sklearn.cluster import KMeans
 from keras.models import Model
 from hashlib import sha224
@@ -142,16 +143,7 @@ def get_manifest(**kwargs):
 
 def filter_images(**kwargs):
   '''Main method for filtering images given user metadata (if provided)'''
-  image_paths = sorted(glob2.glob(kwargs['images']))
-  if not image_paths:
-    print('\nError: No input images were found. Please check your --images glob')
-    sys.exit()
-  n_images = len(image_paths)
-  n_clusters = kwargs['n_clusters']
-  if n_images <= n_clusters:
-    print('\nError: n_clusters must be < input image count ')
-    print('Found {} images and {} clusters were requested'.format(n_images, n_clusters))
-    sys.exit()
+  image_paths = get_image_paths(**kwargs)
   if not kwargs.get('metadata', False): return image_paths
   l = []
   if kwargs['metadata'].endswith('.csv'):
@@ -175,6 +167,31 @@ def filter_images(**kwargs):
   kwargs['metadata'] = [i for i in l if clean_filename(i['filename']) in both]
   write_metadata(**kwargs)
   return [i for i in image_paths if clean_filename(i) in both]
+
+
+def get_image_paths(**kwargs):
+  # handle case where --images points to iiif manifest
+  image_paths = None
+  if os.path.exists(kwargs['images']):
+    with open(kwargs['images']) as f:
+      f = [i.strip() for i in f.read().split('\n') if i.strip()]
+      if [i.startswith('http') for i in f]:
+        for i in f: Manifest(url=i).save_images(limit=1)
+        image_paths = sorted(glob2.glob(os.path.join('iiif-downloads', 'images', '*')))
+  # handle case where --images points to a glob of images
+  if not image_paths:
+    image_paths = sorted(glob2.glob(kwargs['images']))
+  if not image_paths:
+    print('\nError: No input images were found. Please check your --images glob')
+    sys.exit()
+  # validate the provided images are > n clusters requested
+  n_images = len(image_paths)
+  n_clusters = kwargs['n_clusters']
+  if n_images <= n_clusters:
+    print('\nError: n_clusters must be < input image count ')
+    print('Found {} images and {} clusters were requested'.format(n_images, n_clusters))
+    sys.exit()
+  return image_paths
 
 
 def clean_filename(s):

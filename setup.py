@@ -11,7 +11,7 @@ for root, subdirs, files in os.walk(os.path.join('pixplot', 'web')):
 
 setup(
   name='pixplot',
-  version='0.0.28',
+  version='0.0.30',
   packages=['pixplot'],
   package_data={
     'pixplot': web,
@@ -24,9 +24,10 @@ setup(
   license='MIT',
   install_requires=[
     'glob2>=0.6',
+    'iiif-downloader>=0.0.5',
     'Keras>=2.3.0',
-    'Pillow>=6.1.0',
     'numpy>=1.16.0',
+    'Pillow>=6.1.0',
     'scikit-learn>=0.19.0',
     'tensorflow>=1.14.0,<=2.0.0',
     'umap-learn>=0.3.10',

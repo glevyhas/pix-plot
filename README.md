@@ -64,10 +64,24 @@ Your metadata should be in a comma-separated value file (CSV), should contain on
 
 The CSV should contain no headers.
 
+## IIIF Images
+
+If you would like to process images that are hosted on a IIIF server, you can specify a newline-delimited list of IIIF image manifests as the `--images` argument. For example, the following could be saved as `manifest.txt`:
+
+```bash
+https://manifests.britishart.yale.edu/manifest/40005
+https://manifests.britishart.yale.edu/manifest/40006
+https://manifests.britishart.yale.edu/manifest/40007
+https://manifests.britishart.yale.edu/manifest/40008
+https://manifests.britishart.yale.edu/manifest/40009
+```
+
+One could then specify these images as input by running `pixplot --images manifest.txt --n_clusters 2`
+
 ## Demonstrations (Developed with PixPlot 2.0 codebase)
 
 | Link | Image Count | Collection Info | Browse Images | Download for PixPlot
-| ---------- | -------- | --------------- | ------------ | ------------ | 
+| ---------- | -------- | --------------- | ------------ | ------------ |
 | [NewsPlot: 1910-1912](http://pixplot.yale.edu/v2/loc/) | 24,026 | [George Grantham Bain Collection](https://www.loc.gov/pictures/collection/ggbain/) | [News in the 1910s](https://www.flickr.com/photos/library_of_congress/albums/72157603624867509/with/2163445674/) | [Images](http://pixplot.yale.edu/datasets/bain/photos.tar), [Metadata](http://pixplot.yale.edu/datasets/bain/metadata.csv) |
 | [Bildefelt i Oslo](http://pixplot.yale.edu/v2/oslo/) | 31,097 | [oslobilder](http://oslobilder.no) | [Advanced search, 1860-1924](http://oslobilder.no/search?advanced_search=1&query=&place=&from_year=1860&to_year=1924&id=&name=&title=&owner_filter=&producer=&depicted_person=&material=&technique=&event_desc=) | [Images](http://pixplot.yale.edu/datasets/oslo/photos.tar), [Metadata](http://pixplot.yale.edu/datasets/oslo/metadata.csv) |
 

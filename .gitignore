@@ -7,3 +7,5 @@ build
 *.egg-info
 output
 datasets
+iiif-downloads
+manifest.txt
