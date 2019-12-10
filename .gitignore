@@ -1,5 +1,12 @@
-data/
-output/
-.DS_Store
+*.DS_Store
 *.pem
 *.swp
+manifest.txt
+data/
+output/
+build/
+datasets/
+dist/
+iiif-downloads/
+*.egg-info/
+pixplot/
