@@ -72,7 +72,11 @@ def stream_images(*args, **kwargs):
   '''Read in all images from args[0], a list of image paths'''
   images = []
   for idx, i in enumerate(kwargs['image_paths']):
-    yield Image(i)
+    try:
+      image = Image(i)
+      yield image
+    except:
+      print(' * image', i, 'could not be processed')
 
 
 def write_images(**kwargs):
