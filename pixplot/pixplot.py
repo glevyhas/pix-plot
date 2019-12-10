@@ -292,14 +292,22 @@ def get_positions(*args, **kwargs):
 def vectorize_images(**kwargs):
   '''Create and return vector representation of Image() instances'''
   print(' * preparing to vectorize {} images'.format(len(kwargs['image_paths'])))
+  vector_dir = os.path.join(kwargs['out_dir'], 'image-vectors')
+  if not os.path.exists(vector_dir): os.makedirs(vector_dir)
   base = InceptionV3(include_top=True, weights='imagenet',)
   model = Model(inputs=base.input, outputs=base.get_layer('avg_pool').output)
   print(' * creating image array')
   vecs = []
   for idx, i in enumerate(stream_images(**kwargs)):
+    vector_path = os.path.join(vector_dir, os.path.basename(i.path) + '.npy')
+    if os.path.exists(vector_path):
+      vec = np.load(vector_path)
+    else:
+      im = preprocess_input( img_to_array( i.original.resize((299,299)) ) )
+      vec = model.predict(np.expand_dims(im, 0)).squeeze()
+      np.save(vector_path, vec)
+    vecs.append(vec)
     print(' * vectorized {}/{} images'.format(idx+1, len(kwargs['image_paths'])))
-    im = preprocess_input( img_to_array( i.original.resize((299,299)) ) )
-    vecs.append( model.predict(np.expand_dims(im, 0)).squeeze() )
   return np.array(vecs)
 
 
