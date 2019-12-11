@@ -1151,16 +1151,24 @@ Selector.prototype.getTexture = function() {
   return tex;
 }
 
-
 // on canvas mousedown store the coords where user moused down
 Selector.prototype.onMouseDown = function(e) {
-  this.mouseDown.x = e.clientX;
-  this.mouseDown.y = e.clientY;
+  var click = this.getClickOffsets(e);
+  this.mouseDown.x = click.x;
+  this.mouseDown.y = click.y;
+}
+
+// get the x, y offsets of a click within the canvas
+Selector.prototype.getClickOffsets = function(e) {
+  var rect = e.target.getBoundingClientRect();
+  return {
+    x: e.clientX - rect.left,
+    y: e.clientY - rect.top,
+  }
 }
 
 // on canvas click, show detailed modal with clicked image
 Selector.prototype.onMouseUp = function(e) {
-  var cellIdx = this.select({x: e.clientX, y: e.clientY});
   // if click hit background, close the modal
   if (e.target.className == 'modal-image-sizer' ||
       e.target.className == 'modal-content' ||
@@ -1169,10 +1177,13 @@ Selector.prototype.onMouseUp = function(e) {
     window.location.href = '#';
     return this.closeModal();
   }
+  // find the offset of the click event within the canvas
+  var click = this.getClickOffsets(e);
   // if mouseup isn't in the last mouse position, user is dragging
   // if the click wasn't on the canvas, quit
-  if (e.clientX !== this.mouseDown.x ||
-      e.clientY !== this.mouseDown.y || // m.down and m.up != means user is dragging
+  var cellIdx = this.select({x: click.x, y: click.y});
+  if (click.x !== this.mouseDown.x ||
+      click.y !== this.mouseDown.y || // m.down and m.up != means user is dragging
       cellIdx == -1 || // cellIdx == -1 means the user didn't click on a cell
       e.target.id !== 'pixplot-canvas') { // whether the click hit the gl canvas
     return;
@@ -1245,8 +1256,7 @@ Selector.prototype.getMouseWorldCoords = function() {
   var direction = vector.sub(camera.position).normalize(),
       distance = - camera.position.z / direction.z,
       scaled = direction.multiplyScalar(distance),
-      coords = camera.position.clone().add(scaled);
-  // coord contain the selector's location
+      coords = camera.position.clone().add(scaled); // coords = selector's location
 }
 
 // get the mesh in which to render picking elements
