@@ -436,7 +436,12 @@ class Image:
     Resize self.original into an image with height h and proportional width
     '''
     w,h = self.original.size
-    size = (int(w/h*height), height)
+    if (w/h*height) < 1:
+        resizedwidth = 1
+    else:
+        resizedwidth =  int(w/h*height)
+    size = (resizedwidth, height)
+
     return img_to_array(self.original.resize(size))
 
   def resize_to_square(self, n, center=False):
