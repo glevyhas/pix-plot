@@ -4,6 +4,6 @@ Pillow==4.1.1
 psutil==5.2.2
 scikit-learn==0.19.1
 six==1.11.0
-tensorflow>=1.8.0,<=2.0.0
+tensorflow>=1.8.0,<2.0.0
 umap-learn==0.2.3
 tqdm==4.23.4
