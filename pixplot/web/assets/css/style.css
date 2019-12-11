@@ -604,6 +604,7 @@ noscript {
 
 .meta-input-container {
   width: 250px;
+  display: none;
 }
 
 .meta-input-container * {
