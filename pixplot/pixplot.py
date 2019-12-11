@@ -147,7 +147,7 @@ def get_manifest(**kwargs):
 
 def filter_images(**kwargs):
   '''Main method for filtering images given user metadata (if provided)'''
-  image_paths = get_image_paths(**kwargs)
+  image_paths = [i.path for i in stream_images(image_paths=get_image_paths(**kwargs))]
   if not kwargs.get('metadata', False): return image_paths
   l = []
   if kwargs['metadata'].endswith('.csv'):
