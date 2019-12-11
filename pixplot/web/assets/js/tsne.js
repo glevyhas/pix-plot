@@ -996,8 +996,7 @@ World.prototype.getFragmentShader = function(obj) {
   } else {
     // get the texture lookup tree
     var tree = this.getFragLeaf(-1, 'lodTexture');
-    tree += ' else ' + this.getFragLeaf(0, 'textures[0]');
-    for (var i=firstTex; i<firstTex + textures.length-1; i++) {
+    for (var i=firstTex; i<firstTex + textures.length; i++) {
       tree += ' else ' + this.getFragLeaf(i, 'textures[' + i + ']');
     }
     // replace the text in the fragment shader
@@ -1425,9 +1424,11 @@ LOD.prototype.addCellsToLodTexture = function(cell) {
     if ((xDelta > config.lod.radius * 2) || (yDelta > config.lod.radius)) return;
     // return if there are no open coordinates in the LOD texture
     var coords = this.state.openCoords.shift();
-    // if (!cords), the LOD texture is full
-    textureNeedsUpdate = true;
-    this.addCellToLodTexture(cell, coords);
+    // if (!coords), the LOD texture is full
+    if (coords) {
+      textureNeedsUpdate = true;
+      this.addCellToLodTexture(cell, coords);
+    }
   }.bind(this))
   // indicate we've loaded all cells
   this.state.cellsToActivate = [];
