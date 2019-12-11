@@ -268,13 +268,13 @@ Texture.prototype.onAtlasLoad = function(atlas) {
   if (++this.loadedAtlases == this.getAtlasCount()) this.onLoad(this.idx);
 }
 
-// get the offset of an atlas within its texture
+// given idx of atlas among all atlases, return offsets of atlas in texture
 function getAtlasOffset(idx) {
   var atlasSize = config.size.atlas,
       textureSize = config.size.texture;
   return {
     x: (idx * atlasSize) % textureSize,
-    y: Math.floor((idx * atlasSize) / textureSize) * atlasSize,
+    y: (Math.floor((idx * atlasSize) / textureSize) * atlasSize) % textureSize,
   }
 }
 
