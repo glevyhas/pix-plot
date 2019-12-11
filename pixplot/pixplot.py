@@ -123,7 +123,7 @@ def get_manifest(**kwargs):
     'creation_date': datetime.datetime.today().strftime('%d-%B-%Y-%H:%M:%S'),
     'version': get_version(),
   }
-  # compute centroids for each layout and add to manifest
+  # compute centroids for umap layout and add to manifest
   for label, position_path in get_positions(**kwargs).items():
     out_dir = join(kwargs['out_dir'], 'centroids')
     if not exists(out_dir): os.makedirs(out_dir)
@@ -387,7 +387,6 @@ def get_centroids(**kwargs):
     'img': clean_filename(paths[idx]),
     'label': 'Cluster {}'.format(idx+1),
     'idx': int(i),
-    'position': centroids[idx].tolist(),
   } for idx,i in enumerate(closest)]
 
 
