@@ -1540,7 +1540,6 @@ Welcome.prototype.removeLoader = function() {
     }.bind(this, i), i*100)
   }
   document.querySelector('#progress').style.opacity = 0;
-  console.log('todo: fly to coords in window.location.href if present');
 }
 
 Welcome.prototype.updateProgress = function() {
