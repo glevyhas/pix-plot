@@ -1166,10 +1166,10 @@ Selector.prototype.onMouseUp = function(e) {
       e.target.className == 'modal-content' ||
       e.target.className == 'backdrop' ||
       e.target.id == 'selected-image-container') {
+    window.location.href = '#';
     return this.closeModal();
   }
-  // if mouseup isn't in the last mouse position,
-  // user is dragging
+  // if mouseup isn't in the last mouse position, user is dragging
   // if the click wasn't on the canvas, quit
   if (e.clientX !== this.mouseDown.x ||
       e.clientY !== this.mouseDown.y || // m.down and m.up != means user is dragging
@@ -1193,6 +1193,7 @@ Selector.prototype.showModal = function(cellIdx) {
       deeplink = find('#eye-icon'),
       download = find('#download-icon'),
       filename = data.json.images[cellIdx]; // filename for the clicked image
+  window.location.href = '#' + filename; // store filename in window
 
   function showModal(data) {
     // set the clicked image as the source for the modal
@@ -1858,6 +1859,7 @@ function scale(arr) {
 * Main
 **/
 
+window.location.href = '#';
 var welcome = new Welcome();
 var webgl = new Webgl();
 var config = new Config();
