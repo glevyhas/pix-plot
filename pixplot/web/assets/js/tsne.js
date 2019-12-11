@@ -1741,7 +1741,11 @@ function get(url, handleSuccess, handleErr) {
 **/
 
 function getMinCellZ() {
-  return Math.min.apply(Math, data.cells.map(function(d) {return d.z;}))
+  var min = Number.POSITIVE_INFINITY;
+  for (var i=0; i<data.cells.length; i++) {
+    min = Math.min(data.cells[i].z, min);
+  }
+  return min;
 }
 
 /**
