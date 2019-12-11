@@ -176,6 +176,10 @@ def filter_images(**kwargs):
 def get_image_paths(**kwargs):
   # handle case where --images points to iiif manifest
   image_paths = None
+  if not kwargs['images']:
+    print('\nError: please provide an images argument, e.g.:')
+    print('pixplot --images "cat_pictures/*.jpg"\n')
+    sys.exit()
   if os.path.exists(kwargs['images']):
     with open(kwargs['images']) as f:
       f = [i.strip() for i in f.read().split('\n') if i.strip()]
@@ -186,14 +190,14 @@ def get_image_paths(**kwargs):
   if not image_paths:
     image_paths = sorted(glob2.glob(kwargs['images']))
   if not image_paths:
-    print('\nError: No input images were found. Please check your --images glob')
+    print('\nError: No input images were found. Please check your --images glob\n')
     sys.exit()
   # validate the provided images are > n clusters requested
   n_images = len(image_paths)
   n_clusters = kwargs['n_clusters']
   if n_images <= n_clusters:
     print('\nError: n_clusters must be < input image count ')
-    print('Found {} images and {} clusters were requested'.format(n_images, n_clusters))
+    print('Found {} images and {} clusters were requested\n'.format(n_images, n_clusters))
     sys.exit()
   return image_paths
 
@@ -408,19 +412,21 @@ def copy_web_assets(**kwargs):
       f = f.read().replace('VERSION_NUMBER', get_version())
       with open(path, 'w') as out:
         out.write(f)
+  if kwargs['copy_web_only']: sys.exit()
 
 
 def parse():
   '''Read command line args and begin data processing'''
   description = 'Generate the data required to create a PixPlot viewer'
   parser = argparse.ArgumentParser(description=description, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-  parser.add_argument('--images', type=str, default=config['images'], help='path to a glob of images to process', required=True)
+  parser.add_argument('--images', type=str, default=config['images'], help='path to a glob of images to process', required=False)
   parser.add_argument('--metadata', type=str, default=config['metadata'], help='path to a csv or glob of JSON files with image metadata (see readme for format)', required=False)
   parser.add_argument('--use_cache', type=bool, default=config['use_cache'], help='given inputs identical to prior inputs, load outputs from cache', required=False)
   parser.add_argument('--use_gzip', type=bool, default=config['use_gzip'], help='save outputs with gzip compression', required=False)
   parser.add_argument('--encoding', type=str, default=config['encoding'], help='the encoding of input metadata', required=False)
   parser.add_argument('--n_clusters', type=int, default=config['n_clusters'], help='the number of clusters to identify', required=False)
   parser.add_argument('--out_dir', type=str, default=config['out_dir'], help='the directory to which outputs will be saved', required=False)
+  parser.add_argument('--copy_web_only', action='store_true')
   config.update(vars(parser.parse_args()))
   process_images(**config)
 
