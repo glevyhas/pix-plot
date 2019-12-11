@@ -1,3 +1,5 @@
+// version: VERSION_NUMBER
+
 /**
 *
 * General structure of this viewer

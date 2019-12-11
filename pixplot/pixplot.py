@@ -121,7 +121,7 @@ def get_manifest(**kwargs):
     'images': [clean_filename(i) for i in kwargs['image_paths']],
     'metadata': True if kwargs['metadata'] else False,
     'creation_date': datetime.datetime.today().strftime('%d-%B-%Y-%H:%M:%S'),
-    'version': pkg_resources.get_distribution('pixplot').version,
+    'version': get_version(),
   }
   # compute centroids for each layout and add to manifest
   for label, position_path in get_positions(**kwargs).items():
@@ -399,8 +399,16 @@ def hash(**kwargs):
 
 def copy_web_assets(**kwargs):
   '''Copy the /web directory from the pixplot source to the users cwd'''
-  path = join(dirname(realpath(__file__)), 'web')
-  copy_tree(path, join(os.getcwd(), kwargs['out_dir']))
+  src = join(dirname(realpath(__file__)), 'web')
+  dest = join(os.getcwd(), kwargs['out_dir'])
+  copy_tree(src, dest)
+  # write version numbers into output
+  for i in ['index.html', os.path.join('assets', 'js', 'tsne.js')]:
+    path = os.path.join(dest, i)
+    with open(path, 'r') as f:
+      f = f.read().replace('VERSION_NUMBER', get_version())
+      with open(path, 'w') as out:
+        out.write(f)
 
 
 def parse():
@@ -452,6 +460,10 @@ class Image:
     if center: b[ pad_lr:pad_lr+w, pad_tb:pad_tb+h, : ] = a
     else: b[:w,:h,:] = a
     return b
+
+def get_version():
+  '''Return the version of pixplot installed'''
+  return pkg_resources.get_distribution('pixplot').version
 
 if __name__ == '__main__':
   parse()
