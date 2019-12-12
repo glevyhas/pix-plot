@@ -372,8 +372,8 @@ def add_z_dim(X, val=0.001):
 
 
 def write_json(path, obj, precision=4, sub_dir='layouts', **kwargs):
-  '''Write json object `o` to disk and return the path to that file'''
-  obj = minmax_scale(obj)
+  '''Write json object `obj` to disk and return the path to that file'''
+  obj = (minmax_scale(obj)-0.5)*2 # scale -1:1
   out_dir, filename = os.path.split(path)
   if not os.path.exists(out_dir): os.makedirs(out_dir)
   if precision: obj = [[round(float(j), precision) for j in i] for i in obj]
