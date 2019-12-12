@@ -66,6 +66,13 @@ select:disabled {
   opacity: 0.4;
 }
 
+#pointsize-range-input {
+  width: 100px;
+  position: relative;
+  top: 3px;
+  margin-right: 10px;
+}
+
 #canvas-container {
   position: absolute;
   top: 60px;
@@ -116,8 +123,8 @@ select:disabled {
   height: 40px;
 }
 
-.app-name,
-.tagline {
+#app-name,
+#tagline {
   display: inline-block;
   height: 100%;
   vertical-align: top;
@@ -126,19 +133,22 @@ select:disabled {
   font-weight: 300;
 }
 
-.app-name {
+#app-name {
   background: #444;
   color: #fff;
   font-size: 1.3em;
   letter-spacing: 0.1em;
 }
 
-.tagline {
+#tagline {
   color: #999;
   font-size: 1em;
   padding-top: 20px;
   font-weight: 400;
   letter-spacing: .025em;
+  position: absolute;
+  z-index: 10;
+  background-color: #333;
 }
 
 @media(max-width: 335px) {
@@ -157,12 +167,14 @@ select:disabled {
 * Header Controls
 **/
 
-.header-controls {
+#header-controls {
   display: inline-block;
   position: absolute;
   right: 20px;
   top: 18px;
   min-width: 280px;
+  opacity: 0;
+  transition: opacity 0.5s;
 }
 
 .filter-icons {

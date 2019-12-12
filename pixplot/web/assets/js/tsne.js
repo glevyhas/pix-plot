@@ -27,7 +27,6 @@
 * data:
 *   url: name of the directory where input data lives
 *   file: name of the file with positional data
-*   spread: spread of data along each axis
 * size:
 *   cell: height & width of each image (in px) within the small atlas
 *   lodCell: height & width of each image (in px) within the larger atlas
@@ -51,8 +50,6 @@ function Config() {
   this.data = {
     dir: 'data',
     file: 'manifest.json',
-    spread: 4000,
-    pointScalar: 12,
   }
   this.size = {
     cell: 32, // height of each cell in atlas
@@ -65,7 +62,7 @@ function Config() {
     minZ: 250,
     radius: 2,
     framesBetweenUpdates: 40,
-    gridSpacing: 100,
+    gridSpacing: 0.25,
   }
   this.transitions = {
     duration: 1.5,
@@ -117,6 +114,9 @@ Data.prototype.load = function() {
     config.size.cell = json.config.sizes.cell;
     config.size.atlas = json.config.sizes.atlas;
     config.size.lodCell = json.config.sizes.lod;
+    // set the point scalar as a function of the number of cells
+    var elem = document.querySelector('#pointsize-range-input');
+    elem.value = (json.images.length * -0.00000005) + 0.01;
     // set number of atlases and textures
     this.atlasCount = json.atlas.count;
     this.textureCount = Math.ceil(json.atlas.count / config.atlasesPerTex);
@@ -338,8 +338,8 @@ function Cell(obj) {
   this.idx = obj.idx; // idx among all cells
   this.texIdx = this.getIndexOfTexture();
   this.gridCoords = {}; // x, y pos of the cell in the lod grid (set by lod)
-  this.x = obj.x * config.data.spread;
-  this.y = obj.y * config.data.spread;
+  this.x = obj.x;
+  this.y = obj.y;
   this.z = obj.z || this.getZ();
   this.tx = this.x; // target x position
   this.ty = this.y; // target y position
@@ -353,7 +353,7 @@ function Cell(obj) {
 
 Cell.prototype.getZ = function() {
   return layout.selected == 'umap'
-    ? (this.idx % config.data.spread*0.01)
+    ? (this.idx * 0.0001 % 0.05)
     : 0
 }
 
@@ -510,7 +510,7 @@ Layout.prototype.render = function() {
   select.addEventListener('change', function(e) {
     this.set(e.target.value);
   }.bind(this))
-  document.querySelector('.header-controls').appendChild(select);
+  document.querySelector('#header-controls').appendChild(select);
   this.elem = select;
 }
 
@@ -536,8 +536,8 @@ Layout.prototype.transition = function(layoutKey) {
   get(getPath(data.layouts[layoutKey].positions), function(pos) {
     // set the target locations of each point
     for (var i=0; i<data.cells.length; i++) {
-      data.cells[i].tx = pos[i][0] * config.data.spread;
-      data.cells[i].ty = pos[i][1] * config.data.spread;
+      data.cells[i].tx = pos[i][0];
+      data.cells[i].ty = pos[i][1];
       data.cells[i].tz = pos[i][2] || data.cells[i].getZ();
     }
     // get the draw call indices of each cell
@@ -642,7 +642,7 @@ World.prototype.getScene = function() {
 World.prototype.getCamera = function() {
   var canvasSize = getCanvasSize();
   var aspectRatio = canvasSize.w /canvasSize.h;
-  return new THREE.PerspectiveCamera(75, aspectRatio, 0.1, 10000);
+  return new THREE.PerspectiveCamera(75, aspectRatio, 0.01, 10);
 }
 
 /**
@@ -680,6 +680,7 @@ World.prototype.getControls = function() {
 World.prototype.addEventListeners = function() {
   this.addResizeListener();
   this.addLostContextListener();
+  this.addScalarChangeListener();
 }
 
 /**
@@ -713,6 +714,14 @@ World.prototype.setPointScalar = function() {
   for (var i=0; i<meshes.length; i++) {
     meshes[i].material.uniforms.pointScale.value = scalar;
   }
+}
+
+// if the user asks for a new point size rerender scene
+World.prototype.addScalarChangeListener = function() {
+  var elem = document.querySelector('#pointsize-range-input');
+  elem.addEventListener('change', function() {
+    this.setPointScalar();
+  }.bind(this))
 }
 
 /**
@@ -908,8 +917,9 @@ World.prototype.getTexture = function(canvas) {
 
 // Return an int specifying the scalar uniform for points
 World.prototype.getPointScale = function() {
-  var canvasSize = getCanvasSize()
-  return window.devicePixelRatio * canvasSize.h * config.data.pointScalar;
+  var canvasSize = getCanvasSize(),
+      scalar = parseFloat(document.querySelector('#pointsize-range-input').value);
+  return window.devicePixelRatio * canvasSize.h * scalar;
 }
 
 /**
@@ -1096,7 +1106,7 @@ World.prototype.getInitialLocation = function() {
   return {
     x: this.center.x,
     y: this.center.y,
-    z: config.data.spread,
+    z: 1,
   }
 }
 
@@ -1314,8 +1324,8 @@ function LOD() {
   this.grid = {
     coords: {}, // set by LOD.indexCells();
     size: {
-      x: config.data.spread / config.lod.gridSpacing,
-      y: config.data.spread / config.lod.gridSpacing,
+      x: config.lod.gridSpacing,
+      y: config.lod.gridSpacing,
     },
   }
 }
@@ -1575,6 +1585,7 @@ Welcome.prototype.startWorld = function() {
     selector.init();
     setTimeout(function() {
       document.querySelector('#loader-scene').classList += 'hidden';
+      document.querySelector('#header-controls').style.opacity = 1;
       world.state.displayed = true;
     }.bind(this), 50);
   }.bind(this))
@@ -1671,7 +1682,7 @@ Hotspots.prototype.init = function() {
         world.flyTo({
           x: cell.x,
           y: cell.y,
-          z: cell.z + 100,
+          z: cell.z + 0.1,
         })
       }.bind(this, i))
     }

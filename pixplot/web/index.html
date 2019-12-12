@@ -215,10 +215,11 @@
     <!-- Header -->
     <header class='header'>
       <img class='logo' src='assets/images/dhlab-logo.svg' alt='DHLab logo' />
-      <div class='app-name'>PixPlot</div>
-      <div class='tagline'>Image fields in a Local Collection</div>
-      <div class='header-controls'>
+      <div id='app-name'>PixPlot</div>
+      <div id='tagline'>Image fields in a Local Collection</div>
+      <div id='header-controls'>
         <div class='filter-icons' id='filters'></div>
+        <input id='pointsize-range-input' min='0' max='0.015' value='0' step='0.0001' type='range' />
       </div>
     </header>
     <!-- Loader -->
