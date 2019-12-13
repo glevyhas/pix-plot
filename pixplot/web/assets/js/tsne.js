@@ -1,4 +1,4 @@
-// version: VERSION_NUMBER
+// version: 0.0.41
 
 /**
 *
@@ -33,14 +33,7 @@
 *   atlas: height & width of each small atlas (in px)
 *   texture: height & width of each texture (in px)
 *   lodTexture: height & width of the large (detail) texture
-* lod:
-*   minZ: the minimum z dimension value for which we'll load detailed images
-*   radius: distance from user's cursor that we'll search in the level of
-*     detail (LOD) grid for images that need higher resolution textures loaded
-*   framesBetweenUpdates: number of frames to wait between LOD updates
-*   gridSpacing: the size of each unit in the LOD grid. Bigger means that more
-*     distant images will be loaded when a user is near a particular location
-* transition:
+ transition:
 *   duration: number of seconds each layout transition should take
 *   ease: TweenLite ease config values for transitions
 * atlasesPerTex: number of atlases to include in each texture
@@ -58,20 +51,14 @@ function Config() {
     texture: webgl.limits.textureSize,
     lodTexture: 2048,
   }
-  this.lod = {
-    minZ: 250,
-    radius: 2,
-    framesBetweenUpdates: 40,
-    gridSpacing: 0.25,
-  }
   this.transitions = {
-    duration: 1.5,
+    duration: 2.5,
     ease: {
       value: 1,
       ease: Power2.easeInOut,
     }
   }
-  this.atlasesPerTex = (this.size.texture / this.size.atlas)**2;
+  this.atlasesPerTex = (this.size.texture/this.size.atlas)**2;
 }
 
 /**
@@ -681,6 +668,7 @@ World.prototype.addEventListeners = function() {
   this.addResizeListener();
   this.addLostContextListener();
   this.addScalarChangeListener();
+  this.addVisibilityChangeListener();
 }
 
 /**
@@ -724,9 +712,15 @@ World.prototype.addScalarChangeListener = function() {
   }.bind(this))
 }
 
-/**
-* Lost context event listener
-**/
+// if the user changes tabs, trigger resize to resolve Chrome canvas bug
+World.prototype.addVisibilityChangeListener = function() {
+  document.addEventListener('visibilitychange', function() {
+    this.renderer.domElement.width = this.renderer.domElement.width + 1;
+    setTimeout(function() {
+      this.renderer.domElement.width = this.renderer.domElement.width - 1;
+    }.bind(this), 50);
+  }.bind(this))
+}
 
 // listen for loss of webgl context; to manually lose context:
 // world.renderer.context.getExtension('WEBGL_lose_context').loseContext();
@@ -1306,51 +1300,46 @@ Selector.prototype.select = function(obj) {
 **/
 
 function LOD() {
-  this.cellIdxToImage = {}; // map from cell idx to loaded image data (cache)
-  this.tex = this.getCanvas(config.size.lodTexture); // texture to which all images will be written
-  this.cell = this.getCanvas(config.size.lodCell); // small canvas for drawing images to be transfered to tex
-  this.gridPos = { x: null, y: null }; // grid coords of current camera position
-  this.cellSizeScalar = config.size.lodCell / config.size.cell;
+  this.tex = this.getCanvas(config.size.lodTexture); // lod high res texture
+  this.cellIdxToImage = {}; // image cache mapping cell idx to loaded image data
+  this.grid = { coords: {}, }; // set by this.indexCells();
+  this.minZ = 0.5; // minimum zoom level to update textures
   this.state = {
-    loadQueue: [],
-    neighborsRequested: false,
-    openCoords: this.getOpenTexCoords(),
-    gridPosToCoords: {},
-    cellIdxToCoords: {},
-    cellsToActivate: [],
-    frame: 0,
-    run: true,
+    openCoords: this.getAllTexCoords(), // array of unused x,y lod tex offsets
+    camPos: { x: null, y: null }, // grid coords of current camera position
+    neighborsRequested: 0,
+    gridPosToCoords: {}, // map from a x.y grid position to cell indices and tex offsets at that grid position
+    cellIdxToCoords: {}, // map from a cell idx to that cell's x, y offsets in lod texture
+    cellsToActivate: [], // list of cells cached in this.cellIdxToImage and ready to be added to lod texture
+    fetchQueue: [], // list of images that need to be fetched and cached
+    frame: 0, // lod's current frame number, used to call lod events every n frames
+    radius: 3, // radius of grid to search for cells to activate
+    run: true, // bool indicating whether to use the lod mechanism
   };
-  this.grid = {
-    coords: {}, // set by LOD.indexCells();
-    size: {
-      x: config.lod.gridSpacing,
-      y: config.lod.gridSpacing,
-    },
-  }
 }
 
+/**
+* LOD Static Methods
+**/
+
 LOD.prototype.getCanvas = function(size) {
-  var canvas = getElem('canvas', { width: size, height: size, id: 'lod-canvas', }),
-      texture = world.getTexture(canvas);
+  var canvas = getElem('canvas', {width: size, height: size, id: 'lod-canvas'});
   return {
     canvas: canvas,
     ctx: canvas.getContext('2d'),
-    texture: texture,
+    texture: world.getTexture(canvas),
   }
 }
 
-// initialize the array of LOD tex coordinates available for writing
-LOD.prototype.getOpenTexCoords = function() {
-  var perDimension = config.size.lodTexture / config.size.lodCell,
-      openCoords = [],
-      s = config.size.lodCell;
-  for (var y=0; y<perDimension; y++) {
-    for (var x=0; x<perDimension; x++) {
-      openCoords.push({ x: x*s, y: y*s, });
+// create array of x,y texture offsets in lod texture open for writing
+LOD.prototype.getAllTexCoords = function() {
+  var coords = [];
+  for (var y=0; y<config.size.lodTexture/config.size.lodCell; y++) {
+    for (var x=0; x<config.size.lodTexture/config.size.lodCell; x++) {
+      coords.push({x: x*config.size.lodCell, y: y*config.size.lodCell});
     }
   }
-  return openCoords;
+  return coords;
 }
 
 // add all cells to a quantized LOD grid
@@ -1368,93 +1357,135 @@ LOD.prototype.indexCells = function() {
 }
 
 // given an object with {x, y, z} attributes, return the object's coords in grid
-LOD.prototype.toGridCoords = function(obj) {
+LOD.prototype.toGridCoords = function(pos) {
+  var domain = data.boundingBox;
+  // determine point's position as percent of each axis size 0:1
+  var percent = {
+    x: (pos.x-domain.x.min)/(domain.x.max-domain.x.min),
+    y: (pos.y-domain.y.min)/(domain.y.max-domain.y.min),
+  };
+  // cut each axis into n buckets per axis and determine point's bucket indices
+  var bucketSize = {
+    x: 1/100,
+    y: 1/100,
+  };
   return {
-    x: Math.floor(obj.x / lod.grid.size.x),
-    y: Math.floor(obj.y / lod.grid.size.y),
-  }
+    x: Math.floor(percent.x / bucketSize.x),
+    y: Math.floor(percent.y / bucketSize.y),
+  };
 }
+
+/**
+* LOD Dynamic Methods
+**/
 
 // load high-res images nearest the camera; called every frame by world.render
 LOD.prototype.update = function() {
   if (!this.state.run || world.state.flying) return;
   this.updateGridPosition();
-  this.loadNextImage();
-  this.tick();
+  this.fetchNextImage();
+  if (++this.state.frame % 40 == 0) {
+    world.camera.position.z < this.minZ
+      ? this.addCellsToLodTexture()
+      : this.unload();
+  }
 }
 
 LOD.prototype.updateGridPosition = function() {
   // determine the current grid position of the user / camera
   var camPos = this.toGridCoords(world.camera.position);
   // user is in a new grid position; unload old images and load new
-  if (this.gridPos.x !== camPos.x || this.gridPos.y !== camPos.y) {
-    this.gridPos = camPos;
-    this.state.neighborsRequested = false;
+  if (this.state.camPos.x !== camPos.x || this.state.camPos.y !== camPos.y) {
+    this.state.radius = 3;
+    this.state.camPos = camPos;
+    this.state.neighborsRequested = 0;
     this.unload();
-    if (world.camera.position.z < config.lod.minZ) {
-      this.state.loadQueue = getNested(this.grid.coords, [camPos.x, camPos.y], []);
+    if (world.camera.position.z < this.minZ) {
+      this.state.fetchQueue = getNested(this.grid.coords, [camPos.x, camPos.y], []);
     }
   }
 }
 
-// if there's a loadQueue, load the next image, else load neighbors
-// nb: don't mutate loadQueue, as that deletes items from this.grid.coords
-LOD.prototype.loadNextImage = function() {
-  var cellIdx = this.state.loadQueue[0];
-  this.state.loadQueue = this.state.loadQueue.slice(1);
-  if (Number.isInteger(cellIdx)) this.loadImage(cellIdx);
-  else if (!this.state.neighborsRequested) this.loadGridNeighbors();
-}
-
-// update the frame number and conditionally activate loaded images
-LOD.prototype.tick = function() {
-  if (++this.state.frame % config.lod.framesBetweenUpdates != 0) return;
-  world.camera.position.z < config.lod.minZ
-    ? this.addCellsToLodTexture()
-    : this.unload();
-}
-
-// load a high-res image for cell at index `cellIdx`
-LOD.prototype.loadImage = function(cellIdx) {
-  if (this.cellIdxToImage[cellIdx]) {
-    if (!this.state.cellIdxToCoords[cellIdx]) {
-      this.state.cellsToActivate = this.state.cellsToActivate.concat(cellIdx);
-    }
-  } else {
-    var image = new Image;
-    image.onload = function(cellIdx) {
-      this.cellIdxToImage[cellIdx] = image;
+// if there's a fetchQueue, fetch the next image, else fetch neighbors
+// nb: don't mutate fetchQueue, as that deletes items from this.grid.coords
+LOD.prototype.fetchNextImage = function() {
+  var cellIdx = this.state.fetchQueue[0];
+  this.state.fetchQueue = this.state.fetchQueue.slice(1);
+  // if there was a cell index in the load queue, load that next image
+  if (Number.isInteger(cellIdx)) {
+    // if this image is in the cache
+    if (this.cellIdxToImage[cellIdx]) {
+      // if this image isn't already activated, add it to the list to activate
       if (!this.state.cellIdxToCoords[cellIdx]) {
         this.state.cellsToActivate = this.state.cellsToActivate.concat(cellIdx);
       }
-    }.bind(this, cellIdx);
-    image.src = config.data.dir + '/thumbs/' + data.json.images[cellIdx];
+    // this image isn't in the cache, so load and cache it
+    } else {
+      var image = new Image;
+      image.onload = function(cellIdx) {
+        this.cellIdxToImage[cellIdx] = image;
+        if (!this.state.cellIdxToCoords[cellIdx]) {
+          this.state.cellsToActivate = this.state.cellsToActivate.concat(cellIdx);
+        }
+      }.bind(this, cellIdx);
+      image.src = config.data.dir + '/thumbs/' + data.json.images[cellIdx];
+    };
+  // there was no image to fetch, so add neighbors to fetch queue if possible
+  } else if (this.state.neighborsRequested < this.state.radius) {
+    this.state.neighborsRequested = this.state.radius;
+    for (var x=-this.state.radius*2; x<=this.state.radius*2; x++) {
+      for (var y=-this.state.radius; y<=this.state.radius; y++) {
+        var coords = [this.state.camPos.x+x, this.state.camPos.y+y],
+            cellIndices = getNested(this.grid.coords, coords, []).filter(function(cellIdx) {
+            return !this.state.cellIdxToCoords[cellIdx];
+          }.bind(this))
+        this.state.fetchQueue = this.state.fetchQueue.concat(cellIndices);
+      }
+    }
+    if (this.state.openCoords) {
+      this.state.radius += 1;
+    }
   }
 }
 
+/**
+* Add cells to LOD
+**/
+
 // add each cell in cellsToActivate to the LOD texture
-LOD.prototype.addCellsToLodTexture = function(cell) {
+LOD.prototype.addCellsToLodTexture = function() {
   var textureNeedsUpdate = false;
   // find and store the coords where each img will be stored in lod texture
-  this.state.cellsToActivate.forEach(function(cellIdx) {
+  for (var i=0; i<this.state.cellsToActivate.length; i++) {
+    var cellIdx = this.state.cellsToActivate[0];
+    this.state.cellsToActivate = this.state.cellsToActivate.slice(1);
     // check to ensure cell is sufficiently close to camera
     var cell = data.cells[cellIdx],
-        xDelta = Math.abs(cell.gridCoords.x - this.gridPos.x),
-        yDelta = Math.abs(cell.gridCoords.y - this.gridPos.y);
+        xDelta = Math.abs(cell.gridCoords.x - this.state.camPos.x),
+        yDelta = Math.abs(cell.gridCoords.y - this.state.camPos.y);
     // don't load the cell if it's already been loaded
-    if (this.state.cellIdxToCoords[cellIdx]) return;
+    if (this.state.cellIdxToCoords[cellIdx]) continue;
     // don't load the cell if it's too far from the camera
-    if ((xDelta > config.lod.radius * 2) || (yDelta > config.lod.radius)) return;
+    if ((xDelta > (this.state.radius * 2)) || (yDelta > this.state.radius)) continue;
     // return if there are no open coordinates in the LOD texture
-    var coords = this.state.openCoords.shift();
+    var coords = this.state.openCoords[0];
+    this.state.openCoords = this.state.openCoords.slice(1);
     // if (!coords), the LOD texture is full
     if (coords) {
       textureNeedsUpdate = true;
-      this.addCellToLodTexture(cell, coords);
+      // gridKey is a combination of the cell's x and y positions in the grid
+      var gridKey = cell.gridCoords.x + '.' + cell.gridCoords.y;
+      // initialize this grid key in the grid position to coords map
+      if (!this.state.gridPosToCoords[gridKey]) this.state.gridPosToCoords[gridKey] = [];
+      // add the cell data to the data stores
+      this.state.gridPosToCoords[gridKey].push(Object.assign({}, coords, {cellIdx: cell.idx}));
+      this.state.cellIdxToCoords[cell.idx] = coords;
+      // draw the cell's image in a new canvas
+      this.tex.ctx.clearRect(coords.x, coords.y, config.size.lodCell, config.size.lodCell);
+      this.tex.ctx.drawImage(this.cellIdxToImage[cell.idx], coords.x, coords.y);
+      cell.activate();
     }
-  }.bind(this))
-  // indicate we've loaded all cells
-  this.state.cellsToActivate = [];
+  }
   // only update the texture and attributes if the lod tex changed
   if (textureNeedsUpdate) {
     this.tex.texture.needsUpdate = true;
@@ -1462,42 +1493,9 @@ LOD.prototype.addCellsToLodTexture = function(cell) {
   }
 }
 
-// add a new cell to the LOD texture at position `coords`
-LOD.prototype.addCellToLodTexture = function(cell, coords) {
-  var gridKey = cell.gridCoords.x + '.' + cell.gridCoords.y,
-      gridStore = this.state.gridPosToCoords;
-  // initialize this grid key in the grid position to coords map
-  if (!gridStore[gridKey]) gridStore[gridKey] = [];
-  // store the cell's index with its coords data
-  coords.cellIdx = cell.idx;
-  // add the cell data to the data stores
-  this.state.gridPosToCoords[gridKey].push(coords);
-  this.state.cellIdxToCoords[cell.idx] = coords;
-  // draw the cell's image in a new canvas
-  this.tex.ctx.clearRect(coords.x, coords.y, config.size.lodCell, config.size.lodCell);
-  this.tex.ctx.drawImage(this.cellIdxToImage[cell.idx], coords.x, coords.y);
-  cell.activate();
-}
-
-// load the next nearest grid of cell images
-LOD.prototype.loadGridNeighbors = function() {
-  this.state.neighborsRequested = true;
-  for (var x=-config.lod.radius*2; x<=config.lod.radius*2; x++) {
-    for (var y=-config.lod.radius; y<=config.lod.radius; y++) {
-      var coords = [
-        this.gridPos.x + x,
-        this.gridPos.y + y,
-      ];
-      var cellIndices = getNested(this.grid.coords, coords, []);
-      if (cellIndices) {
-        var cellIndices = cellIndices.filter(function(cellIdx) {
-          return !this.state.cellIdxToCoords[cellIdx];
-        }.bind(this))
-        this.state.loadQueue = this.state.loadQueue.concat(cellIndices);
-      }
-    }
-  }
-}
+/**
+* Remove cells from LOD
+**/
 
 // free up the high-res textures for images now distant from the camera
 LOD.prototype.unload = function() {
@@ -1505,9 +1503,9 @@ LOD.prototype.unload = function() {
     var split = gridPos.split('.'),
         x = parseInt(split[0]),
         y = parseInt(split[1]),
-        xDelta = Math.abs(this.gridPos.x - x),
-        yDelta = Math.abs(this.gridPos.y - y);
-    if ((xDelta + yDelta) > config.lod.radius) this.unloadGridPos(gridPos)
+        xDelta = Math.abs(this.state.camPos.x - x),
+        yDelta = Math.abs(this.state.camPos.y - y);
+    if ((xDelta + yDelta) > this.state.radius) this.unloadGridPos(gridPos)
   }.bind(this));
 }
 
@@ -1517,6 +1515,7 @@ LOD.prototype.unloadGridPos = function(gridPos) {
   // delete unloaded cell keys in the cellIdxToCoords map
   toUnload.forEach(function(coords) {
     try {
+      // deactivate the cell to update buffers and free this cell's spot
       data.cells[coords.cellIdx].deactivate();
       delete this.state.cellIdxToCoords[coords.cellIdx];
     } catch(err) {}
@@ -1530,7 +1529,7 @@ LOD.prototype.unloadGridPos = function(gridPos) {
 // clear the LOD state entirely
 LOD.prototype.clear = function() {
   Object.keys(this.state.gridPosToCoords).forEach(this.unloadGridPos.bind(this));
-  this.gridPos = { x: Number.POSITIVE_INFINITY, y: Number.POSITIVE_INFINITY };
+  this.state.camPos = { x: Number.POSITIVE_INFINITY, y: Number.POSITIVE_INFINITY };
   world.attrsNeedUpdate(['offset', 'textureIndex']);
 }
 
