@@ -1092,6 +1092,16 @@ World.prototype.flyTo = function(obj) {
   });
 }
 
+// fly to the cell at index position `idx`
+World.prototype.flyToCellIdx = function(idx) {
+  var cell = data.cells[idx];
+  world.flyTo({
+    x: cell.x,
+    y: cell.y,
+    z: cell.z + 0.125,
+  })
+}
+
 /**
 * Get the initial camera location
 **/
@@ -1192,7 +1202,10 @@ Selector.prototype.onMouseUp = function(e) {
       e.target.id !== 'pixplot-canvas') { // whether the click hit the gl canvas
     return;
   }
-  this.showModal(cellIdx);
+  // zoom in if the camera is far away, else show the modal
+  world.camera.position.z > 0.4
+    ? world.flyToCellIdx(cellIdx)
+    : this.showModal(cellIdx);
 }
 
 // called via this.onClick; shows the full-size selected image
@@ -1677,12 +1690,7 @@ Hotspots.prototype.init = function() {
     var hotspots = findAll('.hotspot');
     for (var i=0; i<hotspots.length; i++) {
       hotspots[i].addEventListener('click', function(idx) {
-        var cell = data.cells[data.hotspots.json[idx].idx];
-        world.flyTo({
-          x: cell.x,
-          y: cell.y,
-          z: cell.z + 0.1,
-        })
+        world.flyToCellIdx(data.hotspots.json[idx].idx);
       }.bind(this, i))
     }
   }.bind(this))
