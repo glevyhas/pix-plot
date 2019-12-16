@@ -508,9 +508,10 @@ Layout.prototype.set = function(layoutKey) {
   world.state.transitioning = true;
   this.elem.disabled = true;
   // zoom the user out if they're zoomed in
-  if (world.camera.position.z < 2500) {
+  var initialCameraPosition = world.getInitialLocation();
+  if (world.camera.position.z < initialCameraPosition.z) {
     var delay = config.transitions.duration * 1000;
-    world.flyTo(world.getInitialLocation());
+    world.flyTo(initialCameraPosition);
   } else {
     delay = 0;
   }
