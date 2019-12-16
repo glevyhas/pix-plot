@@ -48,8 +48,8 @@ config = {
   'encoding': 'utf8',
   'n_clusters': 20,
   'atlas_size': 2048,
+  'cell_size': 32,
   'lod_cell_height': 128,
-  'atlas_cell_height': 32,
   'square_cells': False,
 }
 
@@ -114,7 +114,7 @@ def get_manifest(**kwargs):
     'config': {
       'sizes': {
         'atlas': kwargs['atlas_size'],
-        'cell': kwargs['atlas_cell_height'],
+        'cell': kwargs['cell_size'],
         'lod': kwargs['lod_cell_height'],
       }
     },
@@ -246,15 +246,15 @@ def get_atlas_positions(**kwargs):
     lod_data = i.resize_to_max(kwargs['lod_cell_height'])
     h,w,_ = lod_data.shape # h,w,colors in lod-cell sized image `i`
     if kwargs['square_cells']:
-      atl_data = i.resize_to_square(kwargs['atlas_cell_height'])
+      atl_data = i.resize_to_square(kwargs['cell_size'])
     else:
-      atl_data = i.resize_to_height(kwargs['atlas_cell_height'])
+      atl_data = i.resize_to_height(kwargs['cell_size'])
     _,v,_ = atl_data.shape
     appendable = False
     if x + v < kwargs['atlas_size']:
       appendable = True
-    elif y + kwargs['atlas_cell_height'] < kwargs['atlas_size']:
-      y += kwargs['atlas_cell_height']
+    elif y + kwargs['cell_size'] < kwargs['atlas_size']:
+      y += kwargs['cell_size']
       x = 0
       appendable = True
     if not appendable:
@@ -263,7 +263,7 @@ def get_atlas_positions(**kwargs):
       atlas = np.zeros((kwargs['atlas_size'], kwargs['atlas_size'], 3))
       x = 0
       y = 0
-    atlas[y:y+kwargs['atlas_cell_height'], x:x+v] = atl_data
+    atlas[y:y+kwargs['cell_size'], x:x+v] = atl_data
     atlas_positions.append({
       'idx': n, # atlas idx
       'x': x, # x offset of cell in atlas
@@ -415,20 +415,9 @@ def copy_web_assets(**kwargs):
   if kwargs['copy_web_only']: sys.exit()
 
 
-def parse():
-  '''Read command line args and begin data processing'''
-  description = 'Generate the data required to create a PixPlot viewer'
-  parser = argparse.ArgumentParser(description=description, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-  parser.add_argument('--images', type=str, default=config['images'], help='path to a glob of images to process', required=False)
-  parser.add_argument('--metadata', type=str, default=config['metadata'], help='path to a csv or glob of JSON files with image metadata (see readme for format)', required=False)
-  parser.add_argument('--use_cache', type=bool, default=config['use_cache'], help='given inputs identical to prior inputs, load outputs from cache', required=False)
-  parser.add_argument('--use_gzip', type=bool, default=config['use_gzip'], help='save outputs with gzip compression', required=False)
-  parser.add_argument('--encoding', type=str, default=config['encoding'], help='the encoding of input metadata', required=False)
-  parser.add_argument('--n_clusters', type=int, default=config['n_clusters'], help='the number of clusters to identify', required=False)
-  parser.add_argument('--out_dir', type=str, default=config['out_dir'], help='the directory to which outputs will be saved', required=False)
-  parser.add_argument('--copy_web_only', action='store_true')
-  config.update(vars(parser.parse_args()))
-  process_images(**config)
+def get_version():
+  '''Return the version of pixplot installed'''
+  return pkg_resources.get_distribution('pixplot').version
 
 
 class Image:
@@ -471,9 +460,27 @@ class Image:
     else: b[:w,:h,:] = a
     return b
 
-def get_version():
-  '''Return the version of pixplot installed'''
-  return pkg_resources.get_distribution('pixplot').version
+
+##
+# Main
+##
+
+
+def parse():
+  '''Read command line args and begin data processing'''
+  description = 'Generate the data required to create a PixPlot viewer'
+  parser = argparse.ArgumentParser(description=description, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+  parser.add_argument('--images', type=str, default=config['images'], help='path to a glob of images to process', required=False)
+  parser.add_argument('--metadata', type=str, default=config['metadata'], help='path to a csv or glob of JSON files with image metadata (see readme for format)', required=False)
+  parser.add_argument('--use_cache', type=bool, default=config['use_cache'], help='given inputs identical to prior inputs, load outputs from cache', required=False)
+  parser.add_argument('--use_gzip', type=bool, default=config['use_gzip'], help='save outputs with gzip compression', required=False)
+  parser.add_argument('--encoding', type=str, default=config['encoding'], help='the encoding of input metadata', required=False)
+  parser.add_argument('--n_clusters', type=int, default=config['n_clusters'], help='the number of clusters to identify', required=False)
+  parser.add_argument('--out_dir', type=str, default=config['out_dir'], help='the directory to which outputs will be saved', required=False)
+  parser.add_argument('--cell_size', type=int, default=config['cell_size'], help='the size of atlas cells in px', required=False)
+  parser.add_argument('--copy_web_only', action='store_true')
+  config.update(vars(parser.parse_args()))
+  process_images(**config)
 
 if __name__ == '__main__':
   parse()

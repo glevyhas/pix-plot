@@ -37,6 +37,15 @@ python -m SimpleHTTPServer 5000
 The visualization will then be available at `http://localhost:5000/output`.
 
 
+## Creating Massive Plots
+
+If you need to plot more than 100,000 images but don't have an expensive graphics card with which to visualize huge WebGL displays, you might want to specify a smaller "cell_size" parameter when building your plot. The "cell_size" argument controls how large each image is in the atlas files. Smaller values require fewer textures to be rendered, which decreases the RAM requirements to view a plot:
+
+```bash
+pixplot --images "path/to/images/*.jpg" --cell_size 10
+```
+
+
 ## Curating Automatic Hotspots
 
 By default, PixPlot uses [*K*-Means Clustering](https://en.wikipedia.org/wiki/K-means_clustering) to find twenty hotspots in the visualization.  You can adjust the number of discovered hotspots by adding ` --clusters=n` to the processing script, where `n` is set to the desired number of clusters.
