@@ -699,7 +699,8 @@ World.prototype.setPointScalar = function() {
   // handle case of drag before scene renders
   if (!this.scene || !this.scene.children.length) return;
   var scalar = this.getPointScale();
-  var meshes = this.scene.children[0].children;
+  // update the displayed and selector meshes
+  var meshes = this.scene.children[0].children.concat(selector.scene.children[0].children)
   for (var i=0; i<meshes.length; i++) {
     meshes[i].material.uniforms.pointScale.value = scalar;
   }
@@ -773,8 +774,6 @@ World.prototype.plot = function() {
     });
     material.transparent = true;
     var mesh = new THREE.Points(geometry, material);
-    selector.geometries.push(geometry);
-    selector.meshes.push(mesh);
     mesh.frustumCulled = false;
     group.add(mesh);
   }
@@ -1153,8 +1152,6 @@ function Selector() {
   this.mouse = new THREE.Vector2();
   this.mouseDown = new THREE.Vector2();
   this.tex = this.getTexture();
-  this.geometries = [];
-  this.meshes = [];
   this.modal = false;
 }
 
@@ -1223,9 +1220,8 @@ Selector.prototype.showModal = function(cellIdx) {
       download = find('#download-icon'),
       filename = data.json.images[cellIdx]; // filename for the clicked image
   window.location.href = '#' + filename; // store filename in window
-
+  // show data from the clicked image in the modal
   function showModal(data) {
-    // set the clicked image as the source for the modal
     var source = config.data.dir + '/originals/' + filename; // source for the image in the modal
     img.src = source;
     deeplink.href = data.permalink ? data.permalink : source;
@@ -1282,12 +1278,13 @@ Selector.prototype.init = function() {
   var elem = world.renderer.domElement;
   elem.addEventListener('mousedown', this.onMouseDown.bind(this));
   document.body.addEventListener('mouseup', this.onMouseUp.bind(this));
-  for (var i=0; i<this.meshes.length; i++) {
-    var mesh = this.meshes[i].clone();
-    var material = world.getShaderMaterial({useColor: true})
-    mesh.material = material;
-    this.scene.add(mesh);
+  var group = new THREE.Group();
+  for (var i=0; i<world.scene.children[0].children.length; i++) {
+    var mesh = world.scene.children[0].children[i].clone();
+    mesh.material = world.getShaderMaterial({useColor: true});
+    group.add(mesh);
   }
+  this.scene.add(group);
 }
 
 // draw an offscreen world
@@ -1630,7 +1627,7 @@ Filter.prototype.createSelect = function() {
       option = document.createElement('option');
   option.textContent = 'All Values';
   select.appendChild(option);
-
+  // format all filter options
   for (var i=0; i<this.values.length; i++) {
     var option = document.createElement('option');
     option.textContent = this.values[i].replace(/__/g, ' ');
@@ -1661,7 +1658,6 @@ Filter.prototype.filterCells = function(names) {
   names = names.reduce(function(obj, n) {
     obj[n] = true; return obj;
   }, {}); // facilitate O(1) lookups
-
   data.cells.forEach(function(cell, idx) {
     // update the buffer attributes that describe this cell to the GPU
     var meshes = world.scene.children[0],
