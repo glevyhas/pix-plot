@@ -149,7 +149,19 @@ def get_manifest(**kwargs):
 
 def filter_images(**kwargs):
   '''Main method for filtering images given user metadata (if provided)'''
-  image_paths = [i.path for i in stream_images(image_paths=get_image_paths(**kwargs))]
+  image_paths = []
+  for i in stream_images(image_paths=get_image_paths(**kwargs)):
+    # get image height and width
+    h,w = i.original.size
+    # remove images with 0 height or width
+    if (h == 0) or (w == 0):
+      print(' * skipping {} because it contains 0 height or width'.format(i.path))
+      continue
+    # remove images that are too wide for the atlas
+    if (w/h) > (kwargs['atlas_size']/kwargs['cell_size']):
+      print(' * skipping {} because it is too wide for the atlas'.format(i.path))
+      continue
+    image_paths.append(i.path)
   if not kwargs.get('metadata', False): return image_paths
   l = []
   if kwargs['metadata'].endswith('.csv'):
