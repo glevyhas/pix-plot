@@ -12,8 +12,10 @@ from distutils.dir_util import copy_tree
 from iiif_downloader import Manifest
 from sklearn.cluster import KMeans
 from keras.models import Model
+import tensorflow_hub as hub
 from hashlib import sha224
 import keras.backend as K
+import tensorflow as tf
 from umap import UMAP
 import pkg_resources
 import rasterfairy
@@ -246,14 +248,14 @@ def get_atlas_positions(**kwargs):
     lod_data = i.resize_to_max(kwargs['lod_cell_height'])
     h,w,_ = lod_data.shape # h,w,colors in lod-cell sized image `i`
     if kwargs['square_cells']:
-      atl_data = i.resize_to_square(kwargs['cell_size'])
+      cell_data = i.resize_to_square(kwargs['cell_size'])
     else:
-      atl_data = i.resize_to_height(kwargs['cell_size'])
-    _,v,_ = atl_data.shape
+      cell_data = i.resize_to_height(kwargs['cell_size'])
+    _,v,_ = cell_data.shape
     appendable = False
-    if x + v < kwargs['atlas_size']:
+    if (x + v) <= kwargs['atlas_size']:
       appendable = True
-    elif y + kwargs['cell_size'] < kwargs['atlas_size']:
+    elif (y + (2*kwargs['cell_size'])) <= kwargs['atlas_size']:
       y += kwargs['cell_size']
       x = 0
       appendable = True
@@ -263,7 +265,7 @@ def get_atlas_positions(**kwargs):
       atlas = np.zeros((kwargs['atlas_size'], kwargs['atlas_size'], 3))
       x = 0
       y = 0
-    atlas[y:y+kwargs['cell_size'], x:x+v] = atl_data
+    atlas[y:y+kwargs['cell_size'], x:x+v] = cell_data
     atlas_positions.append({
       'idx': n, # atlas idx
       'x': x, # x offset of cell in atlas
