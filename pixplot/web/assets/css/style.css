@@ -149,6 +149,7 @@ select:disabled {
   position: absolute;
   z-index: 10;
   background-color: #333;
+  white-space: nowrap;
 }
 
 @media(max-width: 335px) {
