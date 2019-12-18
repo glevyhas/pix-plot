@@ -40,6 +40,10 @@ try:
 except:
   from urllib import unquote # python 2
 
+'''
+NB: Keras Image class objects return image.size as w,h
+    Numpy array representations of images return image.shape as h,w,c
+'''
 
 config = {
   'images': None,
@@ -99,7 +103,7 @@ def write_images(**kwargs):
 
 def get_manifest(**kwargs):
   '''Create and return the base object for the manifest output file'''
-  # store each cell's size (w,h) and atlas position (idx, x offset, y offset)
+  # store each cell's size and atlas position
   atlas_ids = set([i['idx'] for i in kwargs['atlas_positions']])
   sizes = [[] for _ in atlas_ids]
   pos = [[] for _ in atlas_ids]
@@ -141,14 +145,20 @@ def filter_images(**kwargs):
   image_paths = []
   for i in stream_images(image_paths=get_image_paths(**kwargs)):
     # get image height and width
-    h,w = i.original.size
-    # remove images with 0 height or width
+    w,h = i.original.size
+    # remove images with 0 height or width when resized to lod height
     if (h == 0) or (w == 0):
       print(' * skipping {} because it contains 0 height or width'.format(i.path))
       continue
+    # remove images that have 0 height or width when resized
+    try:
+      resized = i.resize_to_max(kwargs['lod_cell_height'])
+    except ValueError:
+      print(' * skipping {} because it contains 0 height or width when resized'.format(i.path))
+      continue
     # remove images that are too wide for the atlas
     if (w/h) > (kwargs['atlas_size']/kwargs['cell_size']):
-      print(' * skipping {} because it is too wide for the atlas'.format(i.path))
+      print(' * skipping {} because its dimensions are oblong'.format(i.path))
       continue
     image_paths.append(i.path)
   # handle the case user provided no metadata
@@ -246,8 +256,6 @@ def get_atlas_positions(**kwargs):
   atlas_positions = [] # l[cell_idx] = atlas data
   atlas = np.zeros((kwargs['atlas_size'], kwargs['atlas_size'], 3))
   for idx, i in enumerate(stream_images(**kwargs)):
-    lod_data = i.resize_to_max(kwargs['lod_cell_height'])
-    h,w,_ = lod_data.shape # h,w,colors in lod-cell sized image `i`
     if kwargs['square_cells']:
       cell_data = i.resize_to_square(kwargs['cell_size'])
     else:
@@ -267,6 +275,9 @@ def get_atlas_positions(**kwargs):
       x = 0
       y = 0
     atlas[y:y+kwargs['cell_size'], x:x+v] = cell_data
+    # find the size of the cell in the lod canvas
+    lod_data = i.resize_to_max(kwargs['lod_cell_height'])
+    h,w,_ = lod_data.shape # w,h,colors in lod-cell sized image `i`
     atlas_positions.append({
       'idx': n, # atlas idx
       'x': x, # x offset of cell in atlas
@@ -468,11 +479,10 @@ class Image:
     '''
     w,h = self.original.size
     if (w/h*height) < 1:
-        resizedwidth = 1
+      resizedwidth = 1
     else:
-        resizedwidth =  int(w/h*height)
+      resizedwidth =  int(w/h*height)
     size = (resizedwidth, height)
-
     return img_to_array(self.original.resize(size))
 
   def resize_to_square(self, n, center=False):
@@ -481,12 +491,12 @@ class Image:
     if center, center the colored pixels in the square, else left align
     '''
     a = self.resize_to_max(n)
-    w,h,c = a.shape
+    h,w,c = a.shape
     pad_lr = int((n-w)/2) # left right pad
     pad_tb = int((n-h)/2) # top bottom pad
     b = np.zeros((n,n,3))
-    if center: b[ pad_lr:pad_lr+w, pad_tb:pad_tb+h, : ] = a
-    else: b[:w,:h,:] = a
+    if center: b[ pad_tb:pad_tb+h, pad_lr:pad_lr+w, : ] = a
+    else: b[:h, :w, :] = a
     return b
 
 
