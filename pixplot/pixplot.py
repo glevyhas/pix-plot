@@ -501,7 +501,7 @@ class Image:
 
 
 ##
-# Main
+# Entry Point
 ##
 
 
