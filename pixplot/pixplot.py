@@ -46,13 +46,13 @@ config = {
   'metadata': None,
   'out_dir': 'output',
   'use_cache': False,
-  'use_gzip': False,
   'encoding': 'utf8',
   'n_clusters': 20,
   'atlas_size': 2048,
   'cell_size': 32,
   'lod_cell_height': 128,
   'square_cells': False,
+  'gzip': False,
 }
 
 ##
@@ -99,12 +99,15 @@ def write_images(**kwargs):
 
 def get_manifest(**kwargs):
   '''Create and return the base object for the manifest output file'''
+  # store each cell's size (w,h) and atlas position (idx, x offset, y offset)
   atlas_ids = set([i['idx'] for i in kwargs['atlas_positions']])
   sizes = [[] for _ in atlas_ids]
   pos = [[] for _ in atlas_ids]
   for idx, i in enumerate(kwargs['atlas_positions']):
     sizes[ i['idx'] ].append([ i['w'], i['h'] ])
     pos[ i['idx'] ].append([ i['x'], i['y'] ])
+  # obtain the paths to each layout's JSON positions
+  layouts = get_positions(**kwargs)
   # create base metadata for manifest
   manifest = {
     'cell_sizes': sizes,
@@ -112,7 +115,7 @@ def get_manifest(**kwargs):
       'count': len(atlas_ids),
       'positions': pos,
     },
-    'layouts': {},
+    'layouts': layouts,
     'config': {
       'sizes': {
         'atlas': kwargs['atlas_size'],
@@ -120,30 +123,16 @@ def get_manifest(**kwargs):
         'lod': kwargs['lod_cell_height'],
       }
     },
+    'centroids': get_centroids(vecs=read_json(layouts['umap'], **kwargs), **kwargs),
     'images': [clean_filename(i) for i in kwargs['image_paths']],
     'metadata': True if kwargs['metadata'] else False,
     'creation_date': datetime.datetime.today().strftime('%d-%B-%Y-%H:%M:%S'),
     'version': get_version(),
   }
-  # compute centroids for umap layout and add to manifest
-  for label, position_path in get_positions(**kwargs).items():
-    out_dir = join(kwargs['out_dir'], 'centroids')
-    if not exists(out_dir): os.makedirs(out_dir)
-    centroid_path = join(out_dir, hash(**kwargs) + '.json')
-    if not os.path.exists(centroid_path):
-      vecs = json.load(open(position_path))
-      centroids = get_centroids(vecs=vecs, **kwargs)
-      with open(centroid_path, 'w') as out: json.dump(centroids, out)
-    manifest['layouts'][label] = {
-      'positions': '/' + position_path,
-      'centroids': '/' + centroid_path,
-    }
-  out_dir = join(kwargs['out_dir'], 'manifests')
-  if not exists(out_dir): os.makedirs(out_dir)
-  path = join(out_dir, hash(**kwargs) + '.json')
-  with open(path, 'w') as out: json.dump(manifest, out)
-  path = join(kwargs['out_dir'], 'manifest.json')
-  with open(path, 'w') as out: json.dump(manifest, out)
+  path = get_path('manifests', 'manifest', **kwargs)
+  write_json(path, manifest, **kwargs)
+  path = get_path(None, 'manifest', add_hash=False, **kwargs)
+  write_json(path, manifest, **kwargs)
   return manifest
 
 
@@ -162,13 +151,16 @@ def filter_images(**kwargs):
       print(' * skipping {} because it is too wide for the atlas'.format(i.path))
       continue
     image_paths.append(i.path)
+  # handle the case user provided no metadata
   if not kwargs.get('metadata', False): return image_paths
+  # handle csv metadata
   l = []
   if kwargs['metadata'].endswith('.csv'):
     headers = ['filename', 'tags', 'description', 'permalink']
     with open(kwargs['metadata']) as f:
       for i in list(csv.reader(f)):
         l.append({headers[j]: i[j] for j,_ in enumerate(headers)})
+  # handle json metadata
   else:
     for i in glob2.glob(kwargs['metadata']):
       with open(i) as f:
@@ -234,15 +226,12 @@ def write_metadata(**kwargs):
     tags = [j.strip() for j in i['tags'].split('|')]
     i['tags'] = tags
     for j in tags: d[ '__'.join(j.split()) ].append(filename)
-    out_path = os.path.join(out_dir, 'file', filename + '.json')
-    with open(out_path, 'w') as out: json.dump(i, out)
+    write_json(os.path.join(out_dir, 'file', filename + '.json'), i, **kwargs)
   filters = [{'filter_name': 'select', 'filter_values': list(d.keys())}]
-  with open(os.path.join(out_dir, 'filters', 'filters.json'), 'w') as out:
-    json.dump(filters, out)
+  write_json(os.path.join(out_dir, 'filters', 'filters.json'), filters, **kwargs)
   # create the options
   for i in d:
-    with open(os.path.join(out_dir, 'options', i + '.json'), 'w') as out:
-      json.dump(d[i], out)
+    write_json(os.path.join(out_dir, 'options', i + '.json'), d[i], **kwargs)
 
 
 def get_atlas_positions(**kwargs):
@@ -336,33 +325,28 @@ def vectorize_images(**kwargs):
 def get_umap_projection(**kwargs):
   '''Get the x,y positions of images passed through a umap projection'''
   print(' * creating UMAP layout')
-  out_dir = join(kwargs['out_dir'], 'layouts')
-  out_path = join(out_dir, 'umap-{}.json'.format(hash(**kwargs)))
+  out_path = get_path('layouts', 'umap', **kwargs)
   if os.path.exists(out_path): return out_path
   model = UMAP(n_neighbors=25, min_dist=0.5, metric='correlation')
   z = model.fit_transform(kwargs['vecs'])
-  path = write_json(out_path, z, **kwargs)
-  return path
+  return write_layout(out_path, z, **kwargs)
 
 
 def get_rasterfairy_projection(**kwargs):
   '''Get the x, y position of images passed through a rasterfairy projection'''
   print(' * creating rasterfairy layout')
-  out_dir = join(kwargs['out_dir'], 'layouts')
-  out_path = join(out_dir, 'rasterfairy-{}.json'.format(hash(**kwargs)))
+  out_path = get_path('layouts', 'rasterfairy', **kwargs)
   if os.path.exists(out_path): return out_path
-  umap = np.array(json.load(open(kwargs['umap'])))
+  umap = np.array(read_json(kwargs['umap'], **kwargs))
   umap = (umap + 1) * 100 # make positive and upscale
   pos = rasterfairy.transformPointCloud2D(umap)[0]
-  path = write_json(out_path, pos, **kwargs)
-  return path
+  return write_layout(out_path, pos, **kwargs)
 
 
 def get_grid_projection(**kwargs):
   '''Get the x,y positions of images in a grid projection'''
   print(' * creating grid layout')
-  out_dir = join(kwargs['out_dir'], 'layouts')
-  out_path = join(out_dir, 'grid-{}.json'.format(hash(**kwargs)))
+  out_path = get_path('layouts', 'grid', **kwargs)
   if os.path.exists(out_path): return out_path
   paths = kwargs['image_paths']
   n = math.ceil(len(paths)**(1/2))
@@ -372,8 +356,7 @@ def get_grid_projection(**kwargs):
     y = math.floor(i/n)
     l.append([x, y])
   z = np.array(l)
-  path = write_json(out_path, z, **kwargs)
-  return path
+  return write_layout(out_path, z, **kwargs)
 
 
 def add_z_dim(X, val=0.001):
@@ -385,14 +368,44 @@ def add_z_dim(X, val=0.001):
   return X.tolist()
 
 
-def write_json(path, obj, precision=4, sub_dir='layouts', **kwargs):
-  '''Write json object `obj` to disk and return the path to that file'''
+def get_path(*args, **kwargs):
+  '''Return the path to a JSON file with conditional gz extension'''
+  sub_dir, filename = args
+  out_dir = join(kwargs['out_dir'], sub_dir) if sub_dir else kwargs['out_dir']
+  if kwargs.get('add_hash', True):
+    filename += '-' + hash(**kwargs)
+  path = join(out_dir, filename + '.json')
+  return path + '.gz' if kwargs.get('gzip', False) else path
+
+
+def write_layout(path, obj, **kwargs):
+  '''Write layout json `obj` to disk and return the path to the saved file'''
   obj = (minmax_scale(obj)-0.5)*2 # scale -1:1
+  obj = [[round(float(j), 4) for j in i] for i in obj]
+  return write_json(path, obj, **kwargs)
+
+
+def write_json(path, obj, **kwargs):
+  '''Write json object `obj` to disk and return the path to that file'''
   out_dir, filename = os.path.split(path)
   if not os.path.exists(out_dir): os.makedirs(out_dir)
-  if precision: obj = [[round(float(j), precision) for j in i] for i in obj]
-  with open(path, 'w') as out: json.dump(obj, out)
-  return path
+  if kwargs.get('gzip', False):
+    with gzip.GzipFile(path, 'w') as out:
+      out.write(json.dumps(obj).encode(kwargs['encoding']))
+    return path
+  else:
+    with open(path, 'w') as out:
+      json.dump(obj, out)
+    return path
+
+
+def read_json(path, **kwargs):
+  '''Read and return the json object written by the current process at `path`'''
+  if kwargs.get('gzip', False):
+    with gzip.GzipFile(path, 'r') as f:
+      return json.loads(f.read().decode(kwargs['encoding']))
+  with open(path) as f:
+    return json.load(f)
 
 
 def get_centroids(**kwargs):
@@ -401,17 +414,19 @@ def get_centroids(**kwargs):
   centroids = z.cluster_centers_
   closest, _ = pairwise_distances_argmin_min(centroids, kwargs['vecs'])
   paths = [kwargs['image_paths'][i] for i in closest]
-  return [{
+  data = [{
     'img': clean_filename(paths[idx]),
     'label': 'Cluster {}'.format(idx+1),
     'idx': int(i),
   } for idx,i in enumerate(closest)]
+  # save the centroids to disk and return the path to the saved json
+  return write_json(get_path('centroids', 'centroid', **kwargs), data, **kwargs)
 
 
 def hash(**kwargs):
   '''Hash `args` into a string and return that string. Overloads hash()'''
   return str(uuid.uuid1())
-  return sha224( u''.join([str(i) for i in kwargs]).encode('utf8')).hexdigest()
+  return sha224( u''.join([str(i) for i in kwargs]).encode(kwargs['encoding'])).hexdigest()
 
 
 def copy_web_assets(**kwargs):
@@ -487,12 +502,12 @@ def parse():
   parser.add_argument('--images', type=str, default=config['images'], help='path to a glob of images to process', required=False)
   parser.add_argument('--metadata', type=str, default=config['metadata'], help='path to a csv or glob of JSON files with image metadata (see readme for format)', required=False)
   parser.add_argument('--use_cache', type=bool, default=config['use_cache'], help='given inputs identical to prior inputs, load outputs from cache', required=False)
-  parser.add_argument('--use_gzip', type=bool, default=config['use_gzip'], help='save outputs with gzip compression', required=False)
   parser.add_argument('--encoding', type=str, default=config['encoding'], help='the encoding of input metadata', required=False)
   parser.add_argument('--n_clusters', type=int, default=config['n_clusters'], help='the number of clusters to identify', required=False)
   parser.add_argument('--out_dir', type=str, default=config['out_dir'], help='the directory to which outputs will be saved', required=False)
   parser.add_argument('--cell_size', type=int, default=config['cell_size'], help='the size of atlas cells in px', required=False)
-  parser.add_argument('--copy_web_only', action='store_true')
+  parser.add_argument('--copy_web_only', action='store_true', help='update ./output/web without reprocessing data')
+  parser.add_argument('--gzip', action='store_true', help='save outputs with gzip compression')
   config.update(vars(parser.parse_args()))
   process_images(**config)
 

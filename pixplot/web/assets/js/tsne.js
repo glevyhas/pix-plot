@@ -27,6 +27,7 @@
 * data:
 *   url: name of the directory where input data lives
 *   file: name of the file with positional data
+*   gzipped: boolean indicating whether the JSON data is gzipped
 * size:
 *   cell: height & width of each image (in px) within the small atlas
 *   lodCell: height & width of each image (in px) within the larger atlas
@@ -43,6 +44,7 @@ function Config() {
   this.data = {
     dir: 'data',
     file: 'manifest.json',
+    gzipped: false,
   }
   this.size = {
     cell: 32, // height of each cell in atlas
@@ -95,38 +97,51 @@ function Data() {
 
 // Load json data with chart element positions
 Data.prototype.load = function() {
-  get(config.data.dir + '/' + config.data.file, function(json) {
-    this.json = json;
-    // set config vals
-    config.size.cell = json.config.sizes.cell;
-    config.size.atlas = json.config.sizes.atlas;
-    config.size.lodCell = json.config.sizes.lod;
-    // set the point scalar as a function of the number of cells
-    var elem = document.querySelector('#pointsize-range-input');
-    elem.value = (json.images.length * -0.00000005) + 0.01;
-    // set number of atlases and textures
-    this.atlasCount = json.atlas.count;
-    this.textureCount = Math.ceil(json.atlas.count / config.atlasesPerTex);
-    // set layout values
-    this.layouts = json.layouts;
-    this.initialLayout = this.initialLayout ? this.initialLayout : Object.keys(this.layouts)[0];
-    this.hotspots = new Hotspots();
-    layout.setOptions(Object.keys(this.layouts));
-    // load the filter options if metadata present
-    if (json.metadata) filters.loadFilters();
-    // load each texture for this data set
-    for (var i=0; i<this.textureCount; i++) {
-      this.textures.push(new Texture({
-        idx: i,
-        onProgress: this.onTextureProgress.bind(this),
-        onLoad: this.onTextureLoad.bind(this),
-      }));
-    };
-    // add cells to the world
-    get(getPath(this.layouts[this.initialLayout].positions), function(json) {
-      this.addCells(json)
-    }.bind(this))
-  }.bind(this))
+  get(getPath(config.data.dir + '/' + config.data.file),
+    function(json) {
+      this.parseManifest(json)
+    }.bind(this),
+    function(err) {
+      if (!config.data.gzipped) {
+        config.data.gzipped = true;
+        config.data.file = config.data.file + '.gz';
+        this.load()
+      } else {
+        console.log('ERROR: could not load manifest.json')
+      }
+    }.bind(this)
+  )
+}
+
+Data.prototype.parseManifest = function(json) {
+  this.json = json;
+  // set config vals
+  config.size.cell = json.config.sizes.cell;
+  config.size.atlas = json.config.sizes.atlas;
+  config.size.lodCell = json.config.sizes.lod;
+  // set the point scalar as a function of the number of cells
+  var elem = document.querySelector('#pointsize-range-input');
+  elem.value = (json.images.length * -0.00000005) + 0.01;
+  // set number of atlases and textures
+  this.atlasCount = json.atlas.count;
+  this.textureCount = Math.ceil(json.atlas.count / config.atlasesPerTex);
+  // set layout values
+  this.layouts = json.layouts;
+  this.initialLayout = this.initialLayout ? this.initialLayout : Object.keys(this.layouts)[0];
+  this.hotspots = new Hotspots();
+  layout.setOptions(Object.keys(this.layouts));
+  // load the filter options if metadata present
+  if (json.metadata) filters.loadFilters();
+  // load each texture for this data set
+  for (var i=0; i<this.textureCount; i++) {
+    this.textures.push(new Texture({
+      idx: i,
+      onProgress: this.onTextureProgress.bind(this),
+      onLoad: this.onTextureLoad.bind(this),
+    }));
+  };
+  // add cells to the world
+  get(getPath(this.layouts[this.initialLayout]), this.addCells.bind(this))
 }
 
 // When a texture's progress updates, update the aggregate progress
@@ -521,7 +536,7 @@ Layout.prototype.set = function(layoutKey) {
 
 Layout.prototype.transition = function(layoutKey) {
   this.selected = layoutKey;
-  get(getPath(data.layouts[layoutKey].positions), function(pos) {
+  get(getPath(data.layouts[layoutKey]), function(pos) {
     // set the target locations of each point
     for (var i=0; i<data.cells.length; i++) {
       data.cells[i].tx = pos[i][0];
@@ -709,9 +724,8 @@ World.prototype.setPointScalar = function() {
 // if the user asks for a new point size rerender scene
 World.prototype.addScalarChangeListener = function() {
   var elem = document.querySelector('#pointsize-range-input');
-  elem.addEventListener('change', function() {
-    this.setPointScalar();
-  }.bind(this))
+  elem.addEventListener('change', this.setPointScalar.bind(this));
+  elem.addEventListener('input', this.setPointScalar.bind(this));
 }
 
 // if the user changes tabs, trigger resize to resolve Chrome canvas bug
@@ -1454,7 +1468,7 @@ LOD.prototype.fetchNextImage = function() {
       }
     }
     if (this.state.openCoords) {
-      this.state.radius += 1;
+      this.state.radius = Math.min(this.state.radius+1, 10);
     }
   }
 }
@@ -1679,7 +1693,7 @@ function Hotspots() {
 }
 
 Hotspots.prototype.init = function() {
-  get(getPath(data.json.layouts[data.initialLayout].centroids), function(json) {
+  get(getPath(data.json.centroids), function(json) {
     this.json = json;
     this.target.innerHTML = _.template(this.template.innerHTML)({
       hotspots: this.json,
@@ -1743,24 +1757,52 @@ Webgl.prototype.getLimits = function() {
 * Make an XHR get request for data
 *
 * @param {str} url: the url of the data to fetch
-* @param {func} handleSuccess: onSuccess callback function
-* @param {func} handleErr: onError callback function
+* @param {func} onSuccess: onSuccess callback function
+* @param {func} onErr: onError callback function
 **/
 
-function get(url, handleSuccess, handleErr) {
-  handleSuccess = handleSuccess || function() {};
-  handleErr = handleErr || function() {};
-  var xmlhttp = new XMLHttpRequest();
-  xmlhttp.onreadystatechange = function() {
-    if (xmlhttp.readyState == XMLHttpRequest.DONE) {
-      xmlhttp.status === 200
-        ? handleSuccess(JSON.parse(xmlhttp.responseText))
-        : handleErr(xmlhttp)
+function get(url, onSuccess, onErr) {
+  onSuccess = onSuccess || function() {};
+  onErr = onErr || function() {};
+  var xhr = new XMLHttpRequest();
+  xhr.overrideMimeType('text\/plain; charset=x-user-defined');
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState == XMLHttpRequest.DONE) {
+      if (xhr.status === 200) {
+        var data = xhr.responseText;
+        // unzip the data if necessary
+        if (url.substring(url.length-3) == '.gz') {
+          data = gunzip(data);
+          url = url.substring(0, url.length-3);
+        }
+        // determine if data can be JSON parsed
+        url.substring(url.length-5) == '.json'
+          ? onSuccess(JSON.parse(data))
+          : onSuccess(data);
+      } else {
+        onErr(xhr)
+      }
     };
   };
-  xmlhttp.open('GET', url, true);
-  xmlhttp.send();
+  xhr.open('GET', url, true);
+  xhr.send();
 };
+
+// extract content from gzipped bytes
+function gunzip(data) {
+  var bytes = [];
+  for (var i=0; i<data.length; i++) {
+    bytes.push(data.charCodeAt(i) & 0xff);
+  }
+  var gunzip = new Zlib.Gunzip(bytes);
+  var plain = gunzip.decompress();
+  // Create ascii string from byte sequence
+  var asciistring = '';
+  for (var i=0; i<plain.length; i++) {
+    asciistring += String.fromCharCode(plain[i]);
+  }
+  return asciistring;
+}
 
 /**
 * Find the smallest z value among all cells
@@ -1843,7 +1885,7 @@ function getCanvasSize() {
 function getPath(path) {
   var base = window.location.origin;
   base += window.location.pathname.replace('index.html', '');
-  base += path.replace('/output/', '');
+  base += path.replace('output/', '');
   return base;
 }
 
