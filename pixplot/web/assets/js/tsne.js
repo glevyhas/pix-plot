@@ -1112,9 +1112,10 @@ World.prototype.flyToCellIdx = function(idx) {
   world.flyTo({
     x: cell.x,
     y: cell.y,
-    z: cell.z + 0.125,
+    z: cell.z + 0.1465 - (0.000000767*data.json.images.length),
   })
 }
+
 
 /**
 * Get the initial camera location
