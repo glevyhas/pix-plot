@@ -55,6 +55,9 @@ config = {
   'atlas_size': 2048,
   'cell_size': 32,
   'lod_cell_height': 128,
+  'n_neighbors': 4,
+  'min_dist': 0.001,
+  'metric': 'correlation',
   'square_cells': False,
   'gzip': False,
 }
@@ -338,7 +341,9 @@ def get_umap_projection(**kwargs):
   print(' * creating UMAP layout')
   out_path = get_path('layouts', 'umap', **kwargs)
   if os.path.exists(out_path): return out_path
-  model = UMAP(n_neighbors=25, min_dist=0.5, metric='correlation')
+  model = UMAP(n_neighbors=kwargs['n_neighbors'],
+    min_dist=kwargs['min_dist'],
+    metric=kwargs['metric'])
   z = model.fit_transform(kwargs['vecs'])
   return write_layout(out_path, z, **kwargs)
 
@@ -516,6 +521,9 @@ def parse():
   parser.add_argument('--n_clusters', type=int, default=config['n_clusters'], help='the number of clusters to identify', required=False)
   parser.add_argument('--out_dir', type=str, default=config['out_dir'], help='the directory to which outputs will be saved', required=False)
   parser.add_argument('--cell_size', type=int, default=config['cell_size'], help='the size of atlas cells in px', required=False)
+  parser.add_argument('--n_neighbors', type=int, default=config['n_neighbors'], help='the n_neighbors argument for UMAP')
+  parser.add_argument('--min_dist', type=float, default=config['min_dist'], help='the min_dist argument for umap')
+  parser.add_argument('--metric', type=str, default=config['metric'], help='the metric argument for umap')
   parser.add_argument('--copy_web_only', action='store_true', help='update ./output/web without reprocessing data')
   parser.add_argument('--gzip', action='store_true', help='save outputs with gzip compression')
   config.update(vars(parser.parse_args()))

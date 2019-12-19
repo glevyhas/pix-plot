@@ -45,6 +45,25 @@ If you need to plot more than 100,000 images but don't have an expensive graphic
 pixplot --images "path/to/images/*.jpg" --cell_size 10
 ```
 
+## Controlling UMAP Layout
+
+The [UMAP algorithm](https://github.com/lmcinnes/umap) is particularly sensitive to three hyperparemeters:
+
+```
+--min_distance: determines the minimum distance between points in the embedding
+```
+```
+--n_neighbors: determines the tradeoff between local and global clusters
+```
+```
+--metric: determines the distance metric to use when positioning points
+```
+
+UMAP's creator, Leland McInnes, has written up a [helpful overview of these hyperparameters](https://umap-learn.readthedocs.io/en/latest/parameters.html). To specify the value for one or more of these hyperparameters when building a plot, one may use the flags above, e.g.:
+
+```
+pixplot --images "path/to/images/*.jpg" --n_neighbors 2
+```
 
 ## Curating Automatic Hotspots
 
