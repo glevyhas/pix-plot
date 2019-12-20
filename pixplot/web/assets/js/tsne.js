@@ -92,7 +92,9 @@ function Data() {
     x: { min: Number.POSITIVE_INFINITY, max: Number.NEGATIVE_INFINITY, },
     y: { min: Number.POSITIVE_INFINITY, max: Number.NEGATIVE_INFINITY, },
   };
-  this.load();
+  world.loadHeightmap(function() {
+    this.load();
+  }.bind(this))
 }
 
 // Load json data with chart element positions
@@ -615,7 +617,6 @@ function World() {
     transitioning: false,
     displayed: false,
   };
-  this.getHeightmap();
   this.addEventListeners();
 }
 
@@ -680,7 +681,7 @@ World.prototype.getControls = function() {
 **/
 
 // load the heightmap
-World.prototype.getHeightmap = function() {
+World.prototype.loadHeightmap = function(callback) {
   // load an image for setting 3d vertex positions
   var img = new Image();
   img.crossOrigin = 'Anonymous';
@@ -691,7 +692,7 @@ World.prototype.getHeightmap = function() {
     canvas.height = img.height;
     ctx.drawImage(img, 0, 0);
     this.heightmap = ctx.getImageData(0,0, img.width, img.height);
-    welcome.updateProgress();
+    callback();
   }.bind(this);
   img.src = 'assets/images/heightmap.jpg';
 }
