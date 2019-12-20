@@ -342,7 +342,7 @@ function Cell(obj) {
   this.gridCoords = {}; // x, y pos of the cell in the lod grid (set by lod)
   this.x = obj.x;
   this.y = obj.y;
-  this.z = obj.z || this.getZ();
+  this.z = obj.z || this.getZ(obj.x, obj.y);
   this.tx = this.x; // target x position
   this.ty = this.y; // target y position
   this.tz = this.z; // target z position
@@ -353,10 +353,8 @@ function Cell(obj) {
   this.updateParentBoundingBox();
 }
 
-Cell.prototype.getZ = function() {
-  return layout.selected == 'umap'
-    ? (this.idx * 0.0001 % 0.05)
-    : 0
+Cell.prototype.getZ = function(x, y) {
+  return world.getHeightmapHeightAt(x, y);
 }
 
 Cell.prototype.updateParentBoundingBox = function() {
@@ -541,7 +539,7 @@ Layout.prototype.transition = function(layoutKey) {
     for (var i=0; i<data.cells.length; i++) {
       data.cells[i].tx = pos[i][0];
       data.cells[i].ty = pos[i][1];
-      data.cells[i].tz = pos[i][2] || data.cells[i].getZ();
+      data.cells[i].tz = pos[i][2] || data.cells[i].getZ(pos[i][0], pos[i][1]);
     }
     // get the draw call indices of each cell
     var drawCallToCells = world.getDrawCallToCells()
@@ -616,7 +614,8 @@ function World() {
     flying: false,
     transitioning: false,
     displayed: false,
-  }
+  };
+  this.getHeightmap();
   this.addEventListeners();
 }
 
@@ -677,6 +676,38 @@ World.prototype.getControls = function() {
 }
 
 /**
+* Heightmap functions
+**/
+
+// load the heightmap
+World.prototype.getHeightmap = function() {
+  // load an image for setting 3d vertex positions
+  var img = new Image();
+  img.crossOrigin = 'Anonymous';
+  img.onload = function() {
+    var canvas = document.createElement('canvas'),
+        ctx = canvas.getContext('2d');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    ctx.drawImage(img, 0, 0);
+    this.heightmap = ctx.getImageData(0,0, img.width, img.height);
+    welcome.updateProgress();
+  }.bind(this);
+  img.src = 'assets/images/heightmap.jpg';
+}
+
+// determine the height of the heightmap at coordinates x,y
+World.prototype.getHeightmapHeightAt = function(x, y) {
+  x = (x+1)/2; // rescale x,y axes from -1:1 to 0:1
+  y = (y+1)/2;
+  var row = Math.floor(y * (this.heightmap.height-1)),
+      col = Math.floor(x * (this.heightmap.width-1)),
+      idx = (row * this.heightmap.width * 4) + (col * 4),
+      z = (this.heightmap.data[idx]) * (this.heightmapScalar || 0.0);
+  return z;
+}
+
+/**
 * Add event listeners, e.g. to resize canvas on window resize
 **/
 
@@ -709,7 +740,10 @@ World.prototype.handleResize = function() {
   delete this.resizeTimeout;
 }
 
-// set the point size scalar as a uniform on all meshes
+/**
+* Set the point size scalar as a uniform on all meshes
+**/
+
 World.prototype.setPointScalar = function() {
   // handle case of drag before scene renders
   if (!this.scene || !this.scene.children.length) return;
@@ -721,14 +755,20 @@ World.prototype.setPointScalar = function() {
   }
 }
 
-// if the user asks for a new point size rerender scene
+/**
+* If the user asks for a new point size rerender scene
+**/
+
 World.prototype.addScalarChangeListener = function() {
   var elem = document.querySelector('#pointsize-range-input');
   elem.addEventListener('change', this.setPointScalar.bind(this));
   elem.addEventListener('input', this.setPointScalar.bind(this));
 }
 
-// if the user changes tabs, trigger resize to resolve Chrome canvas bug
+/**
+* If the user changes tabs, trigger resize to resolve Chrome canvas bug
+**/
+
 World.prototype.addVisibilityChangeListener = function() {
   document.addEventListener('visibilitychange', function() {
     this.renderer.domElement.width = this.renderer.domElement.width + 1;
@@ -738,8 +778,11 @@ World.prototype.addVisibilityChangeListener = function() {
   }.bind(this))
 }
 
-// listen for loss of webgl context; to manually lose context:
-// world.renderer.context.getExtension('WEBGL_lose_context').loseContext();
+/**
+* listen for loss of webgl context; to manually lose context:
+* world.renderer.context.getExtension('WEBGL_lose_context').loseContext();
+**/
+
 World.prototype.addLostContextListener = function() {
   var canvas = this.renderer.domElement;
   canvas.addEventListener('webglcontextlost', function(e) {
@@ -794,7 +837,10 @@ World.prototype.plot = function() {
   this.scene.add(group);
 }
 
-// find the index of each cell's draw call
+/**
+* Find the index of each cell's draw call
+**/
+
 World.prototype.getDrawCallToCells = function() {
   var drawCallToCells = {};
   for (var i=0; i<data.cells.length; i++) {
@@ -806,7 +852,10 @@ World.prototype.getDrawCallToCells = function() {
   return drawCallToCells;
 }
 
-// Return attribute data for the initial draw call of a mesh
+/**
+* Return attribute data for the initial draw call of a mesh
+**/
+
 World.prototype.getGroupAttributes = function(cells) {
   var it = this.getCellIterators(cells.length);
   for (var i=0; i<cells.length; i++) {
@@ -870,7 +919,10 @@ World.prototype.getGroupAttributes = function(cells) {
   }
 }
 
-// Get the iterators required to store attribute data for `n` cells
+/**
+* Get the iterators required to store attribute data for `n` cells
+**/
+
 World.prototype.getCellIterators = function(n) {
   return {
     pos0: new Float32Array(n * 3),
@@ -892,7 +944,10 @@ World.prototype.getCellIterators = function(n) {
   }
 }
 
-// Find the first and last non -1 tex indices from a list of cells
+/**
+* Find the first and last non -1 tex indices from a list of cells
+**/
+
 World.prototype.getTexIndices = function(cells) {
   // find the first non -1 tex index
   var f=0; while (cells[f].texIdx == -1) f++;
@@ -905,7 +960,10 @@ World.prototype.getTexIndices = function(cells) {
   };
 }
 
-// Return textures from `obj.startIdx` to `obj.endIdx` indices
+/**
+* Return textures from `obj.startIdx` to `obj.endIdx` indices
+**/
+
 World.prototype.getTextures = function(obj) {
   var textures = [];
   for (var i=obj.startIdx; i<=obj.endIdx; i++) {
@@ -915,7 +973,10 @@ World.prototype.getTextures = function(obj) {
   return textures;
 }
 
-// Transform a canvas object into a THREE texture
+/**
+* Transform a canvas object into a THREE texture
+**/
+
 World.prototype.getTexture = function(canvas) {
   var tex = new THREE.Texture(canvas);
   tex.needsUpdate = true;
@@ -923,7 +984,10 @@ World.prototype.getTexture = function(canvas) {
   return tex;
 }
 
-// Return an int specifying the scalar uniform for points
+/**
+* Return an int specifying the scalar uniform for points
+**/
+
 World.prototype.getPointScale = function() {
   var canvasSize = getCanvasSize(),
       scalar = parseFloat(document.querySelector('#pointsize-range-input').value);
@@ -1115,7 +1179,6 @@ World.prototype.flyToCellIdx = function(idx) {
     z: cell.z + 0.1465 - (0.000000767*data.json.images.length),
   })
 }
-
 
 /**
 * Get the initial camera location
@@ -1573,18 +1636,22 @@ function Welcome() {
 
 Welcome.prototype.onButtonClick = function(e) {
   if (e.target.className.indexOf('active') > -1) {
-    requestAnimationFrame(this.removeLoader.bind(this));
+    requestAnimationFrame(function() {
+      this.removeLoader(function() {
+        this.startWorld();
+      }.bind(this));
+    }.bind(this));
   }
 }
 
-Welcome.prototype.removeLoader = function() {
+Welcome.prototype.removeLoader = function(onSuccess) {
   var blocks = document.querySelectorAll('.block');
   for (var i=0; i<blocks.length; i++) {
     setTimeout(function(i) {
       blocks[i].style.animation = 'exit 300s';
       setTimeout(function(i) {
         blocks[i].parentNode.removeChild(blocks[i]);
-        if (i == blocks.length-1) this.startWorld();
+        if (i == blocks.length-1) onSuccess();
       }.bind(this, i), 1000)
     }.bind(this, i), i*100)
   }
@@ -1599,7 +1666,9 @@ Welcome.prototype.updateProgress = function() {
   if (index > -1) progress = progress.substring(0, index);
   // display the load progress
   this.progressElem.textContent = progress + '%';
-  if (progress == 100 && data.loadedTextures == data.textureCount) {
+  if (progress == 100 &&
+      data.loadedTextures == data.textureCount &&
+      world.heightmap) {
     this.buttonElem.className += ' active';
   }
 }
