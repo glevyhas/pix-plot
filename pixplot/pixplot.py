@@ -11,8 +11,10 @@ from collections import defaultdict, Counter
 from distutils.dir_util import copy_tree
 from iiif_downloader import Manifest
 from sklearn.cluster import KMeans
+from sklearn.manifold import TSNE
 from keras.models import Model
 import tensorflow_hub as hub
+from hdbscan import HDBSCAN
 from hashlib import sha224
 import keras.backend as K
 import tensorflow as tf
@@ -55,7 +57,7 @@ config = {
   'atlas_size': 2048,
   'cell_size': 32,
   'lod_cell_height': 128,
-  'n_neighbors': 4,
+  'n_neighbors': 6,
   'min_dist': 0.001,
   'metric': 'correlation',
   'square_cells': False,
@@ -114,7 +116,7 @@ def get_manifest(**kwargs):
     sizes[ i['idx'] ].append([ i['w'], i['h'] ])
     pos[ i['idx'] ].append([ i['x'], i['y'] ])
   # obtain the paths to each layout's JSON positions
-  layouts = get_positions(**kwargs)
+  layouts = get_layouts(**kwargs)
   # create base metadata for manifest
   manifest = {
     'cell_sizes': sizes,
@@ -301,14 +303,16 @@ def save_atlas(*args, **kwargs):
   save_img(join(out_dir, 'atlas-{}.jpg'.format(n)), data)
 
 
-def get_positions(*args, **kwargs):
+def get_layouts(*args, **kwargs):
   '''Get the image positions in each projection'''
   vecs = vectorize_images(**kwargs)
   umap = get_umap_projection(vecs=vecs, **kwargs)
+  tsne = get_tsne_projection(vecs=vecs, **kwargs)
   rasterfairy = get_rasterfairy_projection(umap=umap, **kwargs)
   grid = get_grid_projection(**kwargs)
   return {
     'umap': umap,
+    'tsne': tsne,
     'grid': grid,
     'rasterfairy': rasterfairy,
   }
@@ -344,6 +348,16 @@ def get_umap_projection(**kwargs):
   model = UMAP(n_neighbors=kwargs['n_neighbors'],
     min_dist=kwargs['min_dist'],
     metric=kwargs['metric'])
+  z = model.fit_transform(kwargs['vecs'])
+  return write_layout(out_path, z, **kwargs)
+
+
+def get_tsne_projection(**kwargs):
+  '''Get the x,y positions of images passed through a TSNE projection'''
+  print(' * creating TSNE layout')
+  out_path = get_path('layouts', 'tsne', **kwargs)
+  if os.path.exists(out_path): return out_path
+  model = TSNE(perplexity=kwargs.get('perplexity', 2))
   z = model.fit_transform(kwargs['vecs'])
   return write_layout(out_path, z, **kwargs)
 
