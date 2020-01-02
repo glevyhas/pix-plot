@@ -356,7 +356,7 @@ function Cell(obj) {
 }
 
 Cell.prototype.getZ = function(x, y) {
-  return world.getHeightmapHeightAt(x, y);
+  return world.getHeightmapHeightAt(x, y) || 0;
 }
 
 Cell.prototype.updateParentBoundingBox = function() {
