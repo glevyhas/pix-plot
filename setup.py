@@ -24,6 +24,7 @@ setup(
   license='MIT',
   install_requires=[
     'glob2>=0.6',
+    'hdbscan>=0.8.24',
     'iiif-downloader>=0.0.5',
     'Keras>=2.3.0',
     'numpy>=1.16.0',
