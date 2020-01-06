@@ -26,6 +26,7 @@ import functools
 import itertools
 import datetime
 import argparse
+import random
 import shutil
 import glob2
 import uuid
@@ -61,6 +62,7 @@ config = {
   'metric': 'correlation',
   'square_cells': False,
   'gzip': False,
+  'gpu_available': len(K.tensorflow_backend._get_available_gpus()) > 0,
 }
 
 ##
@@ -194,6 +196,7 @@ def filter_images(**kwargs):
 
 
 def get_image_paths(**kwargs):
+  '''Called once to provide a list of image paths--handles IIIF manifest input'''
   # handle case where --images points to iiif manifest
   image_paths = None
   if not kwargs['images']:
@@ -219,6 +222,10 @@ def get_image_paths(**kwargs):
     print('\nError: n_clusters must be < input image count ')
     print('Found {} images and {} clusters were requested\n'.format(n_images, n_clusters))
     sys.exit()
+  # optional shuffle that mutates image_paths
+  if kwargs['shuffle']:
+    print(' * shuffling input images')
+    random.shuffle(image_paths)
   return image_paths
 
 
@@ -539,6 +546,7 @@ def parse():
   parser.add_argument('--metric', type=str, default=config['metric'], help='the metric argument for umap')
   parser.add_argument('--copy_web_only', action='store_true', help='update ./output/web without reprocessing data')
   parser.add_argument('--gzip', action='store_true', help='save outputs with gzip compression')
+  parser.add_argument('--shuffle', action='store_true', help='shuffle the input images before data processing begins')
   config.update(vars(parser.parse_args()))
   process_images(**config)
 
