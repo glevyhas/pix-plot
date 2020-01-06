@@ -646,7 +646,7 @@ World.prototype.getScene = function() {
 World.prototype.getCamera = function() {
   var canvasSize = getCanvasSize();
   var aspectRatio = canvasSize.w /canvasSize.h;
-  return new THREE.PerspectiveCamera(75, aspectRatio, 0.01, 10);
+  return new THREE.PerspectiveCamera(75, aspectRatio, 0.001, 10);
 }
 
 /**
@@ -1597,8 +1597,8 @@ LOD.prototype.unload = function() {
     var split = gridPos.split('.'),
         x = parseInt(split[0]),
         y = parseInt(split[1]),
-        xDelta = Math.abs(this.state.camPos.x - x),
-        yDelta = Math.abs(this.state.camPos.y - y);
+        xDelta = Math.floor(Math.abs(this.state.camPos.x - x)),
+        yDelta = Math.ceil(Math.abs(this.state.camPos.y - y));
     if (xDelta > 1.5*this.state.radius || yDelta > this.state.radius) {
       this.unloadGridPos(gridPos);
     }
