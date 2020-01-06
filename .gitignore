@@ -3,6 +3,7 @@
 *.swp
 *.pem
 dist
+!pixplot/web/assets/vendor/dist/
 build
 *.egg-info
 output

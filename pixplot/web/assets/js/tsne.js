@@ -816,16 +816,16 @@ World.prototype.plot = function() {
     var meshCells = drawCallToCells[drawCallIdx],
         attrs = this.getGroupAttributes(meshCells),
         geometry = new THREE.InstancedBufferGeometry();
-    geometry.addAttribute('uv', attrs.uv);
-    geometry.addAttribute('pos0', attrs.pos0);
-    geometry.addAttribute('pos1', attrs.pos1);
-    geometry.addAttribute('color', attrs.color);
-    geometry.addAttribute('width', attrs.width);
-    geometry.addAttribute('height', attrs.height);
-    geometry.addAttribute('offset', attrs.offset);
-    geometry.addAttribute('opacity', attrs.opacity);
-    geometry.addAttribute('position', attrs.position);
-    geometry.addAttribute('textureIndex', attrs.textureIndex);
+    geometry.setAttribute('uv', attrs.uv);
+    geometry.setAttribute('pos0', attrs.pos0);
+    geometry.setAttribute('pos1', attrs.pos1);
+    geometry.setAttribute('color', attrs.color);
+    geometry.setAttribute('width', attrs.width);
+    geometry.setAttribute('height', attrs.height);
+    geometry.setAttribute('offset', attrs.offset);
+    geometry.setAttribute('opacity', attrs.opacity);
+    geometry.setAttribute('position', attrs.position);
+    geometry.setAttribute('textureIndex', attrs.textureIndex);
     var material = this.getShaderMaterial({
       firstTex: attrs.texStartIdx,
       textures: attrs.textures,
@@ -893,13 +893,11 @@ World.prototype.getGroupAttributes = function(cells) {
       width = new IBA(it.width, 1, true, 1),
       height = new IBA(it.height, 1, true, 1),
       offset = new IBA(it.offset, 2, true, 1);
-  uv.dynamic = false;
-  position.dynamic = false;
-  texIndex.dynamic = true;
-  pos0.dynamic = true;
-  pos1.dynamic = true;
-  opacity.dynamic = true;
-  offset.dynamic = true;
+  texIndex.usage = THREE.DynamicDrawUsage;
+  pos0.usage = THREE.DynamicDrawUsage;
+  pos1.usage = THREE.DynamicDrawUsage;
+  opacity.usage = THREE.DynamicDrawUsage;
+  offset.usage = THREE.DynamicDrawUsage;
   var texIndices = this.getTexIndices(cells);
   return {
     uv: uv,
@@ -1367,9 +1365,11 @@ Selector.prototype.init = function() {
   this.scene.add(group);
 }
 
-// draw an offscreen world
+// draw an offscreen world then reset the render target so world can update
 Selector.prototype.render = function() {
-  world.renderer.render(this.scene, world.camera, this.tex);
+  world.renderer.setRenderTarget(this.tex);
+  world.renderer.render(this.scene, world.camera);
+  world.renderer.setRenderTarget(null);
 }
 
 Selector.prototype.select = function(obj) {
