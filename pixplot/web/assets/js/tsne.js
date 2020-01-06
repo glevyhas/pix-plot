@@ -1394,9 +1394,10 @@ function LOD() {
   var r = 1; // radius of grid to search for cells to activate
   this.tex = this.getCanvas(config.size.lodTexture); // lod high res texture
   this.cellIdxToImage = {}; // image cache mapping cell idx to loaded image data
-  this.grid = {}; // set by this.indexCells();
+  this.grid = {}; // set by this.indexCells()
+  this.minZ = 0.35; // minimum zoom level to update textures
   this.framerate = 20; // number of frames required to update the lod one iteration
-  this.minZ = 0.25; // minimum zoom level to update textures
+  this.initialRadius = r; // starting radius for LOD
   this.state = {
     openCoords: this.getAllTexCoords(), // array of unused x,y lod tex offsets
     camPos: { x: null, y: null }, // grid coords of current camera position
@@ -1406,7 +1407,6 @@ function LOD() {
     cellsToActivate: [], // list of cells cached in this.cellIdxToImage and ready to be added to lod texture
     fetchQueue: [], // list of images that need to be fetched and cached
     frame: 0, // lod's current frame number, used to call lod events every n frames
-    initialRadius: r, // starting radius for LOD
     radius: r, // current radius for LOD
     run: true, // bool indicating whether to use the lod mechanism
   };
@@ -1460,8 +1460,8 @@ LOD.prototype.toGridCoords = function(pos) {
   };
   // cut each axis into n buckets per axis and determine point's bucket indices
   var bucketSize = {
-    x: 1/Math.ceil(data.json.images.length/100),
-    y: 1/Math.ceil(data.json.images.length/100),
+    x: 1/Math.max(100, Math.ceil(data.json.images.length/100)),
+    y: 1/Math.max(100, Math.ceil(data.json.images.length/100)),
   };
   return {
     x: Math.floor(percent.x / bucketSize.x),
@@ -1488,9 +1488,9 @@ LOD.prototype.update = function() {
 LOD.prototype.updateGridPosition = function() {
   // determine the current grid position of the user / camera
   var camPos = this.toGridCoords(world.camera.position);
-  // user is in a new grid position; unload old images and load new
+  // if the user is in a new grid position unload old images and load new
   if (this.state.camPos.x !== camPos.x || this.state.camPos.y !== camPos.y) {
-    this.state.radius = 3;
+    if (this.state.radius > 1) this.state.radius--;
     this.state.camPos = camPos;
     this.state.neighborsRequested = 0;
     this.unload();
@@ -1551,16 +1551,11 @@ LOD.prototype.addCellsToLodTexture = function() {
   var textureNeedsUpdate = false;
   // find and store the coords where each img will be stored in lod texture
   for (var i=0; i<this.state.cellsToActivate.length; i++) {
-    var cellIdx = this.state.cellsToActivate[0];
+    var cellIdx = this.state.cellsToActivate[0],
+        cell = data.cells[cellIdx];
     this.state.cellsToActivate = this.state.cellsToActivate.slice(1);
-    // check to ensure cell is sufficiently close to camera
-    var cell = data.cells[cellIdx],
-        xDelta = Math.ceil(Math.abs(cell.gridCoords.x - this.state.camPos.x)),
-        yDelta = Math.ceil(Math.abs(cell.gridCoords.y - this.state.camPos.y));
-    // don't load the cell if it's already been loaded
-    if (this.state.cellIdxToCoords[cellIdx]) continue;
-    // don't load the cell if it's too far from the camera
-    if ((xDelta > (this.state.radius * 2)) || (yDelta > this.state.radius)) continue;
+    // if cell is already loaded or is too far from camera quit
+    if (this.state.cellIdxToCoords[cellIdx] || !this.inRadius(cell.gridCoords)) continue;
     // return if there are no open coordinates in the LOD texture
     var coords = this.state.openCoords[0];
     this.state.openCoords = this.state.openCoords.slice(1);
@@ -1587,6 +1582,14 @@ LOD.prototype.addCellsToLodTexture = function() {
   }
 }
 
+
+LOD.prototype.inRadius = function(obj) {
+  var xDelta = Math.floor(Math.abs(obj.x - this.state.camPos.x)),
+      yDelta = Math.ceil(Math.abs(obj.y - this.state.camPos.y));
+  // don't load the cell if it's too far from the camera
+  return (xDelta <= (this.state.radius * 1.5)) && (yDelta < this.state.radius);
+}
+
 /**
 * Remove cells from LOD
 **/
@@ -1594,12 +1597,8 @@ LOD.prototype.addCellsToLodTexture = function() {
 // free up the high-res textures for images now distant from the camera
 LOD.prototype.unload = function() {
   Object.keys(this.state.gridPosToCoords).forEach(function(gridPos) {
-    var split = gridPos.split('.'),
-        x = parseInt(split[0]),
-        y = parseInt(split[1]),
-        xDelta = Math.floor(Math.abs(this.state.camPos.x - x)),
-        yDelta = Math.ceil(Math.abs(this.state.camPos.y - y));
-    if (xDelta > 1.5*this.state.radius || yDelta > this.state.radius) {
+    var split = gridPos.split('.');
+    if (!this.inRadius({ x: parseInt(split[0]),  y: parseInt(split[1]) })) {
       this.unloadGridPos(gridPos);
     }
   }.bind(this));
@@ -1627,7 +1626,7 @@ LOD.prototype.clear = function() {
   Object.keys(this.state.gridPosToCoords).forEach(this.unloadGridPos.bind(this));
   this.state.camPos = { x: Number.POSITIVE_INFINITY, y: Number.POSITIVE_INFINITY };
   world.attrsNeedUpdate(['offset', 'textureIndex']);
-  this.state.radius = this.state.initialRadius;
+  this.state.radius = this.initialRadius;
 }
 
 /**
