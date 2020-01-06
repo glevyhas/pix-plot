@@ -13,7 +13,6 @@ from iiif_downloader import Manifest
 from sklearn.cluster import KMeans
 from sklearn.manifold import TSNE
 from keras.models import Model
-import tensorflow_hub as hub
 from hdbscan import HDBSCAN
 from hashlib import sha224
 import keras.backend as K
