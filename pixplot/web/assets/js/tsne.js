@@ -537,6 +537,8 @@ Layout.prototype.set = function(layoutKey) {
 Layout.prototype.transition = function(layoutKey) {
   this.selected = layoutKey;
   get(getPath(data.layouts[layoutKey]), function(pos) {
+    // clear the LOD mechanism
+    lod.clear();
     // set the target locations of each point
     for (var i=0; i<data.cells.length; i++) {
       data.cells[i].tx = pos[i][0];
@@ -544,7 +546,7 @@ Layout.prototype.transition = function(layoutKey) {
       data.cells[i].tz = pos[i][2] || data.cells[i].getZ(pos[i][0], pos[i][1]);
     }
     // get the draw call indices of each cell
-    var drawCallToCells = world.getDrawCallToCells()
+    var drawCallToCells = world.getDrawCallToCells();
     for (var drawCall in drawCallToCells) {
       var cells = drawCallToCells[drawCall];
       var mesh = world.scene.children[0].children[drawCall];
@@ -586,8 +588,7 @@ Layout.prototype.onTransitionComplete = function(obj) {
   obj.mesh.material.uniforms.transitionPercent = { type: 'f', value: 0, };
   world.state.transitioning = false;
   world.controls.target.z = getMinCellZ();
-  // reindex cells in LOD and clear LOD state
-  lod.clear();
+  // reindex cells in LOD
   lod.indexCells();
 }
 
@@ -1390,10 +1391,12 @@ Selector.prototype.select = function(obj) {
 **/
 
 function LOD() {
+  var r = 1; // radius of grid to search for cells to activate
   this.tex = this.getCanvas(config.size.lodTexture); // lod high res texture
   this.cellIdxToImage = {}; // image cache mapping cell idx to loaded image data
-  this.grid = { coords: {}, }; // set by this.indexCells();
-  this.minZ = 0.5; // minimum zoom level to update textures
+  this.grid = {}; // set by this.indexCells();
+  this.framerate = 20; // number of frames required to update the lod one iteration
+  this.minZ = 0.25; // minimum zoom level to update textures
   this.state = {
     openCoords: this.getAllTexCoords(), // array of unused x,y lod tex offsets
     camPos: { x: null, y: null }, // grid coords of current camera position
@@ -1403,7 +1406,8 @@ function LOD() {
     cellsToActivate: [], // list of cells cached in this.cellIdxToImage and ready to be added to lod texture
     fetchQueue: [], // list of images that need to be fetched and cached
     frame: 0, // lod's current frame number, used to call lod events every n frames
-    radius: 3, // radius of grid to search for cells to activate
+    initialRadius: r, // starting radius for LOD
+    radius: r, // current radius for LOD
     run: true, // bool indicating whether to use the lod mechanism
   };
 }
@@ -1443,7 +1447,7 @@ LOD.prototype.indexCells = function() {
     if (!coords[x][y]) coords[x][y] = [];
     coords[x][y].push(cell.idx);
   }.bind(this))
-  this.grid.coords = coords;
+  this.grid = coords;
 }
 
 // given an object with {x, y, z} attributes, return the object's coords in grid
@@ -1456,8 +1460,8 @@ LOD.prototype.toGridCoords = function(pos) {
   };
   // cut each axis into n buckets per axis and determine point's bucket indices
   var bucketSize = {
-    x: 1/100,
-    y: 1/100,
+    x: 1/Math.ceil(data.json.images.length/100),
+    y: 1/Math.ceil(data.json.images.length/100),
   };
   return {
     x: Math.floor(percent.x / bucketSize.x),
@@ -1471,13 +1475,13 @@ LOD.prototype.toGridCoords = function(pos) {
 
 // load high-res images nearest the camera; called every frame by world.render
 LOD.prototype.update = function() {
-  if (!this.state.run || world.state.flying) return;
+  if (!this.state.run || world.state.flying || world.state.transitioning) return;
   this.updateGridPosition();
   this.fetchNextImage();
-  if (++this.state.frame % 40 == 0) {
+  if (++this.state.frame % this.framerate == 0) {
     world.camera.position.z < this.minZ
       ? this.addCellsToLodTexture()
-      : this.unload();
+      : this.clear();
   }
 }
 
@@ -1491,13 +1495,13 @@ LOD.prototype.updateGridPosition = function() {
     this.state.neighborsRequested = 0;
     this.unload();
     if (world.camera.position.z < this.minZ) {
-      this.state.fetchQueue = getNested(this.grid.coords, [camPos.x, camPos.y], []);
+      this.state.fetchQueue = getNested(this.grid, [camPos.x, camPos.y], []);
     }
   }
 }
 
 // if there's a fetchQueue, fetch the next image, else fetch neighbors
-// nb: don't mutate fetchQueue, as that deletes items from this.grid.coords
+// nb: don't mutate fetchQueue, as that deletes items from this.grid
 LOD.prototype.fetchNextImage = function() {
   var cellIdx = this.state.fetchQueue[0];
   this.state.fetchQueue = this.state.fetchQueue.slice(1);
@@ -1523,17 +1527,17 @@ LOD.prototype.fetchNextImage = function() {
   // there was no image to fetch, so add neighbors to fetch queue if possible
   } else if (this.state.neighborsRequested < this.state.radius) {
     this.state.neighborsRequested = this.state.radius;
-    for (var x=-this.state.radius*2; x<=this.state.radius*2; x++) {
+    for (var x=Math.floor(-this.state.radius*1.5); x<=Math.ceil(this.state.radius*1.5); x++) {
       for (var y=-this.state.radius; y<=this.state.radius; y++) {
         var coords = [this.state.camPos.x+x, this.state.camPos.y+y],
-            cellIndices = getNested(this.grid.coords, coords, []).filter(function(cellIdx) {
+            cellIndices = getNested(this.grid, coords, []).filter(function(cellIdx) {
             return !this.state.cellIdxToCoords[cellIdx];
           }.bind(this))
         this.state.fetchQueue = this.state.fetchQueue.concat(cellIndices);
       }
     }
-    if (this.state.openCoords) {
-      this.state.radius = Math.min(this.state.radius+1, 10);
+    if (this.state.openCoords && this.state.radius < 10) {
+      this.state.radius++;
     }
   }
 }
@@ -1551,8 +1555,8 @@ LOD.prototype.addCellsToLodTexture = function() {
     this.state.cellsToActivate = this.state.cellsToActivate.slice(1);
     // check to ensure cell is sufficiently close to camera
     var cell = data.cells[cellIdx],
-        xDelta = Math.abs(cell.gridCoords.x - this.state.camPos.x),
-        yDelta = Math.abs(cell.gridCoords.y - this.state.camPos.y);
+        xDelta = Math.ceil(Math.abs(cell.gridCoords.x - this.state.camPos.x)),
+        yDelta = Math.ceil(Math.abs(cell.gridCoords.y - this.state.camPos.y));
     // don't load the cell if it's already been loaded
     if (this.state.cellIdxToCoords[cellIdx]) continue;
     // don't load the cell if it's too far from the camera
@@ -1595,7 +1599,9 @@ LOD.prototype.unload = function() {
         y = parseInt(split[1]),
         xDelta = Math.abs(this.state.camPos.x - x),
         yDelta = Math.abs(this.state.camPos.y - y);
-    if ((xDelta + yDelta) > this.state.radius) this.unloadGridPos(gridPos)
+    if (xDelta > 1.5*this.state.radius || yDelta > this.state.radius) {
+      this.unloadGridPos(gridPos);
+    }
   }.bind(this));
 }
 
@@ -1621,6 +1627,7 @@ LOD.prototype.clear = function() {
   Object.keys(this.state.gridPosToCoords).forEach(this.unloadGridPos.bind(this));
   this.state.camPos = { x: Number.POSITIVE_INFINITY, y: Number.POSITIVE_INFINITY };
   world.attrsNeedUpdate(['offset', 'textureIndex']);
+  this.state.radius = this.state.initialRadius;
 }
 
 /**
