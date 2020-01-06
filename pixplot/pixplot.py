@@ -8,6 +8,7 @@ from sklearn.metrics import pairwise_distances_argmin_min
 from sklearn.preprocessing import minmax_scale
 from keras_preprocessing.image import load_img
 from collections import defaultdict, Counter
+from pointgrid import align_points_to_grid
 from distutils.dir_util import copy_tree
 from iiif_downloader import Manifest
 from sklearn.cluster import KMeans
@@ -316,6 +317,8 @@ def get_layouts(*args, **kwargs):
   tsne = get_tsne_projection(vecs=vecs, **kwargs)
   rasterfairy = get_rasterfairy_projection(umap=umap, **kwargs)
   grid = get_grid_projection(**kwargs)
+  umap_grid = get_pointgrid_projection(umap, 'umap', **kwargs)
+  tsne_grid = get_pointgrid_projection(tsne, 'tsne', **kwargs)
   return {
     'umap': umap,
     'tsne': tsne,
@@ -395,6 +398,16 @@ def get_grid_projection(**kwargs):
   return write_layout(out_path, z, **kwargs)
 
 
+def get_pointgrid_projection(path, label, **kwargs):
+  '''Gridify the positions in `path` and return the path to this new layout'''
+  print(' * creating {} pointgrid'.format(label))
+  out_path = get_path('layouts', label + '-pointgrid', **kwargs)
+  if os.path.exists(out_path): return out_path
+  arr = np.array(read_json(path, **kwargs))
+  z = align_points_to_grid(arr)
+  return write_layout(out_path, z, **kwargs)
+
+
 def add_z_dim(X, val=0.001):
   '''Given X with shape (n,2) return (n,3) with val as X[:,2]'''
   if X.shape[1] == 2:
@@ -461,8 +474,8 @@ def get_centroids(**kwargs):
 
 def hash(**kwargs):
   '''Hash `args` into a string and return that string. Overloads hash()'''
-  return str(uuid.uuid1())
-  return sha224( u''.join([str(i) for i in kwargs]).encode(kwargs['encoding'])).hexdigest()
+  s = sha224( u''.join([str(i) for i in kwargs]).encode(kwargs['encoding'])).hexdigest()
+  return s
 
 
 def copy_web_assets(**kwargs):
