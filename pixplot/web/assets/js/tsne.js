@@ -510,19 +510,19 @@ Layout.prototype.render = function() {
     select.appendChild(option);
   }
   select.addEventListener('change', function(e) {
-    this.set(e.target.value);
+    this.set(e.target.value, true);
   }.bind(this))
   document.querySelector('#header-controls').appendChild(select);
   this.elem = select;
   // add the event listener to the jitter input
   var input = document.querySelector('#jitter-container').querySelector('input');
   input.addEventListener('click', function(e) {
-    this.set(select.value);
+    this.set(select.value, false);
   }.bind(this));
 }
 
 // Transition to a new layout; layout must be an attr on Cell.layouts
-Layout.prototype.set = function(layoutKey) {
+Layout.prototype.set = function(layoutKey, enableDelay) {
   // disallow new transitions when we're transitioning
   if (world.state.transitioning) return;
   world.state.transitioning = true;
@@ -530,11 +530,10 @@ Layout.prototype.set = function(layoutKey) {
   this.elem.disabled = true;
   // zoom the user out if they're zoomed in
   var initialCameraPosition = world.getInitialLocation();
-  if (world.camera.position.z < initialCameraPosition.z) {
-    var delay = config.transitions.duration * 1000;
+  var delay = 0;
+  if ((world.camera.position.z < initialCameraPosition.z) && enableDelay) {
+    delay = config.transitions.duration * 1000;
     world.flyTo(initialCameraPosition);
-  } else {
-    delay = 0;
   }
   // enable the jitter button if this is a umap or tsne layout
   var jitterElem = document.querySelector('#jitter-container');
@@ -542,9 +541,10 @@ Layout.prototype.set = function(layoutKey) {
     ? 1.0
     : 0.0;
   // determine the path to the json to display
-  var jsonPath = jitterElem.querySelector('input').checked
-    ? getPath(data.layouts[layoutKey].jittered)
-    : getPath(data.layouts[layoutKey].layout);
+  var jsonPath = jitterElem.querySelector('input').checked &&
+    'jittered' in data.layouts[layoutKey]
+      ? getPath(data.layouts[layoutKey].jittered)
+      : getPath(data.layouts[layoutKey].layout);
   // begin the new layout transition
   setTimeout(function(jsonPath) {
     get(jsonPath, function(pos) {
@@ -599,7 +599,6 @@ Layout.prototype.onTransitionComplete = function(obj) {
   // update the positional attribute and time uniform on the mesh
   obj.mesh.material.uniforms.transitionPercent = { type: 'f', value: 0, };
   world.state.transitioning = false;
-  world.controls.target.z = getMinCellZ();
   // reindex cells in LOD
   lod.indexCells();
 }
@@ -707,7 +706,7 @@ World.prototype.loadHeightmap = function(callback) {
     this.heightmap = ctx.getImageData(0,0, img.width, img.height);
     callback();
   }.bind(this);
-  img.src = 'assets/images/heightmap.jpg';
+  img.src = this.heightmap || 'assets/images/heightmap.jpg';
 }
 
 // determine the height of the heightmap at coordinates x,y
@@ -717,7 +716,7 @@ World.prototype.getHeightmapHeightAt = function(x, y) {
       row = Math.floor(y * (this.heightmap.height-1)),
       col = Math.floor(x * (this.heightmap.width-1)),
       idx = (row * this.heightmap.width * 4) + (col * 4),
-      z = (this.heightmap.data[idx]) * (this.heightmapScalar || 0.0);
+      z = this.heightmap.data[idx] * (this.heightmapScalar/1000 || 0.0);
   return z;
 }
 
@@ -1227,7 +1226,6 @@ World.prototype.init = function() {
   var loc = this.getInitialLocation();
   this.camera.position.set(loc.x, loc.y, loc.z);
   this.camera.lookAt(loc.x, loc.y, loc.z);
-  this.controls.target = new THREE.Vector3(loc.x, loc.y, 0);
   // draw the points and start the render loop
   this.plot();
   this.render();
@@ -1765,7 +1763,7 @@ Filter.prototype.filterCells = function(names) {
     // update the buffer attributes that describe this cell to the GPU
     var meshes = world.scene.children[0],
         attrs = meshes.children[cell.getIndexOfDrawCall()].geometry.attributes,
-        opacity = data.json.images[idx] in names ? 1 : 0.1;
+        opacity = data.json.images[idx] in names ? 1 : 0.05;
     attrs.opacity.array[cell.getIndexInDrawCall()] = opacity;
   }.bind(this))
   world.attrsNeedUpdate(['opacity']);
