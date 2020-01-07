@@ -13,7 +13,9 @@ from distutils.dir_util import copy_tree
 from iiif_downloader import Manifest
 from sklearn.cluster import KMeans
 from sklearn.manifold import TSNE
+import matplotlib.pyplot as plt
 from keras.models import Model
+from scipy.stats import kde
 from hdbscan import HDBSCAN
 from hashlib import sha224
 import keras.backend as K
@@ -30,6 +32,7 @@ import argparse
 import random
 import shutil
 import glob2
+import copy
 import uuid
 import math
 import gzip
@@ -119,6 +122,10 @@ def get_manifest(**kwargs):
     pos[ i['idx'] ].append([ i['x'], i['y'] ])
   # obtain the paths to each layout's JSON positions
   layouts = get_layouts(**kwargs)
+  # create a heightmap for each layout
+  for i in layouts:
+    for j in layouts[i]:
+      get_heightmap(layouts[i][j], i + '-' + j, **kwargs)
   # create base metadata for manifest
   manifest = {
     'cell_sizes': sizes,
@@ -411,7 +418,7 @@ def get_grid_projection(**kwargs):
 def get_pointgrid_projection(path, label, **kwargs):
   '''Gridify the positions in `path` and return the path to this new layout'''
   print(' * creating {} pointgrid'.format(label))
-  out_path = get_path('layouts', label + '-pointgrid', **kwargs)
+  out_path = get_path('layouts', label + '-jittered', **kwargs)
   if os.path.exists(out_path): return out_path
   arr = np.array(read_json(path, **kwargs))
   z = align_points_to_grid(arr)
@@ -484,8 +491,12 @@ def get_centroids(**kwargs):
 
 def hash(**kwargs):
   '''Hash `args` into a string and return that string. Overloads hash()'''
-  s = sha224( u''.join([str(i) for i in kwargs]).encode(kwargs['encoding'])).hexdigest()
-  return s
+  d = copy.deepcopy(kwargs)
+  for i in d:
+    if isinstance(d[i], np.ndarray):
+      d[i] = d[i].tolist()
+  s = json.dumps(d, sort_keys=True)
+  return sha224(s.encode(kwargs['encoding'])).hexdigest()
 
 
 def copy_web_assets(**kwargs):
@@ -506,6 +517,26 @@ def copy_web_assets(**kwargs):
 def get_version():
   '''Return the version of pixplot installed'''
   return pkg_resources.get_distribution('pixplot').version
+
+
+def get_heightmap(path, label, **kwargs):
+  '''Create a heightmap using the distribution of points stored at `path`'''
+  X = np.array(read_json(path, **kwargs))
+  # create kernel density estimate of distribution X
+  nbins = 200
+  x, y = X.T
+  xi, yi = np.mgrid[x.min():x.max():nbins*1j, y.min():y.max():nbins*1j]
+  zi = kde.gaussian_kde(X.T)(np.vstack([xi.flatten(), yi.flatten()]))
+  # create the plot
+  fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5,5))
+  fig.subplots_adjust(0,0,1,1)
+  plt.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='gouraud', cmap=plt.cm.gray)
+  plt.axis('off')
+  # save the plot
+  out_dir = os.path.join(kwargs['out_dir'], 'heightmaps')
+  if not os.path.exists(out_dir): os.makedirs(out_dir)
+  out_path = os.path.join(out_dir, label + '-heightmap.png')
+  plt.savefig(out_path, pad_inches=0)
 
 
 class Image:
