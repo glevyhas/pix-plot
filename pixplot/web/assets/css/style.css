@@ -83,10 +83,10 @@ select:disabled {
 
 #canvas-target {
   position: absolute;
-  top: -30px;
-  right: -30px;
-  bottom: -30px;
-  left: -30px;
+  top: -60px;
+  right: -90px;
+  bottom: -90px;
+  left: -90px;
 }
 
 #lod-canvas {
@@ -176,6 +176,7 @@ select:disabled {
   min-width: 280px;
   opacity: 0;
   transition: opacity 0.5s;
+  text-align: right;
 }
 
 .filter-icons {
@@ -203,6 +204,26 @@ select:disabled {
 }
 
 /**
+* Jitter
+**/
+
+#jitter-container {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 100;
+  background: #444;
+  font-size: 12px;
+  padding: 5px;
+  border-radius: 3px;
+  color: #dedede;
+  font-family: courier;
+  text-transform: uppercase;
+  transition: opacity 0.5s;
+  opacity: 0;
+}
+
+/**
 * Nav
 **/
 
@@ -218,7 +239,7 @@ nav {
   padding: 60px 0 0;
   background: rgba(17,17,17,0.9);
   box-shadow: 1px 0px 2px rgba(0, 0, 0, 0.7);
-  transition: transform .5s;
+  transition: transform 0.5s;
   color: #ddd;
 }
 

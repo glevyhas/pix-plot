@@ -134,7 +134,7 @@ def get_manifest(**kwargs):
         'lod': kwargs['lod_cell_height'],
       }
     },
-    'centroids': get_centroids(vecs=read_json(layouts['umap'], **kwargs), **kwargs),
+    'centroids': get_centroids(vecs=read_json(layouts['umap']['layout'], **kwargs), **kwargs),
     'images': [clean_filename(i) for i in kwargs['image_paths']],
     'metadata': True if kwargs['metadata'] else False,
     'creation_date': datetime.datetime.today().strftime('%d-%B-%Y-%H:%M:%S'),
@@ -320,10 +320,20 @@ def get_layouts(*args, **kwargs):
   umap_grid = get_pointgrid_projection(umap, 'umap', **kwargs)
   tsne_grid = get_pointgrid_projection(tsne, 'tsne', **kwargs)
   return {
-    'umap': umap,
-    'tsne': tsne,
-    'grid': grid,
-    'rasterfairy': rasterfairy,
+    'umap': {
+      'layout': umap,
+      'jittered': umap_grid,
+    },
+    'tsne': {
+      'layout': tsne,
+      'jittered': tsne_grid,
+    },
+    'grid': {
+      'layout': grid,
+    },
+    'rasterfairy': {
+      'layout': rasterfairy,
+    },
   }
 
 

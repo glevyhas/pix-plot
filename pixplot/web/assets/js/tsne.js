@@ -143,7 +143,7 @@ Data.prototype.parseManifest = function(json) {
     }));
   };
   // add cells to the world
-  get(getPath(this.layouts[this.initialLayout]), this.addCells.bind(this))
+  get(getPath(this.layouts[this.initialLayout].layout), this.addCells.bind(this))
 }
 
 // When a texture's progress updates, update the aggregate progress
@@ -180,11 +180,11 @@ Data.prototype.addCells = function(positions) {
         idx: idx, // index of cell among all cells
         w:  size[0], // width of cell in lod atlas
         h:  size[1], // height of cell in lod atlas
-        dx: atlasPos[0] + atlasOffset.x, // x offset of cell in atlas
-        dy: atlasPos[1] + atlasOffset.y, // y offset of cell in atlas
         x:  worldPos[0], // x position of cell in world
         y:  worldPos[1], // y position of cell in world
         z:  worldPos[2] || null, // z position of cell in world
+        dx: atlasPos[0] + atlasOffset.x, // x offset of cell in atlas
+        dy: atlasPos[1] + atlasOffset.y, // y offset of cell in atlas
       }))
       idx++;
     }
@@ -514,6 +514,11 @@ Layout.prototype.render = function() {
   }.bind(this))
   document.querySelector('#header-controls').appendChild(select);
   this.elem = select;
+  // add the event listener to the jitter input
+  var input = document.querySelector('#jitter-container').querySelector('input');
+  input.addEventListener('click', function(e) {
+    this.set(select.value);
+  }.bind(this));
 }
 
 // Transition to a new layout; layout must be an attr on Cell.layouts
@@ -521,6 +526,7 @@ Layout.prototype.set = function(layoutKey) {
   // disallow new transitions when we're transitioning
   if (world.state.transitioning) return;
   world.state.transitioning = true;
+  this.selected = layoutKey;
   this.elem.disabled = true;
   // zoom the user out if they're zoomed in
   var initialCameraPosition = world.getInitialLocation();
@@ -530,44 +536,50 @@ Layout.prototype.set = function(layoutKey) {
   } else {
     delay = 0;
   }
+  // enable the jitter button if this is a umap or tsne layout
+  var jitterElem = document.querySelector('#jitter-container');
+  jitterElem.style.opacity = data.layouts[layoutKey].jittered
+    ? 1.0
+    : 0.0;
+  // determine the path to the json to display
+  var jsonPath = jitterElem.querySelector('input').checked
+    ? getPath(data.layouts[layoutKey].jittered)
+    : getPath(data.layouts[layoutKey].layout);
   // begin the new layout transition
-  setTimeout(this.transition.bind(this, layoutKey), delay);
-}
-
-Layout.prototype.transition = function(layoutKey) {
-  this.selected = layoutKey;
-  get(getPath(data.layouts[layoutKey]), function(pos) {
-    // clear the LOD mechanism
-    lod.clear();
-    // set the target locations of each point
-    for (var i=0; i<data.cells.length; i++) {
-      data.cells[i].tx = pos[i][0];
-      data.cells[i].ty = pos[i][1];
-      data.cells[i].tz = pos[i][2] || data.cells[i].getZ(pos[i][0], pos[i][1]);
-    }
-    // get the draw call indices of each cell
-    var drawCallToCells = world.getDrawCallToCells();
-    for (var drawCall in drawCallToCells) {
-      var cells = drawCallToCells[drawCall];
-      var mesh = world.scene.children[0].children[drawCall];
-      // transition the transitionPercent attribute on the mesh
-      TweenLite.to(mesh.material.uniforms.transitionPercent,
-        config.transitions.duration, config.transitions.ease);
-      // update the target positional attributes on each cell
-      var iter = 0;
-      cells.forEach(function(cell) {
-        mesh.geometry.attributes.pos1.array[iter++] = cell.tx;
-        mesh.geometry.attributes.pos1.array[iter++] = cell.ty;
-        mesh.geometry.attributes.pos1.array[iter++] = cell.tz;
-      }.bind(this))
-      mesh.geometry.attributes.pos1.needsUpdate = true;
-      // set the cell's new position to enable future transitions
-      setTimeout(this.onTransitionComplete.bind(this, {
-        mesh: mesh,
-        cells: cells,
-      }), config.transitions.duration * 1000);
-    }
-  }.bind(this))
+  setTimeout(function(jsonPath) {
+    get(jsonPath, function(pos) {
+      // clear the LOD mechanism
+      lod.clear();
+      // set the target locations of each point
+      for (var i=0; i<data.cells.length; i++) {
+        data.cells[i].tx = pos[i][0];
+        data.cells[i].ty = pos[i][1];
+        data.cells[i].tz = pos[i][2] || data.cells[i].getZ(pos[i][0], pos[i][1]);
+      }
+      // get the draw call indices of each cell
+      var drawCallToCells = world.getDrawCallToCells();
+      for (var drawCall in drawCallToCells) {
+        var cells = drawCallToCells[drawCall];
+        var mesh = world.scene.children[0].children[drawCall];
+        // transition the transitionPercent attribute on the mesh
+        TweenLite.to(mesh.material.uniforms.transitionPercent,
+          config.transitions.duration, config.transitions.ease);
+        // update the target positional attributes on each cell
+        var iter = 0;
+        cells.forEach(function(cell) {
+          mesh.geometry.attributes.pos1.array[iter++] = cell.tx;
+          mesh.geometry.attributes.pos1.array[iter++] = cell.ty;
+          mesh.geometry.attributes.pos1.array[iter++] = cell.tz;
+        }.bind(this))
+        mesh.geometry.attributes.pos1.needsUpdate = true;
+        // set the cell's new position to enable future transitions
+        setTimeout(this.onTransitionComplete.bind(this, {
+          mesh: mesh,
+          cells: cells,
+        }), config.transitions.duration * 1000);
+      }
+    }.bind(this))
+  }.bind(this, jsonPath), delay);
 }
 
 // reset the cell translation buffers, update cell state
@@ -700,9 +712,9 @@ World.prototype.loadHeightmap = function(callback) {
 
 // determine the height of the heightmap at coordinates x,y
 World.prototype.getHeightmapHeightAt = function(x, y) {
-  x = (x+1)/2; // rescale x,y axes from -1:1 to 0:1
-  y = (y+1)/2;
-  var row = Math.floor(y * (this.heightmap.height-1)),
+  var x = (x+1)/2, // rescale x,y axes from -1:1 to 0:1
+      y = (y+1)/2,
+      row = Math.floor(y * (this.heightmap.height-1)),
       col = Math.floor(x * (this.heightmap.width-1)),
       idx = (row * this.heightmap.width * 4) + (col * 4),
       z = (this.heightmap.data[idx]) * (this.heightmapScalar || 0.0);
