@@ -13,6 +13,7 @@ from distutils.dir_util import copy_tree
 from iiif_downloader import Manifest
 from sklearn.cluster import KMeans
 from sklearn.manifold import TSNE
+from rasterfairy import coonswarp
 import matplotlib.pyplot as plt
 from keras.models import Model
 from scipy.stats import kde
@@ -322,7 +323,7 @@ def get_layouts(*args, **kwargs):
   vecs = vectorize_images(**kwargs)
   umap = get_umap_projection(vecs=vecs, **kwargs)
   tsne = get_tsne_projection(vecs=vecs, **kwargs)
-  rasterfairy = get_rasterfairy_projection(umap=umap, **kwargs)
+  raster = get_rasterfairy_projection(umap=umap, **kwargs)
   grid = get_grid_projection(**kwargs)
   umap_grid = get_pointgrid_projection(umap, 'umap', **kwargs)
   tsne_grid = get_pointgrid_projection(tsne, 'tsne', **kwargs)
@@ -339,7 +340,7 @@ def get_layouts(*args, **kwargs):
       'layout': grid,
     },
     'rasterfairy': {
-      'layout': rasterfairy,
+      'layout': raster,
     },
   }
 
@@ -394,7 +395,11 @@ def get_rasterfairy_projection(**kwargs):
   out_path = get_path('layouts', 'rasterfairy', **kwargs)
   if os.path.exists(out_path): return out_path
   umap = np.array(read_json(kwargs['umap'], **kwargs))
-  umap = (umap + 1) * 100 # make positive and upscale
+  umap = (umap + 1)/2 # scale 0:1
+  umap = coonswarp.rectifyCloud(umap, # stretch the distribution
+    perimeterSubdivisionSteps=4,
+    autoPerimeterOffset=False,
+    paddingScale=1.05)
   pos = rasterfairy.transformPointCloud2D(umap)[0]
   return write_layout(out_path, pos, **kwargs)
 
