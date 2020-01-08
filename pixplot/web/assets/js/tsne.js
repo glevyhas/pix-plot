@@ -515,7 +515,7 @@ Layout.prototype.render = function() {
   document.querySelector('#header-controls').appendChild(select);
   this.elem = select;
   // add the event listener to the jitter input
-  var input = document.querySelector('#jitter-container').querySelector('input');
+  var input = document.querySelector('#jitter-container');
   input.addEventListener('click', function(e) {
     this.set(select.value, false);
   }.bind(this));

@@ -152,6 +152,17 @@ select:disabled {
   white-space: nowrap;
 }
 
+#tagline::after {
+  content: '';
+  height: 100%;
+  width: 30px;
+  background: linear-gradient(90deg, rgb(51, 51, 51), rgb(51, 51, 51, 0));
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -30px;
+}
+
 @media(max-width: 335px) {
   .header .logo {
     display: none;
@@ -233,7 +244,7 @@ nav {
   top: 0;
   left: 0;
   bottom: 0;
-  width: 100px;
+  width: 106px;
   height: auto;
   box-sizing: border-box;
   padding: 60px 0 0;
@@ -252,7 +263,7 @@ nav.hidden {
   max-height: 100%;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 10px;
+  padding: 15px;
   background: #222;
 }
 
@@ -270,6 +281,7 @@ nav h2 {
 }
 
 #hotspots {
+  width: 75px;
   padding-bottom: 25px;
 }
 
@@ -278,16 +290,12 @@ nav h2 {
   cursor: pointer;
   display: inline-block;
   text-align: center;
-  width: 80px;
+  width: 75px;
   font-size: 13px;
 }
 
-.hotspot .background-image {
-  padding-bottom: 110%;
-  background-position: 50% 11%;
-  margin: 0 5%;
-  background-repeat: no-repeat;
-  background-size: cover;
+.hotspot img {
+  width: 100%;
 }
 
 /**

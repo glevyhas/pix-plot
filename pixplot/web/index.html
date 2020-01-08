@@ -261,8 +261,7 @@
         <script type='text/html' id='hotspot-template'>
           <% _.forEach(hotspots, function(hotspot) { %>
             <div class='hotspot'>
-              <div class='background-image'
-                style='background-image: url("data/thumbs/<%= hotspot.img %>")'></div>
+              <img src='data/thumbs/<%= hotspot.img %>'>
               <div><%= hotspot.label %></div>
             </div>
           <% }); %>
