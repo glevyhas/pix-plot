@@ -98,6 +98,11 @@ select:disabled {
   max-height: 90%;
 }
 
+#pixplot-canvas {
+  height: 100%;
+  width: 100%;
+}
+
 /**
 * Header
 **/
@@ -232,6 +237,11 @@ select:disabled {
   text-transform: uppercase;
   transition: opacity 0.5s;
   opacity: 0;
+}
+
+#jitter-container,
+#jitter-container * {
+  cursor: pointer;
 }
 
 /**

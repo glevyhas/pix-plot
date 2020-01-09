@@ -515,8 +515,12 @@ Layout.prototype.render = function() {
   document.querySelector('#header-controls').appendChild(select);
   this.elem = select;
   // add the event listener to the jitter input
-  var input = document.querySelector('#jitter-container');
-  input.addEventListener('click', function(e) {
+  var elem = document.querySelector('#jitter-container');
+  elem.addEventListener('click', function(e) {
+    // handle click on containing element
+    if (e.target.tagName != 'INPUT') {
+      elem.querySelector('input').checked = !elem.querySelector('input').checked;
+    }
     this.set(select.value, false);
   }.bind(this));
 }
@@ -617,6 +621,7 @@ Layout.prototype.onTransitionComplete = function(obj) {
 **/
 
 function World() {
+  this.canvas = document.querySelector('#pixplot-canvas');
   this.scene = this.getScene();
   this.camera = this.getCamera();
   this.renderer = this.getRenderer();
@@ -665,14 +670,10 @@ World.prototype.getCamera = function() {
 **/
 
 World.prototype.getRenderer = function() {
-  var config = {antialias: true}, // powerPreference breaks safari
-      renderer = new THREE.WebGLRenderer(config);
-  renderer.setPixelRatio(window.devicePixelRatio); // support retina displays
-  var canvasSize = getCanvasSize(); // determine the size of the window
-  renderer.setSize(canvasSize.w, canvasSize.h); // set the renderer size
-  renderer.domElement.id = 'pixplot-canvas'; // give the canvas a unique id
-  document.querySelector('#canvas-target').appendChild(renderer.domElement);
-  return renderer;
+  return new THREE.WebGLRenderer({
+    antialias: true,
+    canvas: this.canvas,
+  });
 }
 
 /**
@@ -682,7 +683,7 @@ World.prototype.getRenderer = function() {
 **/
 
 World.prototype.getControls = function() {
-  var controls = new THREE.TrackballControls(this.camera, this.renderer.domElement);
+  var controls = new THREE.TrackballControls(this.camera, this.canvas);
   controls.zoomSpeed = 0.4;
   controls.panSpeed = 0.4;
   return controls;
@@ -743,12 +744,13 @@ World.prototype.addResizeListener = function() {
 }
 
 World.prototype.handleResize = function() {
-  var canvasSize = getCanvasSize();
-  this.camera.aspect = canvasSize.w / canvasSize.h;
+  var canvasSize = getCanvasSize(),
+      w = canvasSize.w * window.devicePixelRatio,
+      h = canvasSize.h * window.devicePixelRatio;
+  this.camera.aspect = w / h;
   this.camera.updateProjectionMatrix();
-  this.renderer.setSize(canvasSize.w, canvasSize.h);
-  selector.tex.setSize(canvasSize.w, canvasSize.h);
-  this.controls.handleResize();
+  this.renderer.setSize(w, h, false);
+  selector.tex.setSize(w, h);
   this.setPointScalar();
   delete this.resizeTimeout;
 }
@@ -759,7 +761,10 @@ World.prototype.handleResize = function() {
 
 World.prototype.setPointScalar = function() {
   // handle case of drag before scene renders
-  if (!this.scene || !this.scene.children.length) return;
+  if (!this.scene ||
+      !this.scene.children.length ||
+      !selector.scene ||
+      !selector.scene.children.length) return;
   var scalar = this.getPointScale();
   // update the displayed and selector meshes
   var meshes = this.scene.children[0].children.concat(selector.scene.children[0].children)
@@ -784,9 +789,9 @@ World.prototype.addScalarChangeListener = function() {
 
 World.prototype.addVisibilityChangeListener = function() {
   document.addEventListener('visibilitychange', function() {
-    this.renderer.domElement.width = this.renderer.domElement.width + 1;
+    this.canvas.width = this.canvas.width + 1;
     setTimeout(function() {
-      this.renderer.domElement.width = this.renderer.domElement.width - 1;
+      this.canvas.width = this.canvas.width - 1;
     }.bind(this), 50);
   }.bind(this))
 }
@@ -797,8 +802,7 @@ World.prototype.addVisibilityChangeListener = function() {
 **/
 
 World.prototype.addLostContextListener = function() {
-  var canvas = this.renderer.domElement;
-  canvas.addEventListener('webglcontextlost', function(e) {
+  this.canvas.addEventListener('webglcontextlost', function(e) {
     e.preventDefault();
     window.location.reload();
   });
@@ -1211,7 +1215,6 @@ World.prototype.render = function() {
   requestAnimationFrame(this.render.bind(this));
   this.renderer.render(this.scene, this.camera);
   this.controls.update();
-  selector.select();
   if (this.stats) this.stats.update();
   lod.update();
 }
@@ -1228,6 +1231,7 @@ World.prototype.init = function() {
   this.camera.lookAt(loc.x, loc.y, loc.z);
   // draw the points and start the render loop
   this.plot();
+  this.handleResize();
   this.render();
 }
 
@@ -1237,6 +1241,7 @@ World.prototype.init = function() {
 
 function Selector() {
   this.scene = new THREE.Scene();
+  this.scene.background = new THREE.Color(0x000000);
   this.mouse = new THREE.Vector2();
   this.mouseDown = new THREE.Vector2();
   this.tex = this.getTexture();
@@ -1363,8 +1368,7 @@ Selector.prototype.getMouseWorldCoords = function() {
 
 // get the mesh in which to render picking elements
 Selector.prototype.init = function() {
-  var elem = world.renderer.domElement;
-  elem.addEventListener('mousedown', this.onMouseDown.bind(this));
+  world.canvas.addEventListener('mousedown', this.onMouseDown.bind(this));
   document.body.addEventListener('mouseup', this.onMouseUp.bind(this));
   var group = new THREE.Group();
   for (var i=0; i<world.scene.children[0].children.length; i++) {
@@ -1383,13 +1387,12 @@ Selector.prototype.render = function() {
 }
 
 Selector.prototype.select = function(obj) {
-  if (!world) return;
+  if (!world || !obj) return;
   this.render();
-  if (!obj) return;
   // read the texture color at the current mouse pixel
   var pixelBuffer = new Uint8Array(4),
-      x = obj.x,
-      y = this.tex.height - obj.y;
+      x = obj.x * window.devicePixelRatio,
+      y = this.tex.height - obj.y * window.devicePixelRatio;
   world.renderer.readRenderTargetPixels(this.tex, x, y, 1, 1, pixelBuffer);
   var id = (pixelBuffer[0] << 16) | (pixelBuffer[1] << 8) | (pixelBuffer[2]),
       cellIdx = id-1; // ids use id+1 as the id of null selections is 0
@@ -1958,7 +1961,7 @@ function getNested(obj, keyArr, ifEmpty) {
 **/
 
 function getCanvasSize() {
-  var elem = document.querySelector('#canvas-target');
+  var elem = document.querySelector('#pixplot-canvas');
   return {
     w: elem.clientWidth,
     h: elem.clientHeight,
