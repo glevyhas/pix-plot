@@ -11,7 +11,7 @@ for root, subdirs, files in os.walk(os.path.join('pixplot', 'web')):
 
 setup(
   name='pixplot',
-  version='0.0.58',
+  version='0.0.59',
   packages=['pixplot'],
   package_data={
     'pixplot': web,
@@ -33,7 +33,7 @@ setup(
     'pointgrid>=0.0.2',
     'scikit-learn>=0.19.0',
     'scipy>=1.1.0',
-    'tensorflow>=1.14.0',
+    'tensorflow>=1.14.0,<=2.0.0',
     'umap-learn>=0.3.10',
     'yale-dhlab-rasterfairy>=1.0.3',
     'yale-dhlab-keras-preprocessing>=1.1.1',
