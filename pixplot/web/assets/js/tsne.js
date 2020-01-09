@@ -1549,7 +1549,7 @@ LOD.prototype.fetchNextImage = function() {
         this.state.fetchQueue = this.state.fetchQueue.concat(cellIndices);
       }
     }
-    if (this.state.openCoords && this.state.radius < 10) {
+    if (this.state.openCoords && this.state.radius < 30) {
       this.state.radius++;
     }
   }
