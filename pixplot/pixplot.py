@@ -67,7 +67,6 @@ config = {
   'metric': 'correlation',
   'square_cells': False,
   'gzip': False,
-  'gpu_available': len(K.tensorflow_backend._get_available_gpus()) > 0,
 }
 
 ##
