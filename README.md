@@ -88,7 +88,7 @@ Your metadata should be in a comma-separated value file (CSV), should contain on
 
 | Filename | Metadata Tags | Description | Permalink   |
 | -------- | ------------- | ----------- | ----------- |
-| bees.jpg | honey|yellow  | bees' knees | https://... |
+| bees.jpg | honey&#124;yellow  | bees' knees | https://... |
 
 The CSV should contain no headers.
 
