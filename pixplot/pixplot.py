@@ -12,7 +12,7 @@ from pointgrid import align_points_to_grid
 from distutils.dir_util import copy_tree
 from iiif_downloader import Manifest
 from sklearn.cluster import KMeans
-from sklearn.manifold import TSNE
+from MulticoreTSNE import MulticoreTSNE as TSNE
 from rasterfairy import coonswarp
 import matplotlib.pyplot as plt
 from keras.models import Model
@@ -22,6 +22,7 @@ from hashlib import sha224
 import keras.backend as K
 import tensorflow as tf
 from umap import UMAP
+import multiprocessing
 import pkg_resources
 import rasterfairy
 import numpy as np
@@ -383,7 +384,8 @@ def get_tsne_projection(**kwargs):
   print(' * creating TSNE layout')
   out_path = get_path('layouts', 'tsne', **kwargs)
   if os.path.exists(out_path): return out_path
-  model = TSNE(perplexity=kwargs.get('perplexity', 2))
+  print('Using ' + str(multiprocessing.cpu_count()) + ' cores for t-SNE...')
+  model = TSNE(perplexity=kwargs.get('perplexity', 2),n_jobs=multiprocessing.cpu_count())
   z = model.fit_transform(kwargs['vecs'])
   return write_layout(out_path, z, **kwargs)
 
