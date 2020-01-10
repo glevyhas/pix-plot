@@ -65,6 +65,7 @@ config = {
   'n_neighbors': 6,
   'min_dist': 0.001,
   'metric': 'correlation',
+  'pointgrid_fill': 0.05,
   'square_cells': False,
   'gzip': False,
 }
@@ -296,7 +297,7 @@ def get_atlas_positions(**kwargs):
     atlas[y:y+kwargs['cell_size'], x:x+v] = cell_data
     # find the size of the cell in the lod canvas
     lod_data = i.resize_to_max(kwargs['lod_cell_height'])
-    h,w,_ = lod_data.shape # w,h,colors in lod-cell sized image `i`
+    h,w,_ = lod_data.shape # h,w,colors in lod-cell sized image `i`
     atlas_positions.append({
       'idx': n, # atlas idx
       'x': x, # x offset of cell in atlas
@@ -602,6 +603,7 @@ def parse():
   parser.add_argument('--n_neighbors', type=int, default=config['n_neighbors'], help='the n_neighbors argument for UMAP')
   parser.add_argument('--min_dist', type=float, default=config['min_dist'], help='the min_dist argument for umap')
   parser.add_argument('--metric', type=str, default=config['metric'], help='the metric argument for umap')
+  parser.add_argument('--pointgrid_fill', type=float, default=config['pointgrid_fill'], help='float 0:1 that determines sparsity of jittered distributions (lower means more sparse)')
   parser.add_argument('--copy_web_only', action='store_true', help='update ./output/web without reprocessing data')
   parser.add_argument('--gzip', action='store_true', help='save outputs with gzip compression')
   parser.add_argument('--shuffle', action='store_true', help='shuffle the input images before data processing begins')
