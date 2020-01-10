@@ -37,6 +37,8 @@ setup(
     'umap-learn>=0.3.10',
     'yale-dhlab-rasterfairy>=1.0.3',
     'yale-dhlab-keras-preprocessing>=1.1.1',
+    'cmake',
+    'MulticoreTSNE',
   ],
   entry_points={
     'console_scripts': [
