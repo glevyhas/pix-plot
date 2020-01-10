@@ -37,7 +37,7 @@ import codecs
 from tqdm import tqdm
 
 # configure command line interface arguments
-flags = tf.app.flags
+flags = tf.compat.v1.flags
 flags.DEFINE_string('model_dir', '/tmp/imagenet', 'The location of downloaded pre-trained Inception model')
 flags.DEFINE_string('image_files', '', 'A glob path of images to process')
 flags.DEFINE_integer('clusters', 20, 'The number of clusters to display in the image browser')
@@ -155,7 +155,7 @@ class PixPlot:
     self.create_tf_graph()
 
     print(' * creating image vectors')
-    with tf.Session() as sess:
+    with tf.compat.v1.Session() as sess:
       for image_index, image in enumerate(tqdm(self.image_files)):
         try:
           outfile_name = os.path.basename(image) + '.npy'
@@ -163,7 +163,7 @@ class PixPlot:
           if os.path.exists(out_path) and not self.rewrite_image_vectors:
             continue
           # save the penultimate inception tensor/layer of the current image
-          with tf.gfile.FastGFile(image, 'rb') as f:
+          with tf.compat.v2.io.gfile.GFile(image, 'rb') as f:
             data = {'DecodeJpeg/contents:0': f.read()}
             feature_tensor = sess.graph.get_tensor_by_name('pool_3:0')
             feature_vector = np.squeeze( sess.run(feature_tensor, data) )
@@ -202,8 +202,8 @@ class PixPlot:
     '''
     print(' * creating tf graph')
     graph_path = join(FLAGS.model_dir, 'classify_image_graph_def.pb')
-    with tf.gfile.FastGFile(graph_path, 'rb') as f:
-      graph_def = tf.GraphDef()
+    with tf.compat.v1.gfile.GFile(graph_path, 'rb') as f:
+      graph_def = tf.compat.v1.GraphDef()
       graph_def.ParseFromString(f.read())
       _ = tf.import_graph_def(graph_def, name='')
 
@@ -491,4 +491,4 @@ def main(*args, **kwargs):
   PixPlot(image_glob)
 
 if __name__ == '__main__':
-  tf.app.run()
+  tf.compat.v1.app.run()
