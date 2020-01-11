@@ -381,10 +381,9 @@ def get_umap_projection(**kwargs):
 
 def get_tsne_projection(**kwargs):
   '''Get the x,y positions of images passed through a TSNE projection'''
-  print(' * creating TSNE layout')
+  print(' * creating TSNE layout with ' + str(multiprocessing.cpu_count()) + ' cores...')
   out_path = get_path('layouts', 'tsne', **kwargs)
   if os.path.exists(out_path): return out_path
-  print('Using ' + str(multiprocessing.cpu_count()) + ' cores for t-SNE...')
   model = TSNE(perplexity=kwargs.get('perplexity', 2),n_jobs=multiprocessing.cpu_count())
   z = model.fit_transform(kwargs['vecs'])
   return write_layout(out_path, z, **kwargs)
