@@ -128,24 +128,19 @@ def get_manifest(**kwargs):
   for i in layouts:
     for j in layouts[i]:
       get_heightmap(layouts[i][j], i + '-' + j, **kwargs)
-  # create base metadata for manifest
+  # create manifest json
   manifest = {
-    'cell_sizes': sizes,
-    'atlas': {
-      'count': len(atlas_ids),
-      'positions': pos,
-    },
     'layouts': layouts,
+    'imagelist': get_path('imagelists', 'imagelist', **kwargs),
     'config': {
       'sizes': {
         'atlas': kwargs['atlas_size'],
         'cell': kwargs['cell_size'],
         'lod': kwargs['lod_cell_height'],
-      }
+      },
     },
-    'centroids': get_centroids(vecs=read_json(layouts['umap']['layout'], **kwargs), **kwargs),
-    'images': [clean_filename(i) for i in kwargs['image_paths']],
     'metadata': True if kwargs['metadata'] else False,
+    'centroids': get_centroids(vecs=read_json(layouts['umap']['layout'], **kwargs), **kwargs),
     'creation_date': datetime.datetime.today().strftime('%d-%B-%Y-%H:%M:%S'),
     'version': get_version(),
   }
@@ -153,7 +148,16 @@ def get_manifest(**kwargs):
   write_json(path, manifest, **kwargs)
   path = get_path(None, 'manifest', add_hash=False, **kwargs)
   write_json(path, manifest, **kwargs)
-  return manifest
+  # create images json
+  imagelist = {
+    'cell_sizes': sizes,
+    'images': [clean_filename(i) for i in kwargs['image_paths']],
+    'atlas': {
+      'count': len(atlas_ids),
+      'positions': pos,
+    },
+  }
+  write_json(manifest['imagelist'], imagelist)
 
 
 def filter_images(**kwargs):

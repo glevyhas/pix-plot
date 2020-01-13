@@ -1,4 +1,4 @@
-// version: VERSION_NUMBER
+// version: 0.0.61
 
 /**
 *
@@ -101,7 +101,9 @@ function Data() {
 Data.prototype.load = function() {
   get(getPath(config.data.dir + '/' + config.data.file),
     function(json) {
-      this.parseManifest(json)
+      get(getPath(json.imagelist), function(data) {
+        this.parseManifest(Object.assign({}, json, data));
+      }.bind(this))
     }.bind(this),
     function(err) {
       if (!config.data.gzipped) {
