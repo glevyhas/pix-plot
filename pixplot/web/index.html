@@ -123,37 +123,54 @@
       uniform sampler2D lodTexture;
     #endif
 
-    vec2 getCellWH(in float vWidth, in float vHeight, in float vTextureIndex) {
-      // if this cell is from a cell atlas, its height is
-      // lodPxHeight and width must be converted
-      if (vTextureIndex > -0.5) {
-        float w = vWidth/vHeight*cellPxHeight;
-        float h = cellPxHeight;
-        return vec2(w,h);
-      } else {
-        return vec2(vWidth,vHeight);
-      }
-    }
-
     void main() {
-      vec2 wh = getCellWH(vWidth, vHeight, vTextureIndex);
-      float w = wh[0]; // cell width in pixels within texture
-      float h = wh[1]; // cell height in pixels within texture
+      // is this cell a LOD cell?
+      bool isLod = vTextureIndex < -0.5;
 
-      // if this cell's image is portrait clip right margin
-      if (h > w && gl_PointCoord.x > (w/h)) discard;
+      // find the width and height of this cell in its texture (in px)
+      float w = isLod ? vWidth : vWidth/vHeight*cellPxHeight;
+      float h = isLod ? vHeight : cellPxHeight;
+
+      // set boolean indicating whether to center cells
+      bool center = true;
+
+      // find the length of the cell in its longest dimension (in px)
+      float big = max(w, h);
+
+      // find min, max vals of 0:1 scaled x axis to be textured
+      float x0 = center ? (big-w)/2.0/big : 0.0;
+      float x1 = center ? (w/big)+x0 : w / big;
+
+      // find min, max vals of 0:1 scaled y axis to be textured
+      float y0 = center ? (big-h)/2.0/big : 0.0;
+      float y1 = center ? (h/big)+y0 : h / big;
+
+      // clip the cell to center the texture on the x axis
+      if (h > w && (gl_PointCoord.x < x0 || gl_PointCoord.x > x1)) discard;
+
       // if this cell's image is landscape clip bottom margin
-      else if (w > h && gl_PointCoord.y > (h/w)) discard;
+      else if (w > h && gl_PointCoord.y < y0 || gl_PointCoord.y > y1) discard;
 
       // if this shader is using vColor attributes skip texture processing
-      if (int(useColor) == 1) {
-        gl_FragColor = vec4(vColor, 1.0);
-      } else {
-        vec2 uv = vOffset + gl_PointCoord * max(w, h);
-        vec2 scaledUv = vTextureIndex > -0.5 ? uv/cellAtlasPxPerSide : uv/lodAtlasPxPerSide;
-        int textureIndex = vTextureIndex > -0.5 ? int(vTextureIndex) : -1;
+      if (int(useColor) == 1) gl_FragColor = vec4(vColor, 1.0);
 
+      // this cell should be textured
+      else {
+
+        // get the x and y positions to sample for this cell's texture
+        float x = center ? gl_PointCoord.x - x0 : gl_PointCoord.x;
+        float y = center ? gl_PointCoord.y - y0 : gl_PointCoord.y;
+
+        // scale the x and y positions to the size of the texture
+        vec2 uv = vOffset + vec2(x, y) * big;
+
+        // set variables consumed by fragment tree below
+        vec2 scaledUv = isLod ? uv/lodAtlasPxPerSide : uv/cellAtlasPxPerSide;
+        int textureIndex = isLod ? -1 : int(vTextureIndex);
+
+        // target to be replaced by texture tree
         TEXTURE_LOOKUP_TREE
+
         gl_FragColor.a = vOpacity;
       }
     }
