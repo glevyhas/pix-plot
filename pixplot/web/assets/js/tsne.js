@@ -484,6 +484,7 @@ Cell.prototype.mutateBuffer = function(attr) {
 
 function Layout() {
   this.elem = null;
+  this.jitterElem = null;
   this.selected = null;
   this.options = [];
 }
@@ -497,31 +498,41 @@ Layout.prototype.setOptions = function(options) {
   this.options = options;
   this.selected = data.initialLayout;
   this.render();
+  this.selectActiveTab();
+}
+
+Layout.prototype.selectActiveTab = function() {
+  // remove the active state from all icons
+  var icons = this.elem.querySelectorAll('img');
+  for (var i=0; i<icons.length; i++) {
+    icons[i].classList.remove('active');
+  }
+  // add the active state to selected icon
+  document.querySelector('#layout-' + this.selected).classList.add('active');
 }
 
 Layout.prototype.render = function() {
-  var select = document.createElement('select');
-  select.id = 'layout-select';
-  for (var i=0; i<this.options.length; i++) {
-    var option = document.createElement('option');
-    option.val = this.options[i];
-    option.textContent = this.options[i];
-    if (this.options[i] == this.selected) option.selected = true;
-    select.appendChild(option);
-  }
-  select.addEventListener('change', function(e) {
-    this.set(e.target.value, true);
+  this.elem = document.querySelector('#icons');
+  this.jitterElem = document.querySelector('#jitter-container');
+  this.jitterInput = this.jitterElem.querySelector('input');
+  // add icon click listeners
+  this.elem.addEventListener('click', function(e) {
+    if (!e.target || !e.target.id) return;
+    this.set(e.target.id.replace('layout-', ''), true);
   }.bind(this))
-  document.querySelector('#header-controls').appendChild(select);
-  this.elem = select;
   // add the event listener to the jitter input
-  var elem = document.querySelector('#jitter-container');
-  elem.addEventListener('click', function(e) {
+  this.jitterElem.addEventListener('click', function(e) {
     // handle click on containing element
     if (e.target.tagName != 'INPUT') {
-      elem.querySelector('input').checked = !elem.querySelector('input').checked;
+      if (this.jitterInput.checked) {
+        this.jitterInput.checked = false;
+        this.jitterElem.classList.remove('visible')
+      } else {
+        this.jitterInput.checked = true;
+        this.jitterElem.classList.add('visible')
+      }
     }
-    this.set(select.value, false);
+    this.set(this.selected, false);
   }.bind(this));
 }
 
@@ -531,7 +542,8 @@ Layout.prototype.set = function(layoutKey, enableDelay) {
   if (world.state.transitioning) return;
   world.state.transitioning = true;
   this.selected = layoutKey;
-  this.elem.disabled = true;
+  // select the active tab
+  this.selectActiveTab();
   // zoom the user out if they're zoomed in
   var initialCameraPosition = world.getInitialLocation();
   var delay = 0;
@@ -540,15 +552,13 @@ Layout.prototype.set = function(layoutKey, enableDelay) {
     world.flyTo(initialCameraPosition);
   }
   // enable the jitter button if this is a umap or tsne layout
-  var jitterElem = document.querySelector('#jitter-container');
-  jitterElem.style.opacity = data.layouts[layoutKey].jittered
-    ? 1.0
-    : 0.0;
+  'jittered' in data.layouts[layoutKey]
+    ? this.jitterElem.classList.add('visible', 'disabled')
+    : this.jitterElem.classList.remove('visible');
   // determine the path to the json to display
-  var jsonPath = jitterElem.querySelector('input').checked &&
-    'jittered' in data.layouts[layoutKey]
-      ? getPath(data.layouts[layoutKey].jittered)
-      : getPath(data.layouts[layoutKey].layout);
+  var jsonPath = this.jitterInput.checked && 'jittered' in data.layouts[layoutKey]
+    ? getPath(data.layouts[layoutKey].jittered)
+    : getPath(data.layouts[layoutKey].layout);
   // begin the new layout transition
   setTimeout(function(jsonPath) {
     get(jsonPath, function(pos) {
@@ -589,7 +599,7 @@ Layout.prototype.set = function(layoutKey, enableDelay) {
 // reset the cell translation buffers, update cell state
 // and reset the time uniforms after a positional transition completes
 Layout.prototype.onTransitionComplete = function(obj) {
-  this.elem.disabled = false;
+  this.jitterElem.classList.remove('disabled');
   var iter = 0;
   obj.cells.forEach(function(cell) {
     cell.x = cell.tx;
@@ -729,7 +739,7 @@ World.prototype.addEventListeners = function() {
   this.addResizeListener();
   this.addLostContextListener();
   this.addScalarChangeListener();
-  this.addVisibilityChangeListener();
+  this.addTabChangeListeners();
 }
 
 /**
@@ -784,16 +794,21 @@ World.prototype.addScalarChangeListener = function() {
 }
 
 /**
-* If the user changes tabs, trigger resize to resolve Chrome canvas bug
+* Refrain from drawing scene when user isn't looking at page
 **/
 
-World.prototype.addVisibilityChangeListener = function() {
-  document.addEventListener('visibilitychange', function() {
+World.prototype.addTabChangeListeners = function() {
+  window.addEventListener('blur', function() {
+    this.state.displayed = false;
+  }.bind(this));
+  window.addEventListener('focus', function() {
+    this.state.displayed = true;
+    // change the canvas size to handle Chrome bug
     this.canvas.width = this.canvas.width + 1;
     setTimeout(function() {
       this.canvas.width = this.canvas.width - 1;
     }.bind(this), 50);
-  }.bind(this))
+  }.bind(this));
 }
 
 /**
@@ -1213,6 +1228,7 @@ World.prototype.getInitialLocation = function() {
 
 World.prototype.render = function() {
   requestAnimationFrame(this.render.bind(this));
+  if (!this.state.displayed) return;
   this.renderer.render(this.scene, this.camera);
   this.controls.update();
   if (this.stats) this.stats.update();

@@ -226,34 +226,38 @@ input[type=range]::-moz-range-thumb {
   display: inline-block;
   position: absolute;
   right: 20px;
-  top: 18px;
+  top: 15px;
   min-width: 280px;
   opacity: 0;
   transition: opacity 0.5s;
   text-align: right;
 }
 
-.filter-icons {
+#filters {
   position: relative;
   top: 0;
   display: inline-block;
   margin-right: 10px;
 }
 
-.layout-icons {
-  margin: 20px 40px 0;
+/**
+* Icons
+**/
+
+#icons {
   display: inline-block;
-  float: right;
+  position: relative;
+  top: 5px;
 }
 
-.layout-icons img {
+#icons img {
   width: 21px;
   margin: 0 8px;
-  opacity: 0.45;
+  opacity: 0.3;
   cursor: pointer;
 }
 
-.layout-icons img.active {
+#icons img.active {
   opacity: 1;
 }
 
@@ -275,6 +279,16 @@ input[type=range]::-moz-range-thumb {
   text-transform: uppercase;
   transition: opacity 0.5s;
   opacity: 0;
+}
+
+#jitter-container.visible {
+  opacity: 1;
+}
+
+#jitter-container.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+  cursor: not-allowed;
 }
 
 #jitter-container,
