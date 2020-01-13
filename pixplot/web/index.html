@@ -127,8 +127,8 @@
       // if this cell is from a cell atlas, its height is
       // lodPxHeight and width must be converted
       if (vTextureIndex > -0.5) {
-        float h = cellPxHeight;
         float w = vWidth/vHeight*cellPxHeight;
+        float h = cellPxHeight;
         return vec2(w,h);
       } else {
         return vec2(vWidth,vHeight);
@@ -137,8 +137,8 @@
 
     void main() {
       vec2 wh = getCellWH(vWidth, vHeight, vTextureIndex);
-      float w = wh[0];
-      float h = wh[1];
+      float w = wh[0]; // cell width in pixels within texture
+      float h = wh[1]; // cell height in pixels within texture
 
       // if this cell's image is portrait clip right margin
       if (h > w && gl_PointCoord.x > (w/h)) discard;
