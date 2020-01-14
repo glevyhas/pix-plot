@@ -1,4 +1,4 @@
-// version: 0.0.61
+// version: VERSION_NUMBER
 
 /**
 *
@@ -125,7 +125,9 @@ Data.prototype.parseManifest = function(json) {
   config.size.lodCell = json.config.sizes.lod;
   // set the point scalar as a function of the number of cells
   var elem = document.querySelector('#pointsize-range-input');
-  elem.value = (json.images.length * -0.00000005) + 0.01;
+  elem.min = 0;
+  elem.max = json.point_size + (json.point_size*0.2);
+  elem.value = json.point_size;
   // set number of atlases and textures
   this.atlasCount = json.atlas.count;
   this.textureCount = Math.ceil(json.atlas.count / config.atlasesPerTex);
@@ -765,6 +767,8 @@ World.prototype.handleResize = function() {
   selector.tex.setSize(w, h);
   this.setPointScalar();
   delete this.resizeTimeout;
+  // re-enable the render (disabled by window blur event)
+  this.state.displayed = true;
 }
 
 /**
