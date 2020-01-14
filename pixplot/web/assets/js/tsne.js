@@ -82,7 +82,6 @@ function Config() {
 function Data() {
   this.atlasCount = null;
   this.textureCount = null;
-  this.initialLayout = 'grid'; // string label for selected layout
   this.layouts = [];
   this.cells = [];
   this.textures = [];
@@ -133,7 +132,6 @@ Data.prototype.parseManifest = function(json) {
   this.textureCount = Math.ceil(json.atlas.count / config.atlasesPerTex);
   // set layout values
   this.layouts = json.layouts;
-  this.initialLayout = json.initial_layout || Object.keys(this.layouts)[0];
   this.hotspots = new Hotspots();
   layout.setOptions(Object.keys(this.layouts));
   // load the filter options if metadata present
@@ -147,7 +145,7 @@ Data.prototype.parseManifest = function(json) {
     }));
   };
   // add cells to the world
-  get(getPath(this.layouts[this.initialLayout].layout), this.addCells.bind(this))
+  get(getPath(this.layouts[layout.selected].layout), this.addCells.bind(this))
 }
 
 // When a texture's progress updates, update the aggregate progress
@@ -500,9 +498,10 @@ function Layout() {
 
 Layout.prototype.setOptions = function(options) {
   this.options = options;
-  this.selected = data.initialLayout;
+  this.selected = data.json.initial_layout || Object.keys(options)[0];
   this.render();
   this.selectActiveTab();
+  data.hotspots.showHide();
 }
 
 Layout.prototype.selectActiveTab = function() {
@@ -523,7 +522,7 @@ Layout.prototype.render = function() {
   this.elem.addEventListener('click', function(e) {
     if (!e.target || !e.target.id) return;
     this.set(e.target.id.replace('layout-', ''), true);
-  }.bind(this))
+  }.bind(this));
   // add the event listener to the jitter input
   this.jitterElem.addEventListener('click', function(e) {
     // handle click on containing element
@@ -603,7 +602,10 @@ Layout.prototype.set = function(layoutKey, enableDelay) {
 // reset the cell translation buffers, update cell state
 // and reset the time uniforms after a positional transition completes
 Layout.prototype.onTransitionComplete = function(obj) {
+  // re-enable interactions with the jitter button
   this.jitterElem.classList.remove('disabled');
+  // show/hide the hotspots
+  data.hotspots.showHide();
   var iter = 0;
   obj.cells.forEach(function(cell) {
     cell.x = cell.tx;
@@ -809,12 +811,14 @@ World.prototype.addTabChangeListeners = function() {
   }.bind(this));
   window.addEventListener('focus', function() {
     this.state.displayed = true;
-    // change the canvas size to handle Chrome bug
+  }.bind(this));
+  // change the canvas size to handle Chromium bug 1034019
+  window.addEventListener('visibilitychange', function() {
     this.canvas.width = this.canvas.width + 1;
     setTimeout(function() {
       this.canvas.width = this.canvas.width - 1;
     }.bind(this), 50);
-  }.bind(this));
+  }.bind(this))
 }
 
 /**
@@ -1817,6 +1821,11 @@ Hotspots.prototype.init = function() {
       }.bind(this, i))
     }
   }.bind(this))
+}
+
+Hotspots.prototype.showHide = function() {
+  c = ['grid'].indexOf(layout.selected) > -1 ? 'hidden' : '';
+  document.querySelector('nav').className = c;
 }
 
 /**
