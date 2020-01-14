@@ -488,9 +488,22 @@ def read_json(path, **kwargs):
 
 def get_centroids(**kwargs):
   '''Return the K nearest neighbor centroids for input vectors'''
-  z = KMeans(n_clusters=kwargs['n_clusters']).fit(kwargs['vecs'])
-  centroids = z.cluster_centers_
+  config = {
+    'min_cluster_size': int(len(kwargs['vecs'])*0.05),
+    'min_samples': 1,
+  }
+  z = HDBSCAN(**config).fit(kwargs['vecs'])
+  # find the centroids for each cluster
+  d = defaultdict(list)
+  for idx, i in enumerate(z.labels_):
+    d[i].append(kwargs['vecs'][idx])
+  centroids = []
+  for i in d:
+    x, y = np.array(d[i]).T
+    centroids.append(np.array([np.sum(x)/len(x), np.sum(y)/len(y)]))
   closest, _ = pairwise_distances_argmin_min(centroids, kwargs['vecs'])
+  closest = set(closest)
+  print(' * found', len(closest), 'clusters')
   paths = [kwargs['image_paths'][i] for i in closest]
   data = [{
     'img': clean_filename(paths[idx]),
