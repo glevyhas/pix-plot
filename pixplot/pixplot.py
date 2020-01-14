@@ -131,6 +131,7 @@ def get_manifest(**kwargs):
   # create manifest json
   manifest = {
     'layouts': layouts,
+    'initial_layout': 'grid',
     'point_size': 1 / math.ceil( len(kwargs['image_paths'])**(1/2) ),
     'imagelist': get_path('imagelists', 'imagelist', **kwargs),
     'config': {

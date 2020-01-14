@@ -126,14 +126,14 @@ Data.prototype.parseManifest = function(json) {
   // set the point scalar as a function of the number of cells
   var elem = document.querySelector('#pointsize-range-input');
   elem.min = 0;
-  elem.max = json.point_size + (json.point_size*0.2);
+  elem.max = (json.point_size + (json.point_size*0.2));
   elem.value = json.point_size;
   // set number of atlases and textures
   this.atlasCount = json.atlas.count;
   this.textureCount = Math.ceil(json.atlas.count / config.atlasesPerTex);
   // set layout values
   this.layouts = json.layouts;
-  this.initialLayout = this.initialLayout ? this.initialLayout : Object.keys(this.layouts)[0];
+  this.initialLayout = json.initial_layout || Object.keys(this.layouts)[0];
   this.hotspots = new Hotspots();
   layout.setOptions(Object.keys(this.layouts));
   // load the filter options if metadata present
