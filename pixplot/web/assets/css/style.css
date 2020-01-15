@@ -312,12 +312,16 @@ nav {
   padding: 60px 0 0;
   background: rgba(17,17,17,0.9);
   box-shadow: 1px 0px 2px rgba(0, 0, 0, 0.7);
-  transition: transform 0.5s;
+  transition: opacity 0.5s;
   color: #ddd;
+  opacity: 1;
+  cursor: default;
 }
 
-nav.hidden {
-  transform: translateX(-210px);
+nav.disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .nav-inner {
