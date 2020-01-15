@@ -520,7 +520,7 @@ Layout.prototype.render = function() {
   this.jitterInput = this.jitterElem.querySelector('input');
   // add icon click listeners
   this.elem.addEventListener('click', function(e) {
-    if (!e.target || !e.target.id) return;
+    if (!e.target || !e.target.id || e.target.id == 'icons') return;
     this.set(e.target.id.replace('layout-', ''), true);
   }.bind(this));
   // add the event listener to the jitter input
