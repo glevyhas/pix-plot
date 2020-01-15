@@ -309,7 +309,7 @@ function Atlas(obj) {
   this.onProgress = obj.onProgress;
   this.onLoad = obj.onLoad;
   this.image = null;
-  this.url = config.data.dir + '/atlases/atlas-' + this.idx + '.jpg';
+  this.url = getPath(data.json.atlas_dir + '/atlas-' + this.idx + '.jpg');
   this.load();
 }
 
@@ -1824,7 +1824,7 @@ Hotspots.prototype.init = function() {
 }
 
 Hotspots.prototype.showHide = function() {
-  c = ['grid'].indexOf(layout.selected) > -1 ? 'hidden' : '';
+  c = ['grid'].indexOf(layout.selected) > -1 ? 'disabled' : '';
   document.querySelector('nav').className = c;
 }
 
