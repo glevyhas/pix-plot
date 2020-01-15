@@ -310,18 +310,12 @@ nav {
   height: auto;
   box-sizing: border-box;
   padding: 60px 0 0;
-  background: rgba(17,17,17,0.9);
+  background: rgba(17,17,17,0.95);
   box-shadow: 1px 0px 2px rgba(0, 0, 0, 0.7);
   transition: opacity 0.5s;
   color: #ddd;
   opacity: 1;
   cursor: default;
-}
-
-nav.disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-  pointer-events: none;
 }
 
 .nav-inner {
@@ -331,6 +325,12 @@ nav.disabled {
   overflow-y: auto;
   padding: 15px;
   background: #222;
+}
+
+nav.disabled .nav-inner {
+  opacity: 0.3;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .nav-inner::-webkit-scrollbar {
