@@ -5,6 +5,7 @@ from keras.applications import Xception, VGG19, InceptionV3, imagenet_utils
 from os.path import basename, join, exists, dirname, realpath
 from keras.applications.inception_v3 import preprocess_input
 from sklearn.metrics import pairwise_distances_argmin_min
+from MulticoreTSNE import MulticoreTSNE as TSNE
 from sklearn.preprocessing import minmax_scale
 from keras_preprocessing.image import load_img
 from collections import defaultdict, Counter
@@ -12,7 +13,6 @@ from pointgrid import align_points_to_grid
 from distutils.dir_util import copy_tree
 from iiif_downloader import Manifest
 from sklearn.cluster import KMeans
-from MulticoreTSNE import MulticoreTSNE as TSNE
 from rasterfairy import coonswarp
 import matplotlib.pyplot as plt
 from keras.models import Model
@@ -57,7 +57,7 @@ config = {
   'images': None,
   'metadata': None,
   'out_dir': 'output',
-  'use_cache': False,
+  'use_cache': True,
   'encoding': 'utf8',
   'n_clusters': 20,
   'atlas_size': 2048,
@@ -80,7 +80,7 @@ def process_images(**kwargs):
   copy_web_assets(**kwargs)
   kwargs['out_dir'] = join(kwargs['out_dir'], 'data')
   kwargs['image_paths'] = filter_images(**kwargs)
-  kwargs['atlas_positions'] = get_atlas_positions(**kwargs)
+  kwargs['atlas_dir'] = get_atlas_data(**kwargs)
   get_manifest(**kwargs)
   write_images(**kwargs)
   print(' * done!')
@@ -115,11 +115,13 @@ def write_images(**kwargs):
 
 def get_manifest(**kwargs):
   '''Create and return the base object for the manifest output file'''
+  # load the atlas data
+  atlas_data = json.load(open(join(kwargs['atlas_dir'], 'atlas_positions.json')))
   # store each cell's size and atlas position
-  atlas_ids = set([i['idx'] for i in kwargs['atlas_positions']])
+  atlas_ids = set([i['idx'] for i in atlas_data])
   sizes = [[] for _ in atlas_ids]
   pos = [[] for _ in atlas_ids]
-  for idx, i in enumerate(kwargs['atlas_positions']):
+  for idx, i in enumerate(atlas_data):
     sizes[ i['idx'] ].append([ i['w'], i['h'] ])
     pos[ i['idx'] ].append([ i['x'], i['y'] ])
   # obtain the paths to each layout's JSON positions
@@ -131,9 +133,10 @@ def get_manifest(**kwargs):
   # create manifest json
   manifest = {
     'layouts': layouts,
-    'initial_layout': 'grid',
+    'initial_layout': 'umap',
     'point_size': 1 / math.ceil( len(kwargs['image_paths'])**(1/2) ),
     'imagelist': get_path('imagelists', 'imagelist', **kwargs),
+    'atlas_dir': kwargs['atlas_dir'],
     'config': {
       'sizes': {
         'atlas': kwargs['atlas_size'],
@@ -271,23 +274,31 @@ def write_metadata(**kwargs):
     write_json(os.path.join(out_dir, 'options', i + '.json'), d[i], **kwargs)
 
 
-def get_atlas_positions(**kwargs):
+def get_atlas_data(**kwargs):
   '''
   Generate and save to disk all atlases to be used for this visualization
   If square, center each cell in an nxn square, else use uniform height
   '''
+  # if the atlas files already exist, load from cache
+  out_dir = os.path.join(kwargs['out_dir'], 'atlases', hash(**kwargs))
+  if os.path.exists(out_dir) and kwargs['use_cache']:
+    print(' * loading saved atlas data')
+    return out_dir
+  if not os.path.exists(out_dir):
+    os.makedirs(out_dir)
+  # else create the atlas images and store the positions of cells in atlases
   print(' * creating atlas files')
   n = 0 # number of atlases
   x = 0 # x pos in atlas
   y = 0 # y pos in atlas
-  atlas_positions = [] # l[cell_idx] = atlas data
+  positions = [] # l[cell_idx] = atlas data
   atlas = np.zeros((kwargs['atlas_size'], kwargs['atlas_size'], 3))
   for idx, i in enumerate(stream_images(**kwargs)):
     if kwargs['square_cells']:
       cell_data = i.resize_to_square(kwargs['cell_size'])
     else:
       cell_data = i.resize_to_height(kwargs['cell_size'])
-    _,v,_ = cell_data.shape
+    _, v, _ = cell_data.shape
     appendable = False
     if (x + v) <= kwargs['atlas_size']:
       appendable = True
@@ -296,7 +307,7 @@ def get_atlas_positions(**kwargs):
       x = 0
       appendable = True
     if not appendable:
-      save_atlas(atlas, n, **kwargs)
+      save_atlas(atlas, out_dir, n)
       n += 1
       atlas = np.zeros((kwargs['atlas_size'], kwargs['atlas_size'], 3))
       x = 0
@@ -305,7 +316,7 @@ def get_atlas_positions(**kwargs):
     # find the size of the cell in the lod canvas
     lod_data = i.resize_to_max(kwargs['lod_cell_height'])
     h,w,_ = lod_data.shape # h,w,colors in lod-cell sized image `i`
-    atlas_positions.append({
+    positions.append({
       'idx': n, # atlas idx
       'x': x, # x offset of cell in atlas
       'y': y, # y offset of cell in atlas
@@ -313,16 +324,17 @@ def get_atlas_positions(**kwargs):
       'h': h, # h of cell at lod size
     })
     x += v
-  save_atlas(atlas, n, **kwargs)
-  return atlas_positions
+  save_atlas(atlas, out_dir, n)
+  out_path = os.path.join(out_dir, 'atlas_positions.json')
+  with open(out_path, 'w') as out:
+    json.dump(positions, out)
+  return out_dir
 
 
-def save_atlas(*args, **kwargs):
+def save_atlas(atlas, out_dir, n):
   '''Save an atlas to disk'''
-  data, n = args
-  out_dir = join(kwargs['out_dir'], 'atlases')
-  if not exists(out_dir): os.makedirs(out_dir)
-  save_img(join(out_dir, 'atlas-{}.jpg'.format(n)), data)
+  out_path = join(out_dir, 'atlas-{}.jpg'.format(n))
+  save_img(out_path, atlas)
 
 
 def get_layouts(*args, **kwargs):
@@ -363,7 +375,7 @@ def vectorize_images(**kwargs):
   vecs = []
   for idx, i in enumerate(stream_images(**kwargs)):
     vector_path = os.path.join(vector_dir, os.path.basename(i.path) + '.npy')
-    if os.path.exists(vector_path):
+    if os.path.exists(vector_path) and kwargs['use_cache']:
       vec = np.load(vector_path)
     else:
       im = preprocess_input( img_to_array( i.original.resize((299,299)) ) )
@@ -378,7 +390,7 @@ def get_umap_projection(**kwargs):
   '''Get the x,y positions of images passed through a umap projection'''
   print(' * creating UMAP layout')
   out_path = get_path('layouts', 'umap', **kwargs)
-  if os.path.exists(out_path): return out_path
+  if os.path.exists(out_path) and kwargs['use_cache']: return out_path
   model = UMAP(n_neighbors=kwargs['n_neighbors'],
     min_dist=kwargs['min_dist'],
     metric=kwargs['metric'])
@@ -390,7 +402,7 @@ def get_tsne_projection(**kwargs):
   '''Get the x,y positions of images passed through a TSNE projection'''
   print(' * creating TSNE layout with ' + str(multiprocessing.cpu_count()) + ' cores...')
   out_path = get_path('layouts', 'tsne', **kwargs)
-  if os.path.exists(out_path): return out_path
+  if os.path.exists(out_path) and kwargs['use_cache']: return out_path
   model = TSNE(perplexity=kwargs.get('perplexity', 2),n_jobs=multiprocessing.cpu_count())
   z = model.fit_transform(kwargs['vecs'])
   return write_layout(out_path, z, **kwargs)
@@ -400,7 +412,7 @@ def get_rasterfairy_projection(**kwargs):
   '''Get the x, y position of images passed through a rasterfairy projection'''
   print(' * creating rasterfairy layout')
   out_path = get_path('layouts', 'rasterfairy', **kwargs)
-  if os.path.exists(out_path): return out_path
+  if os.path.exists(out_path) and kwargs['use_cache']: return out_path
   umap = np.array(read_json(kwargs['umap'], **kwargs))
   umap = (umap + 1)/2 # scale 0:1
   umap = coonswarp.rectifyCloud(umap, # stretch the distribution
@@ -415,7 +427,7 @@ def get_grid_projection(**kwargs):
   '''Get the x,y positions of images in a grid projection'''
   print(' * creating grid layout')
   out_path = get_path('layouts', 'grid', **kwargs)
-  if os.path.exists(out_path): return out_path
+  if os.path.exists(out_path) and kwargs['use_cache']: return out_path
   paths = kwargs['image_paths']
   n = math.ceil(len(paths)**(1/2))
   l = [] # positions
@@ -431,7 +443,7 @@ def get_pointgrid_projection(path, label, **kwargs):
   '''Gridify the positions in `path` and return the path to this new layout'''
   print(' * creating {} pointgrid'.format(label))
   out_path = get_path('layouts', label + '-jittered', **kwargs)
-  if os.path.exists(out_path): return out_path
+  if os.path.exists(out_path) and kwargs['use_cache']: return out_path
   arr = np.array(read_json(path, **kwargs))
   z = align_points_to_grid(arr)
   return write_layout(out_path, z, **kwargs)
@@ -488,8 +500,9 @@ def read_json(path, **kwargs):
 
 def get_centroids(**kwargs):
   '''Return the K nearest neighbor centroids for input vectors'''
+  print(' * clustering data')
   config = {
-    'min_cluster_size': int(len(kwargs['vecs'])*0.05),
+    'min_cluster_size': int(len(kwargs['vecs'])*0.03),
     'min_samples': 1,
   }
   z = HDBSCAN(**config).fit(kwargs['vecs'])
