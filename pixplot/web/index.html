@@ -176,6 +176,40 @@
     }
     </script>
 
+    <script type='x-shader/x-vertex' id='dashed-vertex-shader'>
+    precision highp float;
+
+    uniform mat4 modelViewMatrix;
+    uniform mat4 projectionMatrix;
+    uniform vec3 cameraPosition;
+
+    attribute vec3 position;
+    attribute float length;
+    varying float vLength;
+
+    void main() {
+      vLength = length;
+      vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
+      gl_Position = projectionMatrix * mvPosition;
+    }
+    </script>
+
+    <script type='x-shader/x-fragment' id='dashed-fragment-shader'>
+    precision highp float;
+
+    uniform bool render;
+    uniform float time;
+    varying float vLength;
+
+    void main() {
+      if (!render) discard;
+      float dashSize = 0.01;
+      float gapSize = 0.005;
+      if ( mod( vLength + time, dashSize + gapSize) > dashSize ) discard;
+      gl_FragColor = vec4(0.9, 0.9, 0.9, 1.0);
+    }
+    </script>
+
     <!-- Worker -->
     <script type='script/worker' id='worker'>
     self.onmessage = function(event) {
@@ -230,8 +264,8 @@
     </script>
 
     <!-- Header -->
-    <header class='header'>
-      <img class='logo' src='assets/images/dhlab-logo.svg' alt='DHLab logo' />
+    <header id='header'>
+      <img id='logo' src='assets/images/dhlab-logo.svg' alt='DHLab logo' />
       <div id='app-name'>PixPlot</div>
       <div id='tagline'>Image fields in a Local Collection</div>
       <div id='header-controls'>
@@ -297,37 +331,71 @@
     </nav>
     <!-- Selected Image -->
     <div id='selected-image-modal'>
-      <div class='backdrop'></div>
-      <div id='selected-image-container'>
-        <img id='selected-image' src='data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=' alt='Image selected by user' />
-        <div class='icons'>
-          <a target='_blank' id='eye-icon' href='#'>
-            <img src='assets/images/icons/eye-icon.png' alt='eye icon' />
-          </a>
-          <a id='download-icon' href='#'>
-            <img src='assets/images/icons/download-icon.png' alt='download icon' />
-          </a>
+      <div class='modal-content'>
+        <div class='modal-top'>
+          <div class='modal-top-content'>
+            <img id='selected-image' src='data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=' alt='Image selected by user' />
+            <div class='icons'>
+              <a target='_blank' id='eye-icon' href='#'>
+                <img src='assets/images/icons/eye-icon.png' alt='eye icon' />
+              </a>
+              <a id='download-icon' href='#'>
+                <img src='assets/images/icons/download-icon.png' alt='download icon' />
+              </a>
+            </div>
+          </div>
+        </div>
+        <div class='modal-bottom' id='selected-image-meta'>
+          <div class='modal-bottom-left'>
+            <div class='meta-left'>
+              <div id='image-title'></div>
+              <div id='image-text'></div>
+            </div>
+            <div class='meta-right'>
+              <script type='text/html' id='tag-template'>
+                <% _.forEach(tags, function(tag) { %>
+                  <div class='meta-tag'><%- tag %></div>
+                <% }); %>
+              </script>
+              <div id='meta-tags'></div>
+              <div class='meta-input-container'>
+                <input id='meta-input' placeholder='New tags' />
+                <div id='meta-input-add'>Add</div>
+                <div class='pencil-icon'></div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-      <!-- Selected Image Metadata -->
-      <div id='selected-image-meta'>
-        <div class='meta-content'>
-          <div class='meta-left'>
-            <div id='image-title'>Full Image Title Here</div>
-            <div id='image-text'>There are many variations of passages of Lorem Ipsum available, but the majority have suffered alteration in some form, by injected humour, or randomised words which don't look even slightly believable. If you are going to use a passage of Lorem Ipsum, you need to be sure there isn't anything embarrassing hidden in the middle of text.</div>
-          </div>
-          <div class='meta-right'>
-            <script type='text/html' id='tag-template'>
-              <% _.forEach(tags, function(tag) { %>
-                <div class='meta-tag'><%- tag %></div>
-              <% }); %>
-            </script>
-            <div id='meta-tags'></div>
-            <div class='meta-input-container'>
-              <input id='meta-input' placeholder='New tags' />
-              <div id='meta-input-add'>Add</div>
-              <div class='pencil-icon'></div>
+    </div>
+    <!-- Selection -->
+    <div id='selection-icons'>
+      <img id='pan' src='assets/images/icons/pan.svg' class='active' />
+      <img id='select' src='assets/images/icons/select.svg' class='' />
+    </div>
+    <div id='view-selected'>View Selected</div>
+    <div id='selected-images-modal'>
+      <div class='modal-content'>
+        <div class='modal-top'>
+          <script type='text/html' id='selected-images-template'>
+            <div class='modal-top-content'>
+              <h2>Selected Images</h2>
+              <p>You have selected <b><%- n %></b> images</p>
+              <div id='selected-image-grid'>
+                <% _.forEach(images, function(image) { %>
+                  <div class='selected-image'>
+                    <img src='<%- image %>' />
+                  </div>
+                <% }); %>
+              </div>
             </div>
+          </script>
+          <div id='selected-images-target'></div>
+        </div>
+        <div class='modal-bottom'>
+          <div class='modal-bottom-left'>
+            <b>Help Guide</b>
+            <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p>
           </div>
         </div>
       </div>

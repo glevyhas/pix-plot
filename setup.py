@@ -25,7 +25,7 @@ setup(
   install_requires=[
     'glob2>=0.6',
     'hdbscan>=0.8.24',
-    'iiif-downloader>=0.0.5',
+    'iiif-downloader>=0.0.6',
     'Keras>=2.3.0',
     'matplotlib>=2.0.0',
     'numpy>=1.16.0',

@@ -441,7 +441,7 @@ Cell.prototype.deactivate = function() {
 // update this cell's buffer values for bound attribute `attr`
 Cell.prototype.mutateBuffer = function(attr) {
   // find the buffer attributes that describe this cell to the GPU
-  var meshes = world.scene.children[0],
+  var meshes = world.group,
       attrs = meshes.children[this.getIndexOfDrawCall()].geometry.attributes,
       idxInDrawCall = this.getIndexInDrawCall();
 
@@ -480,7 +480,8 @@ Cell.prototype.mutateBuffer = function(attr) {
 *   to be displayed
 *
 * elem: DOM element for the layout selector
-* selected: string identifying the currently selected layout
+* jitterElem: DOM element for the jitter selector
+* selected: currently selected layout option
 * options: list of strings identifying valid layout options
 **/
 
@@ -544,7 +545,10 @@ Layout.prototype.set = function(layoutKey, enableDelay) {
   // disallow new transitions when we're transitioning
   if (world.state.transitioning) return;
   world.state.transitioning = true;
+  // set the selected layout
   this.selected = layoutKey;
+  // set the world mode back to pan
+  world.setMode('pan');
   // select the active tab
   this.selectActiveTab();
   // zoom the user out if they're zoomed in
@@ -577,7 +581,7 @@ Layout.prototype.set = function(layoutKey, enableDelay) {
       var drawCallToCells = world.getDrawCallToCells();
       for (var drawCall in drawCallToCells) {
         var cells = drawCallToCells[drawCall];
-        var mesh = world.scene.children[0].children[drawCall];
+        var mesh = world.group.children[drawCall];
         // transition the transitionPercent attribute on the mesh
         TweenLite.to(mesh.material.uniforms.transitionPercent,
           config.transitions.duration, config.transitions.ease);
@@ -633,6 +637,7 @@ Layout.prototype.onTransitionComplete = function(obj) {
 * stats: a Stats() object
 * color: a THREE.Color() object
 * center: a map identifying the midpoint of cells' positions in x,y dims
+* group: the group of meshes used to render cells
 * state: a map identifying internal state of the world
 **/
 
@@ -645,10 +650,12 @@ function World() {
   this.stats = this.getStats();
   this.color = new THREE.Color();
   this.center = {};
+  this.group = {};
   this.state = {
     flying: false,
     transitioning: false,
     displayed: false,
+    mode: 'pan', // 'pan' || 'select'
   };
   this.addEventListeners();
 }
@@ -746,6 +753,7 @@ World.prototype.addEventListeners = function() {
   this.addLostContextListener();
   this.addScalarChangeListener();
   this.addTabChangeListeners();
+  this.addModeChangeListeners();
 }
 
 /**
@@ -755,7 +763,7 @@ World.prototype.addEventListeners = function() {
 World.prototype.addResizeListener = function() {
   window.addEventListener('resize', function() {
     if (this.resizeTimeout) window.clearTimeout(this.resizeTimeout);
-    this.resizeTimeout = window.setTimeout(this.handleResize.bind(this), 300);
+    this.resizeTimeout = window.setTimeout(this.handleResize.bind(this), 0);
   }.bind(this), false);
 }
 
@@ -766,7 +774,7 @@ World.prototype.handleResize = function() {
   this.camera.aspect = w / h;
   this.camera.updateProjectionMatrix();
   this.renderer.setSize(w, h, false);
-  selector.tex.setSize(w, h);
+  picker.tex.setSize(w, h);
   this.setPointScalar();
   delete this.resizeTimeout;
   // re-enable the render (disabled by window blur event)
@@ -781,11 +789,11 @@ World.prototype.setPointScalar = function() {
   // handle case of drag before scene renders
   if (!this.scene ||
       !this.scene.children.length ||
-      !selector.scene ||
-      !selector.scene.children.length) return;
+      !picker.scene ||
+      !picker.scene.children.length) return;
   var scalar = this.getPointScale();
   // update the displayed and selector meshes
-  var meshes = this.scene.children[0].children.concat(selector.scene.children[0].children)
+  var meshes = this.group.children.concat(picker.scene.children[0].children)
   for (var i=0; i<meshes.length; i++) {
     meshes[i].material.uniforms.pointScale.value = scalar;
   }
@@ -807,7 +815,7 @@ World.prototype.addScalarChangeListener = function() {
 
 World.prototype.addTabChangeListeners = function() {
   window.addEventListener('blur', function() {
-    this.state.displayed = false;
+    //this.state.displayed = false;
   }.bind(this));
   window.addEventListener('focus', function() {
     this.state.displayed = true;
@@ -834,6 +842,15 @@ World.prototype.addLostContextListener = function() {
 }
 
 /**
+* Listen for changes in world.mode
+**/
+
+World.prototype.addModeChangeListeners = function() {
+  document.querySelector('#pan').addEventListener('click', this.handleModeIconClick.bind(this));
+  document.querySelector('#select').addEventListener('click', this.handleModeIconClick.bind(this));
+}
+
+/**
 * Set the center point of the scene
 **/
 
@@ -851,7 +868,7 @@ World.prototype.setCenter = function() {
 World.prototype.plot = function() {
   // add the cells for each draw call
   var drawCallToCells = this.getDrawCallToCells();
-  var group = new THREE.Group();
+  this.group = new THREE.Group();
   for (var drawCallIdx in drawCallToCells) {
     var meshCells = drawCallToCells[drawCallIdx],
         attrs = this.getGroupAttributes(meshCells),
@@ -874,9 +891,9 @@ World.prototype.plot = function() {
     material.transparent = true;
     var mesh = new THREE.Points(geometry, material);
     mesh.frustumCulled = false;
-    group.add(mesh);
+    this.group.add(mesh);
   }
-  this.scene.add(group);
+  this.scene.add(this.group);
 }
 
 /**
@@ -1145,7 +1162,7 @@ World.prototype.getFragLeaf = function(texIdx, tex) {
 **/
 
 World.prototype.attrsNeedUpdate = function(attrs) {
-  this.scene.children[0].children.forEach(function(mesh) {
+  this.group.children.forEach(function(mesh) {
     attrs.forEach(function(attr) {
       mesh.geometry.attributes[attr].needsUpdate = true;
     }.bind(this))
@@ -1216,7 +1233,7 @@ World.prototype.flyToCellIdx = function(idx) {
   world.flyTo({
     x: cell.x,
     y: cell.y,
-    z: cell.z + 0.1465 - (0.000000767*data.json.images.length),
+    z: cell.z + (this.getPointScale() / 100),
   })
 }
 
@@ -1240,9 +1257,14 @@ World.prototype.render = function() {
   requestAnimationFrame(this.render.bind(this));
   if (!this.state.displayed) return;
   this.renderer.render(this.scene, this.camera);
+  // update the controls
   this.controls.update();
+  // update the stats
   if (this.stats) this.stats.update();
+  // update the level of detail mechanism
   lod.update();
+  // update the dragged selection
+  selection.update();
 }
 
 /**
@@ -1255,27 +1277,277 @@ World.prototype.init = function() {
   var loc = this.getInitialLocation();
   this.camera.position.set(loc.x, loc.y, loc.z);
   this.camera.lookAt(loc.x, loc.y, loc.z);
+  // render the selection
+  selection.init();
   // draw the points and start the render loop
   this.plot();
   this.handleResize();
   this.render();
+  // set the mode
+  this.setMode('pan');
 }
 
 /**
-* Selector: Mouse event handler that uses gpu picking
+* Handle clicks that request a new mode
 **/
 
-function Selector() {
+World.prototype.handleModeIconClick = function(e) {
+  this.setMode(e.target.id);
+}
+
+/**
+* Toggle the current world 'mode':
+*   'pan' means we're panning through x, y coords
+*   'select' means we're selecting cells to analyze
+**/
+
+World.prototype.setMode = function(mode) {
+  this.mode = mode;
+  // update the ui buttons to match the selected mode
+  var elems = document.querySelectorAll('#selection-icons img');
+  for (var i=0; i<elems.length; i++) {
+    elems[i].className = elems[i].id == mode ? 'active' : '';
+  }
+  // update internal state to reflect selected mode
+  if (this.mode == 'pan') {
+    this.controls.noPan = false;
+    this.canvas.classList.remove('select');
+    this.canvas.classList.add('pan');
+    selection.clear();
+  } else if (this.mode == 'select') {
+    this.controls.noPan = true;
+    this.canvas.classList.remove('pan');
+    this.canvas.classList.add('select');
+    selection.start();
+  }
+}
+
+/**
+* Selection: handle drag to select highlighting
+**/
+
+function Selection() {
+  this.clock = new THREE.Clock();
+  this.time = 0;
+  this.mesh = {}; // store the mesh for updates
+  this.mouseDown = {}; // x, y attributes denoting mousedown position
+  this.pos0 = null; // user's first position in world coords
+  this.pos1 = null; // user's second position in world coords
+  this.frozen = false; // are we tracking mousemove events
+  this.renderBox = true; // are we rendering the box
+  this.selected = {}; // d[cellIdx] = bool indicating selected
+}
+
+Selection.prototype.init = function() {
+  this.initializeMesh();
+  this.addEventListeners();
+  this.start();
+}
+
+Selection.prototype.initializeMesh = function() {
+  var points = [
+    new THREE.Vector3(0, 0, 0), // bottom left
+    new THREE.Vector3(0, 0, 0), // bottom right
+    new THREE.Vector3(0, 0, 0), // top right
+    new THREE.Vector3(0, 0, 0), // top left
+    new THREE.Vector3(0, 0, 0), // bottom left
+  ];
+  var lengths = this.getLineLengths(points);
+  var geometry = new THREE.BufferGeometry().setFromPoints(points);
+  var lengthAttr = new THREE.BufferAttribute(new Float32Array(lengths), 1);
+  geometry.setAttribute('length', lengthAttr);
+  var material = new THREE.RawShaderMaterial({
+    uniforms: {
+      time: {value: 0, type: 'float'},
+      render: {value: false, 'type': 'bool'},
+    },
+    vertexShader: document.querySelector('#dashed-vertex-shader').textContent,
+    fragmentShader: document.querySelector('#dashed-fragment-shader').textContent,
+  });
+  this.mesh = new THREE.Line(geometry, material);
+  this.mesh.frustumCulled = false;
+  world.scene.add(this.mesh);
+}
+
+// find the cumulative length of the line up to each point
+Selection.prototype.getLineLengths = function(points) {
+  var lengths = [];
+  var sum = 0;
+  for (var i=0; i<points.length; i++) {
+    if (i>0) sum += points[i].distanceTo(points[i - 1]);
+    lengths[i] = sum;
+  };
+  return lengths;
+}
+
+// bind event listeners
+Selection.prototype.addEventListeners = function() {
+  // listen to mouse position
+  world.canvas.addEventListener('mousedown', function(e) {
+    if (world.mode != 'select') return;
+    // get mousedown world coords
+    var pos = this.getEventWorldCoords(e);
+    // discard clicks inside selection
+    if (this.pos0 && this.pos1 && this.insideBox(pos)) return;
+    // set the first position and clear the second
+    this.pos0 = pos;
+    this.pos1 = null;
+    // unfreeze the mousemove listener
+    this.frozen = false;
+    // prevent box rendering until the mouse moves from mousedown position
+    this.setBoxRender(false);
+    // store the mousedown location
+    this.mouseDown = {x: e.clientX, y: e.clientY};
+  }.bind(this));
+  world.canvas.addEventListener('mousemove', function(e) {
+    if (world.mode != 'select' || this.frozen || !this.pos0) return;
+    this.pos1 = this.getEventWorldCoords(e);
+    this.updateSelected();
+    this.setBoxRender(true);
+  }.bind(this))
+  world.canvas.addEventListener('mouseup', function(e) {
+    this.frozen = true;
+    this.setBoxRender(false);
+    if (e.clientX = this.mouseDown.x && e.clientY == this.mouseDown.y) {
+      if (!this.insideBox(this.getEventWorldCoords(e))) this.clear();
+    }
+  }.bind(this));
+}
+
+// update the set of points currently selected
+Selection.prototype.updateSelected = function() {
+  for (var i=0; i<data.cells.length; i++) {
+    this.selected[i] = this.insideBox(data.cells[i]);
+  }
+}
+
+// find the world coordinates of the last mouse position
+Selection.prototype.getEventWorldCoords = function(e) {
+  var vector = new THREE.Vector3(),
+      camera = world.camera,
+      mouse = new THREE.Vector2(),
+      canvasSize = getCanvasSize(),
+      // get the event offsets
+      rect = e.target.getBoundingClientRect(),
+      dx = e.clientX - rect.left,
+      dy = e.clientY - rect.top,
+      // convert from event to clip space
+      x = (dx / canvasSize.w) * 2 - 1,
+      y = -(dy / canvasSize.h) * 2 + 1;
+  // project the event location into screen coords
+  vector.set(x, y, 0.5);
+  vector.unproject(camera);
+  var direction = vector.sub(camera.position).normalize(),
+      distance = - camera.position.z / direction.z,
+      scaled = direction.multiplyScalar(distance),
+      coords = camera.position.clone().add(scaled); // coords = selector's location
+  return coords;
+}
+
+// return a boolean indicating if a point is inside the selection box
+Selection.prototype.insideBox = function(i) {
+  var box = this.getBoxDomain();
+  if (!box) return false;
+  return i.x >= box.x.min &&
+         i.x <= box.x.max &&
+         i.y >= box.y.min &&
+         i.y <= box.y.max;
+}
+
+// get the domain of the selection box
+Selection.prototype.getBoxDomain = function() {
+  var pos0 = this.pos0 || {};
+  var pos1 = this.pos1 || {};
+  return {
+    x: {
+      min: Math.min(pos0.x, pos1.x),
+      max: Math.max(pos0.x, pos1.x),
+    },
+    y: {
+      min: Math.min(pos0.y, pos1.y),
+      max: Math.max(pos0.y, pos1.y),
+    },
+  }
+}
+
+Selection.prototype.setBoxRender = function(bool) {
+  this.renderBox = bool;
+  this.mesh.material.uniforms.render.value = bool;
+}
+
+Selection.prototype.update = function() {
+  if (!this.mesh || !this.renderBox) return;
+  this.time += this.clock.getDelta() / 10;
+  this.mesh.material.uniforms.time.value = this.time;
+  this.render();
+}
+
+Selection.prototype.render = function() {
+  if (!this.pos0 || !this.pos1) return;
+  var box = this.getBoxDomain(),
+      z = 0.001,
+      points = [
+        new THREE.Vector3(box.x.min, box.y.min, z),
+        new THREE.Vector3(box.x.max, box.y.min, z),
+        new THREE.Vector3(box.x.max, box.y.max, z),
+        new THREE.Vector3(box.x.min, box.y.max, z),
+        new THREE.Vector3(box.x.min, box.y.min, z),
+      ];
+  // find the cumulative length of the line up to each point
+  var geometry = new THREE.BufferGeometry().setFromPoints(points);
+  var lengths = new THREE.BufferAttribute(new Float32Array(this.getLineLengths(points)), 1);
+  this.mesh.geometry.attributes.position.array = geometry.attributes.position.array;
+  this.mesh.geometry.attributes.position.needsUpdate = true;
+  this.mesh.geometry.attributes.length.array = lengths.array;
+  this.mesh.geometry.attributes.length.needsUpdate = true;
+  this.mesh.material.uniforms.render.value = true;
+  // make non-selected cells less opaque
+  this.setOpacities(0.2, true);
+}
+
+// update the cell opacities. If `useSelected` is true, differentiate between
+// cells inside and outside the box. `val` is default opacity value 0:1
+Selection.prototype.setOpacities = function(val, useSelected) {
+  var opacities = [];
+  for (var i=0; i<data.cells.length; i++) {
+    if (useSelected) opacities[i] = i in this.selected && this.selected[i] ? 1.0 : val;
+    else opacities[i] = val;
+  }
+  world.group.children[0].geometry.attributes.opacity.array = new Float32Array(opacities);
+  world.group.children[0].geometry.attributes.opacity.needsUpdate = true;
+}
+
+Selection.prototype.start = function() {
+  this.pos0 = null;
+  this.pos1 = null;
+  this.frozen = false;
+}
+
+Selection.prototype.clear = function() {
+  // remove the stored mouse positions
+  this.pos0 = null;
+  this.pos1 = null;
+  // update boolean in material controlling rendering
+  this.mesh.material.uniforms.render.value = false;
+  // unfreeze the mousemove listener
+  this.frozen = false;
+  // restore opacities in cells
+  this.setOpacities(1.0);
+}
+
+/**
+* Picker: Mouse event handler that uses gpu picking
+**/
+
+function Picker() {
   this.scene = new THREE.Scene();
   this.scene.background = new THREE.Color(0x000000);
-  this.mouse = new THREE.Vector2();
   this.mouseDown = new THREE.Vector2();
   this.tex = this.getTexture();
-  this.modal = false;
 }
 
 // get the texture on which off-screen rendering will happen
-Selector.prototype.getTexture = function() {
+Picker.prototype.getTexture = function() {
   var canvasSize = getCanvasSize();
   var tex = new THREE.WebGLRenderTarget(canvasSize.w, canvasSize.h);
   tex.texture.minFilter = THREE.LinearFilter;
@@ -1283,14 +1555,14 @@ Selector.prototype.getTexture = function() {
 }
 
 // on canvas mousedown store the coords where user moused down
-Selector.prototype.onMouseDown = function(e) {
+Picker.prototype.onMouseDown = function(e) {
   var click = this.getClickOffsets(e);
   this.mouseDown.x = click.x;
   this.mouseDown.y = click.y;
 }
 
 // get the x, y offsets of a click within the canvas
-Selector.prototype.getClickOffsets = function(e) {
+Picker.prototype.getClickOffsets = function(e) {
   var rect = e.target.getBoundingClientRect();
   return {
     x: e.clientX - rect.left,
@@ -1299,12 +1571,9 @@ Selector.prototype.getClickOffsets = function(e) {
 }
 
 // on canvas click, show detailed modal with clicked image
-Selector.prototype.onMouseUp = function(e) {
+Picker.prototype.onMouseUp = function(e) {
   // if click hit background, close the modal
-  if (e.target.className == 'modal-image-sizer' ||
-      e.target.className == 'modal-content' ||
-      e.target.className == 'backdrop' ||
-      e.target.id == 'selected-image-container') {
+  if (e.target.className == 'modal-top' || world.mode == 'select') {
     window.location.href = '#';
     return this.closeModal();
   }
@@ -1326,7 +1595,7 @@ Selector.prototype.onMouseUp = function(e) {
 }
 
 // called via this.onClick; shows the full-size selected image
-Selector.prototype.showModal = function(cellIdx) {
+Picker.prototype.showModal = function(cellIdx) {
   // select elements that will be updated
   var img = find('#selected-image'),
       title = find('#image-title'),
@@ -1371,34 +1640,18 @@ Selector.prototype.showModal = function(cellIdx) {
   }
 }
 
-Selector.prototype.closeModal = function() {
+Picker.prototype.closeModal = function() {
   find('#selected-image-modal').style.display = 'none';
   find('#selected-image-meta').style.display = 'none';
 }
 
-// find the world coordinates of the last mouse position
-Selector.prototype.getMouseWorldCoords = function() {
-  var vector = new THREE.Vector3(),
-      camera = world.camera,
-      mouse = new THREE.Vector2(),
-      canvasSize = getCanvasSize();
-  mouse.x = (this.mouse.x / canvasSize.w) * 2 - 1;
-  mouse.y = (this.mouse.y / canvasSize.h) * 2 + 1;
-  vector.set(mouse.x, mouse.y, 0.5);
-  vector.unproject(camera);
-  var direction = vector.sub(camera.position).normalize(),
-      distance = - camera.position.z / direction.z,
-      scaled = direction.multiplyScalar(distance),
-      coords = camera.position.clone().add(scaled); // coords = selector's location
-}
-
 // get the mesh in which to render picking elements
-Selector.prototype.init = function() {
+Picker.prototype.init = function() {
   world.canvas.addEventListener('mousedown', this.onMouseDown.bind(this));
   document.body.addEventListener('mouseup', this.onMouseUp.bind(this));
   var group = new THREE.Group();
-  for (var i=0; i<world.scene.children[0].children.length; i++) {
-    var mesh = world.scene.children[0].children[i].clone();
+  for (var i=0; i<world.group.children.length; i++) {
+    var mesh = world.group.children[i].clone();
     mesh.material = world.getShaderMaterial({useColor: true});
     group.add(mesh);
   }
@@ -1406,13 +1659,13 @@ Selector.prototype.init = function() {
 }
 
 // draw an offscreen world then reset the render target so world can update
-Selector.prototype.render = function() {
+Picker.prototype.render = function() {
   world.renderer.setRenderTarget(this.tex);
   world.renderer.render(this.scene, world.camera);
   world.renderer.setRenderTarget(null);
 }
 
-Selector.prototype.select = function(obj) {
+Picker.prototype.select = function(obj) {
   if (!world || !obj) return;
   this.render();
   // read the texture color at the current mouse pixel
@@ -1434,7 +1687,7 @@ function LOD() {
   this.tex = this.getCanvas(config.size.lodTexture); // lod high res texture
   this.cellIdxToImage = {}; // image cache mapping cell idx to loaded image data
   this.grid = {}; // set by this.indexCells()
-  this.minZ = 0.35; // minimum zoom level to update textures
+  this.minZ = 0.5; // minimum zoom level to update textures
   this.framerate = 20; // number of frames required to update the lod one iteration
   this.initialRadius = r; // starting radius for LOD
   this.state = {
@@ -1722,7 +1975,7 @@ Welcome.prototype.updateProgress = function() {
 Welcome.prototype.startWorld = function() {
   requestAnimationFrame(function() {
     world.init();
-    selector.init();
+    picker.init();
     setTimeout(function() {
       document.querySelector('#loader-scene').classList += 'hidden';
       document.querySelector('#header-controls').style.opacity = 1;
@@ -1790,7 +2043,7 @@ Filter.prototype.filterCells = function(names) {
   }, {}); // facilitate O(1) lookups
   data.cells.forEach(function(cell, idx) {
     // update the buffer attributes that describe this cell to the GPU
-    var meshes = world.scene.children[0],
+    var meshes = world.group,
         attrs = meshes.children[cell.getIndexOfDrawCall()].geometry.attributes,
         opacity = data.json.images[idx] in names ? 1 : 0.05;
     attrs.opacity.array[cell.getIndexInDrawCall()] = opacity;
@@ -2052,7 +2305,8 @@ var welcome = new Welcome();
 var webgl = new Webgl();
 var config = new Config();
 var filters = new Filters();
-var selector = new Selector();
+var picker = new Picker();
+var selection = new Selection();
 var layout = new Layout();
 var world = new World();
 var lod = new LOD();
