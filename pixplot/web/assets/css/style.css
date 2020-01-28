@@ -249,7 +249,7 @@ input[type=range]::-moz-range-thumb {
   position: relative;
   top: 0;
   display: inline-block;
-  margin-right: 10px;
+  margin: 0 10px;
 }
 
 /**
