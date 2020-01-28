@@ -471,7 +471,7 @@ def get_path(*args, **kwargs):
 def write_layout(path, obj, **kwargs):
   '''Write layout json `obj` to disk and return the path to the saved file'''
   obj = (minmax_scale(obj)-0.5)*2 # scale -1:1
-  obj = [[round(float(j), 4) for j in i] for i in obj]
+  obj = [[round(float(j), 5) for j in i] for i in obj]
   return write_json(path, obj, **kwargs)
 
 
@@ -502,7 +502,8 @@ def get_centroids(**kwargs):
   '''Return the K nearest neighbor centroids for input vectors'''
   print(' * clustering data')
   config = {
-    'min_cluster_size': int(len(kwargs['vecs'])*0.03),
+    'min_cluster_size': 20,
+    'cluster_selection_epsilon': 0.01,
     'min_samples': 1,
   }
   z = HDBSCAN(**config).fit(kwargs['vecs'])
