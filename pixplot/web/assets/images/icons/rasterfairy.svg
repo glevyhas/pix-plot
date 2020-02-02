@@ -1,0 +1,15 @@
+<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'>
+  <g transform='translate(2654 3121)'>
+    <g>
+      <path d='M4.375,0H.625A.59.59,0,0,0,0,.625v3.75A.59.59,0,0,0,.625,5h3.75A.59.59,0,0,0,5,4.375V.625A.59.59,0,0,0,4.375,0Z' transform='translate(-2654 -3121)' fill='#ccc'/>
+      <path d='M4.375,6H.625A.59.59,0,0,0,0,6.625v3.75A.59.59,0,0,0,.625,11h3.75A.59.59,0,0,0,5,10.375V6.625A.59.59,0,0,0,4.375,6Z' transform='translate(-2654 -3119.5)' fill='#ccc'/>
+      <path d='M4.375,12H.625A.59.59,0,0,0,0,12.625v3.75A.59.59,0,0,0,.625,17h3.75A.59.59,0,0,0,5,16.375v-3.75A.59.59,0,0,0,4.375,12Z' transform='translate(-2654 -3118)' fill='#ccc'/>
+      <path d='M10.375,12H6.625A.59.59,0,0,0,6,12.625v3.75A.59.59,0,0,0,6.625,17h3.75A.59.59,0,0,0,11,16.375v-3.75A.59.59,0,0,0,10.375,12Z' transform='translate(-2652.5 -3118)' fill='#ccc'/>
+      <path d='M2.5,0,5,5H0Z' transform='translate(-2646.5 -3121)' fill='#ccc'/>
+      <path d='M2.5,0,5,5H0Z' transform='translate(-2639 -3121)' fill='#ccc'/>
+      <path d='M2.5,0,5,5H0Z' transform='translate(-2646.5 -3113.5)' fill='#ccc'/>
+      <path d='M2.5,0,5,5H0Z' transform='translate(-2639 -3113.5)' fill='#ccc'/>
+      <path d='M2.5,0,5,5H0Z' transform='translate(-2639 -3106)' fill='#ccc'/>
+    </g>
+  </g>
+</svg>
