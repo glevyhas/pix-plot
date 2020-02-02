@@ -1,0 +1,16 @@
+<svg xmlns='http://www.w3.org/2000/svg' width='24.666' height='23' viewBox='0 0 24.666 23'>
+  <g transform='translate(-61 -154)'>
+    <g transform='translate(-725 144)'>
+      <rect width='15.051' height='1.672' transform='translate(795.615 14.87)' fill='#ccc'/>
+      <rect width='15.051' height='1.672' transform='translate(795.615 11.604)' fill='#ccc'/>
+      <rect width='15.051' height='1.672' transform='translate(795.615 18.135)' fill='#ccc'/>
+      <rect width='15.051' height='1.672' transform='translate(795.615 21.401)' fill='#ccc'/>
+      <rect width='11.706' height='1.672' transform='translate(795.615 24.666)' fill='#ccc'/>
+      <rect width='6.689' height='1.672' transform='translate(795.615 27.932)' fill='#ccc'/>
+    </g>
+    <g transform='translate(2849 3301)'>
+      <path d='M672,3472.867,670,3471l-2,1.866h1.6v3.267H668l2,1.867,2-1.867h-1.6v-3.267Z' transform='translate(-3453 -6611.001)' fill='#ccc'/>
+      <text transform='translate(-2788 -3147)' fill='#ccc' font-size='6' font-family='OpenSans-Extrabold, Open Sans' font-weight='800'><tspan x='2.822' y='6'>A</tspan><tspan x='3.167' y='19.5'>Z</tspan></text>
+    </g>
+  </g>
+</svg>
