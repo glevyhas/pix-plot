@@ -329,14 +329,14 @@
         </script>
       </div>
     </nav>
-    <!-- Selected Image -->
-    <div id='selected-image-modal'>
+    <!-- Image Picker: single image selection -->
+    <script type='text/html' id='selected-image-template'>
       <div class='modal-content'>
         <div class='modal-top'>
           <div class='modal-top-content'>
-            <img id='selected-image' src='data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=' alt='Image selected by user' />
+            <img id='selected-image' src='<%- meta.src %>' alt='Image selected by user' />
             <div class='icons'>
-              <a target='_blank' id='eye-icon' href='#'>
+              <a target='_blank' id='eye-icon' href='<%- meta.permalink || "#" %>'>
                 <img src='assets/images/icons/eye-icon.png' alt='eye icon' />
               </a>
               <a id='download-icon' href='#'>
@@ -346,29 +346,24 @@
           </div>
         </div>
         <div class='modal-bottom' id='selected-image-meta'>
-          <div class='modal-bottom-left'>
-            <div class='meta-left'>
-              <div id='image-title'></div>
-              <div id='image-text'></div>
+          <div class='modal-bottom-content'>
+            <div class='modal-text-left'>
+              <div id='image-title'><%- decodeURIComponent(meta.filename) %></div>
+              <div id='image-text'><%- decodeURIComponent(meta.description) %></div>
             </div>
-            <div class='meta-right'>
-              <script type='text/html' id='tag-template'>
-                <% _.forEach(tags, function(tag) { %>
+            <div class='modal-text-right'>
+              <div id='meta-tags'>
+                <% _.forEach(meta.tags, function(tag) { %>
                   <div class='meta-tag'><%- tag %></div>
                 <% }); %>
-              </script>
-              <div id='meta-tags'></div>
-              <div class='meta-input-container'>
-                <input id='meta-input' placeholder='New tags' />
-                <div id='meta-input-add'>Add</div>
-                <div class='pencil-icon'></div>
               </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
-    <!-- Selection -->
+    </script>
+    <div id='selected-image-target'></div>
+    <!-- Image Selection: multi-image selection -->
     <div id='selection-icons'>
       <img id='pan' src='assets/images/icons/pan.svg' class='active' />
       <img id='select' src='assets/images/icons/select.svg' class='' />
@@ -380,12 +375,12 @@
           <script type='text/html' id='selected-images-template'>
             <div class='modal-top-content'>
               <h2>Selected Images</h2>
-              <p>You have selected <b><%- n %></b> images</p>
+              <p>You have selected <b><%- images.length %></b> images</p>
               <div id='selected-image-grid'>
                 <% _.forEach(images, function(image) { %>
-                  <div class='selected-image'>
-                    <img src='<%- image %>' />
-                  </div>
+                  <a class='selected-image' href='data/originals/<%- image %>' target='_blank'>
+                    <div style='background-image: url("data/thumbs/<%- image %>")'></div>
+                  </a>
                 <% }); %>
               </div>
             </div>
@@ -393,9 +388,15 @@
           <div id='selected-images-target'></div>
         </div>
         <div class='modal-bottom'>
-          <div class='modal-bottom-left'>
-            <b>Help Guide</b>
-            <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p>
+          <div class='modal-bottom-content'>
+            <div class='modal-text-left'>
+              <b>Help Guide</b>
+              <p>Click an image above for higher resolution, or hold SHIFT and click to unselect the image. Click the button to the right to download a CSV detailing selected images.</p>
+            </div>
+            <div class='modal-text-right'>
+              <input type='text' placeholder='filename'>
+              <button class='active'>Download Metadata</button>
+            </div>
           </div>
         </div>
       </div>

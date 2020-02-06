@@ -51,7 +51,7 @@ function Config() {
     lodCell: 128, // height of each cell in LOD
     atlas: 2048, // height of each atlas
     texture: webgl.limits.textureSize,
-    lodTexture: 2048,
+    lodTexture: 4096,
   }
   this.transitions = {
     duration: 2.5,
@@ -1336,11 +1336,21 @@ function Selection() {
   this.frozen = false; // are we tracking mousemove events
   this.renderBox = true; // are we rendering the box
   this.selected = {}; // d[cellIdx] = bool indicating selected
+  this.elems = {}; // collection of DOM elements
 }
 
 Selection.prototype.init = function() {
+  // add the elements the selection mechanism needs to interact with
+  this.elems = {
+    modalButton: document.querySelector('#view-selected'),
+    modalTarget: document.querySelector('#selected-images-target'),
+    modalContainer: document.querySelector('#selected-images-modal'),
+    modalTemplate: document.querySelector('#selected-images-template'),
+  }
+  // initialize mesh, add listeners, and start render cycle
   this.initializeMesh();
-  this.addEventListeners();
+  this.addMouseEventListeners();
+  this.addModalEventListeners();
   this.start();
 }
 
@@ -1381,7 +1391,7 @@ Selection.prototype.getLineLengths = function(points) {
 }
 
 // bind event listeners
-Selection.prototype.addEventListeners = function() {
+Selection.prototype.addMouseEventListeners = function() {
   // listen to mouse position
   world.canvas.addEventListener('mousedown', function(e) {
     if (world.mode != 'select') return;
@@ -1408,10 +1418,33 @@ Selection.prototype.addEventListeners = function() {
   world.canvas.addEventListener('mouseup', function(e) {
     this.frozen = true;
     this.setBoxRender(false);
-    if (e.clientX = this.mouseDown.x && e.clientY == this.mouseDown.y) {
+    // user made a proper 'click' event -- mousedown and up in same location
+    if ((e.clientX == this.mouseDown.x) && (e.clientY == this.mouseDown.y)) {
+      // clear the selection if the click was outside the selection
       if (!this.insideBox(this.getEventWorldCoords(e))) this.clear();
+    } else {
+      // user finished a selection
+      if (this.hasSelection()) this.elems.modalButton.style.display = 'block';
     }
   }.bind(this));
+}
+
+Selection.prototype.addModalEventListeners = function() {
+  // close the modal on click of wrapper
+  this.elems.modalContainer.addEventListener('click', function(e) {
+    if (e.target.className == 'modal-top') {
+      this.elems.modalContainer.style.display = 'none';
+    }
+  }.bind(this))
+  // show the list of images the user selected
+  this.elems.modalButton.addEventListener('click', function(e) {
+    this.elems.modalTarget.innerHTML = _.template(this.elems.modalTemplate.textContent)({
+      images: data.json.images.filter(function(i, idx) {
+        return this.selected[idx];
+      }.bind(this))
+    });
+    this.elems.modalContainer.style.display = 'block';
+  }.bind(this))
 }
 
 // update the set of points currently selected
@@ -1442,6 +1475,15 @@ Selection.prototype.getEventWorldCoords = function(e) {
       scaled = direction.multiplyScalar(distance),
       coords = camera.position.clone().add(scaled); // coords = selector's location
   return coords;
+}
+
+// return a boolean indicating whether the user has selected any cells
+Selection.prototype.hasSelection = function() {
+  var keys = Object.keys(this.selected);
+  for (var i=0; i<keys.length; i++) {
+    if (this.selected[keys[i]]) return true;
+  }
+  return false;
 }
 
 // return a boolean indicating if a point is inside the selection box
@@ -1533,6 +1575,10 @@ Selection.prototype.clear = function() {
   this.frozen = false;
   // restore opacities in cells
   this.setOpacities(1.0);
+  // update the list of selected cells
+  this.updateSelected();
+  // remove the button that triggers the modal display
+  this.elems.modalButton.style.display = 'none';
 }
 
 /**
@@ -1596,53 +1642,35 @@ Picker.prototype.onMouseUp = function(e) {
 
 // called via this.onClick; shows the full-size selected image
 Picker.prototype.showModal = function(cellIdx) {
-  // select elements that will be updated
-  var img = find('#selected-image'),
-      title = find('#image-title'),
-      description = find('#image-text'),
-      template = find('#tag-template'),
-      tags = find('#meta-tags'),
-      modal = find('#selected-image-modal'),
-      meta = find('#selected-image-meta'),
-      deeplink = find('#eye-icon'),
-      download = find('#download-icon'),
-      filename = data.json.images[cellIdx]; // filename for the clicked image
-  window.location.href = '#' + filename; // store filename in window
-  // show data from the clicked image in the modal
+  var template = document.querySelector('#selected-image-template').textContent;
+  var target = document.querySelector('#selected-image-target');
+  var filename = data.json.images[cellIdx];
+  var src = config.data.dir + '/originals/' + filename;
+  var image = new Image();
   function showModal(data) {
-    var source = config.data.dir + '/originals/' + filename; // source for the image in the modal
-    img.src = source;
-    deeplink.href = data.permalink ? data.permalink : source;
-    download.href = img.src;
-    download.download = filename;
-    var image = new Image();
-    image.onload = function() {
-      if (data) {
-        var t = template.textContent,
-            compiled = _.template(t)({tags: data.tags}).replace(/\s\s+/g, '');
-        // set metadata attributes
-        tags.innerHTML = compiled ? compiled : '';
-        title.textContent = data.title ? data.title : data.filename ? data.filename : '';
-        description.textContent = data.description ? data.description : '';
-        if (data.tags || data.title || data.description) meta.style.display = 'block';
-      }
-      // display the modal
-      modal.style.display = 'block';
+    console.log(' * got data', {meta: Object.assign({}, data || {}, {
+        src: config.data.dir + '/originals/' + filename,
+      })})
+    target.innerHTML = _.template(template)({
+      meta: Object.assign({}, data || {}, {
+        src: config.data.dir + '/originals/' + filename,
+      })
+    })
+    target.style.display = 'block';
+  }
+  image.onload = function() {
+    showModal({});
+    try {
+      get(config.data.dir + '/metadata/file/' + filename + '.json', showModal);
+    } catch (err) {
+      showModal({})
     }
-    image.src = source; // only used to ensure modal image loads
   }
-  // try to fetch metadata for this image if metadata is provided
-  if (data.json.metadata) {
-    var path = config.data.dir + '/metadata/file/' + filename + '.json';
-    get(path, showModal, function(err) { showModal({}); console.warn(err); })
-  } else {
-    showModal({})
-  }
+  image.src = src;
 }
 
 Picker.prototype.closeModal = function() {
-  find('#selected-image-modal').style.display = 'none';
-  find('#selected-image-meta').style.display = 'none';
+  document.querySelector('#selected-image-target').style.display = 'none';
 }
 
 // get the mesh in which to render picking elements
@@ -1782,7 +1810,9 @@ LOD.prototype.updateGridPosition = function() {
   var camPos = this.toGridCoords(world.camera.position);
   // if the user is in a new grid position unload old images and load new
   if (this.state.camPos.x !== camPos.x || this.state.camPos.y !== camPos.y) {
-    if (this.state.radius > 1) this.state.radius--;
+    if (this.state.radius > 1) {
+      this.state.radius = Math.ceil(this.state.radius*0.75);
+    }
     this.state.camPos = camPos;
     this.state.neighborsRequested = 0;
     this.unload();
