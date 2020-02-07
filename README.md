@@ -52,7 +52,7 @@ import image_datasets
 image_datasets.oslomini.download()
 ```
 
-Finally, build the plot:
+The `.download()` command will make a directory named `datasets` in your current working directory. That `datasets` directory will contain a subdirectory named 'oslomini', which contains a directory of images and another directory with a CSV file of image metadata. Using that data, we can next build a plot:
 
 ```bash
 pixplot --images "datasets/oslomini/images/*" --metadata "datasets/oslomini/metadata/metadata.csv"
