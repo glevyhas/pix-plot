@@ -867,16 +867,43 @@ input[type=text] {
   min-width: 120px;
 }
 
+#download-link {
+  vertical-align: top;
+}
+
 #selected-images-modal button {
   display: inline-block;
-  margin-left: -2px;
-  padding: 10px 20px;
+  margin-left: -5px;
+  padding: 0.733em 20px;
   border-top-right-radius: 4px;
   border-bottom-right-radius: 4px;
   vertical-align: top;
+  height: 40px;
 }
 
 #selected-images-modal input {
   border-top-left-radius: 4px;
   border-bottom-left-radius: 4px;
+  height: 40px;
+  box-sizing: border-box;
+}
+
+#selected-images-count {
+  position: absolute;
+  bottom: 56px;
+  right: 64px;
+  z-index: 1;
+  color: #fff;
+  font-size: 10px;
+  white-space: nowrap;
+  padding: 10px;
+  background: #222;
+  display: none;
+}
+
+#count-target {
+  color: #eab755;
+  font-weight: 800;
+  text-align: center;
+  font-size: 20px;
 }

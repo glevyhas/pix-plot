@@ -189,7 +189,7 @@
 
     void main() {
       vLength = length;
-      vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
+      vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
       gl_Position = projectionMatrix * mvPosition;
     }
     </script>
@@ -200,12 +200,13 @@
     uniform bool render;
     uniform float time;
     varying float vLength;
+    uniform vec3 cameraPosition;
 
     void main() {
       if (!render) discard;
-      float dashSize = 0.01;
+      float dashSize = cameraPosition.z / 100.0;
       float gapSize = 0.005;
-      if ( mod( vLength + time, dashSize + gapSize) > dashSize ) discard;
+      if (mod(vLength + time, dashSize + gapSize) > dashSize) discard;
       gl_FragColor = vec4(0.9, 0.9, 0.9, 1.0);
     }
     </script>
@@ -271,7 +272,7 @@
       <div id='header-controls'>
         <div id='range-slider'>
           <label>Point Size</label>
-          <input id='pointsize-range-input' min='0' max='0.03' value='0' step='0.0001' type='range' />
+          <input id='pointsize-range-input' min='0' max='0.03' value='0' step='0.00001' type='range' />
         </div>
         <div id='icons'>
           <img id='layout-grid' src='assets/images/icons/alphabetic.svg' />
@@ -364,6 +365,10 @@
     </script>
     <div id='selected-image-target'></div>
     <!-- Image Selection: multi-image selection -->
+    <div id='selected-images-count'>
+      <div id='count-target'>0</div>
+      <div>images selected</div>
+    </div>
     <div id='selection-icons'>
       <img id='pan' src='assets/images/icons/pan.svg' class='active' />
       <img id='select' src='assets/images/icons/select.svg' class='' />
@@ -391,11 +396,13 @@
           <div class='modal-bottom-content'>
             <div class='modal-text-left'>
               <b>Help Guide</b>
-              <p>Click an image above for higher resolution, or hold SHIFT and click to unselect the image. Click the button to the right to download a CSV detailing selected images.</p>
+              <p>Click an image above for higher resolution, or click the button to the right to download a JSON file identifying selected images.</p>
             </div>
             <div class='modal-text-right'>
-              <input type='text' placeholder='filename'>
-              <button class='active'>Download Metadata</button>
+              <input id='download-filename' type='text' placeholder='filename'>
+              <a href='#' id='download-link' onclick='selection.downloadSelected()'>
+                <button class='active'>Download Metadata</button>
+              </a>
             </div>
           </div>
         </div>
