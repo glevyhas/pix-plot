@@ -59,7 +59,7 @@ config = {
   'out_dir': 'output',
   'use_cache': True,
   'encoding': 'utf8',
-  'n_clusters': 20,
+  'min_cluster_size': 20,
   'atlas_size': 2048,
   'cell_size': 32,
   'lod_cell_height': 128,
@@ -233,13 +233,6 @@ def get_image_paths(**kwargs):
     image_paths = sorted(glob2.glob(kwargs['images']))
   if not image_paths:
     print('\nError: No input images were found. Please check your --images glob\n')
-    sys.exit()
-  # validate the provided images are > n clusters requested
-  n_images = len(image_paths)
-  n_clusters = kwargs['n_clusters']
-  if n_images <= n_clusters:
-    print('\nError: n_clusters must be < input image count ')
-    print('Found {} images and {} clusters were requested\n'.format(n_images, n_clusters))
     sys.exit()
   # optional shuffle that mutates image_paths
   if kwargs['shuffle']:
@@ -499,12 +492,13 @@ def read_json(path, **kwargs):
 
 
 def get_centroids(**kwargs):
-  '''Return the K nearest neighbor centroids for input vectors'''
-  print(' * clustering data')
+  '''Return the stable clusters from the condensed tree of connected components from the density graph'''
+  print(' * HDBSCAN clustering data with ' + str(multiprocessing.cpu_count()) + ' cores...')
   config = {
-    'min_cluster_size': 20,
+    'min_cluster_size': kwargs['min_cluster_size'],
     'cluster_selection_epsilon': 0.01,
     'min_samples': 1,
+    'core_dist_n_jobs': multiprocessing.cpu_count(),
   }
   z = HDBSCAN(**config).fit(kwargs['vecs'])
   # find the centroids for each cluster
@@ -631,7 +625,7 @@ def parse():
   parser.add_argument('--metadata', type=str, default=config['metadata'], help='path to a csv or glob of JSON files with image metadata (see readme for format)', required=False)
   parser.add_argument('--use_cache', type=bool, default=config['use_cache'], help='given inputs identical to prior inputs, load outputs from cache', required=False)
   parser.add_argument('--encoding', type=str, default=config['encoding'], help='the encoding of input metadata', required=False)
-  parser.add_argument('--n_clusters', type=int, default=config['n_clusters'], help='the number of clusters to identify', required=False)
+  parser.add_argument('--min_cluster_size', type=int, default=config['min_cluster_size'], help='the minimum number of images in a cluster', required=False)
   parser.add_argument('--out_dir', type=str, default=config['out_dir'], help='the directory to which outputs will be saved', required=False)
   parser.add_argument('--cell_size', type=int, default=config['cell_size'], help='the size of atlas cells in px', required=False)
   parser.add_argument('--n_neighbors', type=int, default=config['n_neighbors'], help='the n_neighbors argument for UMAP')

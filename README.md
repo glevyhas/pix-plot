@@ -88,12 +88,7 @@ pixplot --images "path/to/images/*.jpg" --n_neighbors 2
 
 ## Curating Automatic Hotspots
 
-By default, PixPlot uses [*K*-Means Clustering](https://en.wikipedia.org/wiki/K-means_clustering) to find twenty hotspots in the visualization.  You can adjust the number of discovered hotspots by adding ` --clusters=n` to the processing script, where `n` is set to the desired number of clusters.
-
-After processing, you can curate the discovered hotspots by editing the resulting `output/centoids/hash.json` file. The hotspots each have a label (by default 'Cluster *N*') and the name of an image that represents the centroid of the discovered hotspot.
-
-You can add, remove or re-order these, change the labels to make them more meaningful, and/or adjust the image that symbolizes each hotspot in the left-hand **Hotspots** menu. *Hint: to get the name of an image that you feel better reflects the cluster, click on it in the visualization and it will appear in a lightbox viewer*
-
+PixPlot uses [Hierarchical density-based spatial clustering of applications with noise](https://hdbscan.readthedocs.io/en/latest/index.html), a refinement of the earlier [DBSCAN](https://en.wikipedia.org/wiki/DBSCAN) algorithm, to find hotspots in the visualization. You may be interested in consulting this [explanation of how HDBSCAN works](https://hdbscan.readthedocs.io/en/latest/how_hdbscan_works.html).
 
 ## Adding Metadata
 
