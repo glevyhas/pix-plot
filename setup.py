@@ -23,6 +23,7 @@ setup(
   author_email='douglas.duhaime@gmail.com',
   license='MIT',
   install_requires=[
+    'cmake>=3.15.3',
     'glob2>=0.6',
     'hdbscan>=0.8.24',
     'iiif-downloader>=0.0.6',
@@ -37,8 +38,6 @@ setup(
     'umap-learn>=0.3.10',
     'yale-dhlab-rasterfairy>=1.0.3',
     'yale-dhlab-keras-preprocessing>=1.1.1',
-    'cmake>=3.15.3',
-    'MulticoreTSNE>=0.1',
   ],
   entry_points={
     'console_scripts': [

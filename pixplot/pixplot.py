@@ -5,7 +5,6 @@ from keras.applications import Xception, VGG19, InceptionV3, imagenet_utils
 from os.path import basename, join, exists, dirname, realpath
 from keras.applications.inception_v3 import preprocess_input
 from sklearn.metrics import pairwise_distances_argmin_min
-from MulticoreTSNE import MulticoreTSNE as TSNE
 from sklearn.preprocessing import minmax_scale
 from keras_preprocessing.image import load_img
 from collections import defaultdict, Counter
@@ -42,6 +41,11 @@ import json
 import sys
 import csv
 import os
+
+try:
+  from MulticoreTSNE import MulticoreTSNE as TSNE
+except:
+  from sklearn.manifold import TSNE
 
 try:
   from urllib.parse import unquote # python 3
@@ -334,19 +338,13 @@ def get_layouts(*args, **kwargs):
   '''Get the image positions in each projection'''
   vecs = vectorize_images(**kwargs)
   umap = get_umap_projection(vecs=vecs, **kwargs)
-  tsne = get_tsne_projection(vecs=vecs, **kwargs)
   raster = get_rasterfairy_projection(umap=umap, **kwargs)
   grid = get_grid_projection(**kwargs)
   umap_grid = get_pointgrid_projection(umap, 'umap', **kwargs)
-  tsne_grid = get_pointgrid_projection(tsne, 'tsne', **kwargs)
   return {
     'umap': {
       'layout': umap,
       'jittered': umap_grid,
-    },
-    'tsne': {
-      'layout': tsne,
-      'jittered': tsne_grid,
     },
     'grid': {
       'layout': grid,
