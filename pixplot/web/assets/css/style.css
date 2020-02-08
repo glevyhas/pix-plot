@@ -385,7 +385,7 @@ nav h2 {
 
 #loader-scene {
   position: absolute;
-  top: 60px;
+  top: 0;
   right: 0;
   bottom: 0;
   left: 0;
@@ -396,6 +396,9 @@ nav h2 {
   background: #000;
   max-height: 100%;
   overflow: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 #loader-scene.hidden {
