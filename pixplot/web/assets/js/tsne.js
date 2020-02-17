@@ -1313,7 +1313,6 @@ World.prototype.setMode = function(mode) {
     this.controls.noPan = false;
     this.canvas.classList.remove('select');
     this.canvas.classList.add('pan');
-    selection.clear();
   } else if (this.mode == 'select') {
     this.controls.noPan = true;
     this.canvas.classList.remove('pan');
@@ -1413,11 +1412,11 @@ Selection.prototype.addMouseEventListeners = function() {
     this.pos1 = this.getEventWorldCoords(e);
     this.updateSelected();
     this.renderBox = true;
-    if (this.hasSelection()) this.elems.modalButton.style.display = 'block';
   }.bind(this))
   world.canvas.addEventListener('mouseup', function(e) {
     this.frozen = true;
     this.renderBox = false;
+    if (keyboard.shiftPressed()) return;
     if (!this.hasSelection()) this.clear();
     // user made a proper 'click' event -- mousedown and up in same location
     if ((e.clientX == this.mouseDown.x) && (e.clientY == this.mouseDown.y)) {
@@ -1425,6 +1424,10 @@ Selection.prototype.addMouseEventListeners = function() {
       if (!this.insideBox(this.getEventWorldCoords(e))) this.clear();
     }
   }.bind(this));
+}
+
+Selection.prototype.toggleSelection = function(idx) {
+  this.selected[idx] = !this.selected[idx];
 }
 
 Selection.prototype.addModalEventListeners = function() {
@@ -1440,6 +1443,22 @@ Selection.prototype.addModalEventListeners = function() {
       images: this.getSelectedImages(),
     });
     this.elems.modalContainer.style.display = 'block';
+  }.bind(this))
+  this.elems.modalContainer.addEventListener('click', function(e) {
+    if (e.target.className.includes('toggle-selection')) {
+      e.preventDefault();
+      var sibling = e.target.parentNode.querySelector('.background-image'),
+          image = sibling.getAttribute('data-image');
+      sibling.classList.contains('unselected')
+        ? sibling.classList.remove('unselected')
+        : sibling.classList.add('unselected');
+      for (var i=0; i<data.json.images.length; i++) {
+        if (data.json.images[i] == image) {
+          this.toggleSelection(i);
+          break;
+        }
+      }
+    }
   }.bind(this))
 }
 
@@ -1466,6 +1485,17 @@ Selection.prototype.getEventWorldCoords = function(e) {
   return coords;
 }
 
+// update the set of points currently selected
+Selection.prototype.updateSelected = function() {
+  for (var i=0; i<data.cells.length; i++) {
+    if (keyboard.shiftPressed() || keyboard.commandPressed()) {
+      if (this.insideBox(data.cells[i])) this.selected[i] = true;
+    } else {
+      this.selected[i] = this.insideBox(data.cells[i]);
+    }
+  }
+}
+
 // get a list of the images the user has selected
 Selection.prototype.getSelectedImages = function() {
   return data.json.images.filter(function(i, idx) {
@@ -1476,13 +1506,6 @@ Selection.prototype.getSelectedImages = function() {
 // return a boolean indicating whether the user has selected any cells
 Selection.prototype.hasSelection = function() {
   return this.getSelectedImages().length > 0;
-}
-
-// update the set of points currently selected
-Selection.prototype.updateSelected = function() {
-  for (var i=0; i<data.cells.length; i++) {
-    this.selected[i] = this.insideBox(data.cells[i]);
-  }
 }
 
 // return a boolean indicating if a point is inside the selection box
@@ -1512,20 +1535,37 @@ Selection.prototype.getBoxDomain = function() {
 }
 
 Selection.prototype.update = function() {
+  // if there's no mesh rendered, exit
   if (!this.mesh) {
     return;
   }
+  // if there are no selected cells, exit
+  var nSelected = this.getSelectedImages().length;
+  var nSelectedElem = document.querySelector('#n-images-selected');
+  if (nSelectedElem) nSelectedElem.textContent = nSelected;
+  if (!nSelected) {
+    return;
+  }
+  // make the button that displays the modal clickable
+  this.elems.modalButton.style.display = 'block';
+  // make non-selected cells less opaque
+  this.setOpacities(0.2, true);
+  // indicate how many images the user has selected
+  this.elems.countTarget.textContent = nSelected;
+  this.elems.selectedImagesCount.style.display = 'block';
+  // if we're not rendering the box, hide the box and exit
   if (!this.renderBox) {
     this.mesh.material.uniforms.render.value = false;
     return;
   }
+  // if either vertex that positions the selection box is missing exit
+  if (!this.pos0 || !this.pos1) {
+    return;
+  }
+  // update the uniforms used to create the marching ants
   this.time += this.clock.getDelta() / 10;
   this.mesh.material.uniforms.time.value = this.time;
-  this.render();
-}
-
-Selection.prototype.render = function() {
-  if (!this.pos0 || !this.pos1) return;
+  // set the geometry attributes that define the selection box position
   var box = this.getBoxDomain(),
       z = 0.001,
       points = [
@@ -1543,11 +1583,6 @@ Selection.prototype.render = function() {
   this.mesh.geometry.attributes.length.array = lengths.array;
   this.mesh.geometry.attributes.length.needsUpdate = true;
   this.mesh.material.uniforms.render.value = true;
-  // make non-selected cells less opaque
-  this.setOpacities(0.2, true);
-  // indicate how many images the user has selected
-  this.elems.countTarget.textContent = this.getSelectedImages().length;
-  this.elems.selectedImagesCount.style.display = 'block';
 }
 
 // update the cell opacities. If `useSelected` is true, differentiate between
@@ -1635,8 +1670,7 @@ Picker.prototype.getClickOffsets = function(e) {
 // on canvas click, show detailed modal with clicked image
 Picker.prototype.onMouseUp = function(e) {
   // if click hit background, close the modal
-  if (e.target.className == 'modal-top' || world.mode == 'select') {
-    window.location.href = '#';
+  if (e.target.className == 'modal-top') {
     return this.closeModal();
   }
   // find the offset of the click event within the canvas
@@ -1650,10 +1684,18 @@ Picker.prototype.onMouseUp = function(e) {
       e.target.id !== 'pixplot-canvas') { // whether the click hit the gl canvas
     return;
   }
-  // zoom in if the camera is far away, else show the modal
-  world.camera.position.z > 0.4
-    ? world.flyToCellIdx(cellIdx)
-    : this.showModal(cellIdx);
+  // if we're in select mode, conditionally un/select the clicked cell
+  if (world.mode == 'select') {
+    if (keyboard.shiftPressed() || keyboard.commandPressed()) {
+      return selection.toggleSelection(cellIdx);
+    }
+  }
+  // else we're in pan mode; zoom in if the camera is far away, else show the modal
+  else if (world.mode == 'pan') {
+    return world.camera.position.z > 0.4
+      ? world.flyToCellIdx(cellIdx)
+      : this.showModal(cellIdx);
+  }
 }
 
 // called via this.onClick; shows the full-size selected image
@@ -1683,6 +1725,7 @@ Picker.prototype.showModal = function(cellIdx) {
 }
 
 Picker.prototype.closeModal = function() {
+  window.location.href = '#';
   document.querySelector('#selected-image-target').style.display = 'none';
 }
 
@@ -2171,6 +2214,28 @@ Webgl.prototype.getLimits = function() {
 }
 
 /**
+* Keyboard
+**/
+
+function Keyboard() {
+  this.pressed = {};
+  window.addEventListener('keydown', function(e) {
+    this.pressed[e.keyCode] = true;
+  }.bind(this))
+  window.addEventListener('keyup', function(e) {
+    this.pressed[e.keyCode] = false;
+  }.bind(this))
+}
+
+Keyboard.prototype.shiftPressed = function() {
+  return this.pressed[16];
+}
+
+Keyboard.prototype.commandPressed = function() {
+  return this.pressed[91];
+}
+
+/**
 * Make an XHR get request for data
 *
 * @param {str} url: the url of the data to fetch
@@ -2349,6 +2414,7 @@ var webgl = new Webgl();
 var config = new Config();
 var filters = new Filters();
 var picker = new Picker();
+var keyboard = new Keyboard();
 var selection = new Selection();
 var layout = new Layout();
 var world = new World();

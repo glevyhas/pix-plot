@@ -380,11 +380,12 @@
           <script type='text/html' id='selected-images-template'>
             <div class='modal-top-content'>
               <h2>Selected Images</h2>
-              <p>You have selected <b><%- images.length %></b> images</p>
+              <p>You have selected <b id='n-images-selected'><%- images.length %></b> images</p>
               <div id='selected-image-grid'>
-                <% _.forEach(images, function(image) { %>
+                <% _.forEach(images, function(image, idx) { %>
                   <a class='selected-image' href='data/originals/<%- image %>' target='_blank'>
-                    <div style='background-image: url("data/thumbs/<%- image %>")'></div>
+                    <div class='toggle-selection'>✕</div>
+                    <div data-image='<%- image %>' class='background-image' style='background-image: url("data/thumbs/<%- image %>");'></div>
                   </a>
                 <% }); %>
               </div>
