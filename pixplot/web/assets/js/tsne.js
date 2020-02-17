@@ -1413,11 +1413,11 @@ Selection.prototype.addMouseEventListeners = function() {
     this.pos1 = this.getEventWorldCoords(e);
     this.updateSelected();
     this.renderBox = true;
-    if (this.hasSelection()) this.elems.modalButton.style.display = 'block';
   }.bind(this))
   world.canvas.addEventListener('mouseup', function(e) {
     this.frozen = true;
     this.renderBox = false;
+    if (keyboard.shiftPressed()) return;
     if (!this.hasSelection()) this.clear();
     // user made a proper 'click' event -- mousedown and up in same location
     if ((e.clientX == this.mouseDown.x) && (e.clientY == this.mouseDown.y)) {
@@ -1489,7 +1489,11 @@ Selection.prototype.getEventWorldCoords = function(e) {
 // update the set of points currently selected
 Selection.prototype.updateSelected = function() {
   for (var i=0; i<data.cells.length; i++) {
-    this.selected[i] = this.insideBox(data.cells[i]);
+    if (keyboard.shiftPressed() || keyboard.commandPressed()) {
+      if (this.insideBox(data.cells[i])) this.selected[i] = true;
+    } else {
+      this.selected[i] = this.insideBox(data.cells[i]);
+    }
   }
 }
 
@@ -1543,6 +1547,8 @@ Selection.prototype.update = function() {
   if (!nSelected) {
     return;
   }
+  // make the button that displays the modal clickable
+  this.elems.modalButton.style.display = 'block';
   // make non-selected cells less opaque
   this.setOpacities(0.2, true);
   // indicate how many images the user has selected
@@ -1665,8 +1671,7 @@ Picker.prototype.getClickOffsets = function(e) {
 // on canvas click, show detailed modal with clicked image
 Picker.prototype.onMouseUp = function(e) {
   // if click hit background, close the modal
-  if (e.target.className == 'modal-top' || world.mode == 'select') {
-    window.location.href = '#';
+  if (e.target.className == 'modal-top') {
     return this.closeModal();
   }
   // find the offset of the click event within the canvas
@@ -1680,10 +1685,18 @@ Picker.prototype.onMouseUp = function(e) {
       e.target.id !== 'pixplot-canvas') { // whether the click hit the gl canvas
     return;
   }
-  // zoom in if the camera is far away, else show the modal
-  world.camera.position.z > 0.4
-    ? world.flyToCellIdx(cellIdx)
-    : this.showModal(cellIdx);
+  // if we're in select mode, conditionally un/select the clicked cell
+  if (world.mode == 'select') {
+    if (keyboard.shiftPressed() || keyboard.commandPressed()) {
+      return selection.toggleSelection(cellIdx);
+    }
+  }
+  // else we're in pan mode; zoom in if the camera is far away, else show the modal
+  else if (world.mode == 'pan') {
+    return world.camera.position.z > 0.4
+      ? world.flyToCellIdx(cellIdx)
+      : this.showModal(cellIdx);
+  }
 }
 
 // called via this.onClick; shows the full-size selected image
@@ -1713,6 +1726,7 @@ Picker.prototype.showModal = function(cellIdx) {
 }
 
 Picker.prototype.closeModal = function() {
+  window.location.href = '#';
   document.querySelector('#selected-image-target').style.display = 'none';
 }
 
@@ -2201,6 +2215,28 @@ Webgl.prototype.getLimits = function() {
 }
 
 /**
+* Keyboard
+**/
+
+function Keyboard() {
+  this.pressed = {};
+  window.addEventListener('keydown', function(e) {
+    this.pressed[e.keyCode] = true;
+  }.bind(this))
+  window.addEventListener('keyup', function(e) {
+    this.pressed[e.keyCode] = false;
+  }.bind(this))
+}
+
+Keyboard.prototype.shiftPressed = function() {
+  return this.pressed[16];
+}
+
+Keyboard.prototype.commandPressed = function() {
+  return this.pressed[91];
+}
+
+/**
 * Make an XHR get request for data
 *
 * @param {str} url: the url of the data to fetch
@@ -2379,6 +2415,7 @@ var webgl = new Webgl();
 var config = new Config();
 var filters = new Filters();
 var picker = new Picker();
+var keyboard = new Keyboard();
 var selection = new Selection();
 var layout = new Layout();
 var world = new World();
