@@ -1313,7 +1313,6 @@ World.prototype.setMode = function(mode) {
     this.controls.noPan = false;
     this.canvas.classList.remove('select');
     this.canvas.classList.add('pan');
-    selection.clear();
   } else if (this.mode == 'select') {
     this.controls.noPan = true;
     this.canvas.classList.remove('pan');
