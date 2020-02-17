@@ -1427,6 +1427,10 @@ Selection.prototype.addMouseEventListeners = function() {
   }.bind(this));
 }
 
+Selection.prototype.toggleSelection = function(idx) {
+  this.selected[idx] = !this.selected[idx];
+}
+
 Selection.prototype.addModalEventListeners = function() {
   // close the modal on click of wrapper
   this.elems.modalContainer.addEventListener('click', function(e) {
@@ -1440,6 +1444,22 @@ Selection.prototype.addModalEventListeners = function() {
       images: this.getSelectedImages(),
     });
     this.elems.modalContainer.style.display = 'block';
+  }.bind(this))
+  this.elems.modalContainer.addEventListener('click', function(e) {
+    if (e.target.className.includes('toggle-selection')) {
+      e.preventDefault();
+      var sibling = e.target.parentNode.querySelector('.background-image'),
+          image = sibling.getAttribute('data-image');
+      sibling.classList.contains('unselected')
+        ? sibling.classList.remove('unselected')
+        : sibling.classList.add('unselected');
+      for (var i=0; i<data.json.images.length; i++) {
+        if (data.json.images[i] == image) {
+          this.toggleSelection(i);
+          break;
+        }
+      }
+    }
   }.bind(this))
 }
 
@@ -1466,6 +1486,13 @@ Selection.prototype.getEventWorldCoords = function(e) {
   return coords;
 }
 
+// update the set of points currently selected
+Selection.prototype.updateSelected = function() {
+  for (var i=0; i<data.cells.length; i++) {
+    this.selected[i] = this.insideBox(data.cells[i]);
+  }
+}
+
 // get a list of the images the user has selected
 Selection.prototype.getSelectedImages = function() {
   return data.json.images.filter(function(i, idx) {
@@ -1476,13 +1503,6 @@ Selection.prototype.getSelectedImages = function() {
 // return a boolean indicating whether the user has selected any cells
 Selection.prototype.hasSelection = function() {
   return this.getSelectedImages().length > 0;
-}
-
-// update the set of points currently selected
-Selection.prototype.updateSelected = function() {
-  for (var i=0; i<data.cells.length; i++) {
-    this.selected[i] = this.insideBox(data.cells[i]);
-  }
 }
 
 // return a boolean indicating if a point is inside the selection box
@@ -1512,20 +1532,35 @@ Selection.prototype.getBoxDomain = function() {
 }
 
 Selection.prototype.update = function() {
+  // if there's no mesh rendered, exit
   if (!this.mesh) {
     return;
   }
+  // if there are no selected cells, exit
+  var nSelected = this.getSelectedImages().length;
+  var nSelectedElem = document.querySelector('#n-images-selected');
+  if (nSelectedElem) nSelectedElem.textContent = nSelected;
+  if (!nSelected) {
+    return;
+  }
+  // make non-selected cells less opaque
+  this.setOpacities(0.2, true);
+  // indicate how many images the user has selected
+  this.elems.countTarget.textContent = nSelected;
+  this.elems.selectedImagesCount.style.display = 'block';
+  // if we're not rendering the box, hide the box and exit
   if (!this.renderBox) {
     this.mesh.material.uniforms.render.value = false;
     return;
   }
+  // if either vertex that positions the selection box is missing exit
+  if (!this.pos0 || !this.pos1) {
+    return;
+  }
+  // update the uniforms used to create the marching ants
   this.time += this.clock.getDelta() / 10;
   this.mesh.material.uniforms.time.value = this.time;
-  this.render();
-}
-
-Selection.prototype.render = function() {
-  if (!this.pos0 || !this.pos1) return;
+  // set the geometry attributes that define the selection box position
   var box = this.getBoxDomain(),
       z = 0.001,
       points = [
@@ -1543,11 +1578,6 @@ Selection.prototype.render = function() {
   this.mesh.geometry.attributes.length.array = lengths.array;
   this.mesh.geometry.attributes.length.needsUpdate = true;
   this.mesh.material.uniforms.render.value = true;
-  // make non-selected cells less opaque
-  this.setOpacities(0.2, true);
-  // indicate how many images the user has selected
-  this.elems.countTarget.textContent = this.getSelectedImages().length;
-  this.elems.selectedImagesCount.style.display = 'block';
 }
 
 // update the cell opacities. If `useSelected` is true, differentiate between

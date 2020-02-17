@@ -840,21 +840,48 @@ noscript {
   height: 90px;
   display: inline-block;
   margin: 9px;
-  background: transparent;
   display: flex;
   justify-content: center;
   align-items: center;
+  position: relative;
+  border: 0.125em solid #707070;
+  background: #222;
 }
 
-.selected-image div {
+.toggle-selection {
+  position: absolute;
+  z-index: 10;
+  color: #fff;
+  background: #000;
+  width: 18px;
+  height: 18px;
+  top: 5px;
+  right: 5px;
+  text-align: center;
+  border: none;
+  outline: none;
+  font-size: 10px;
+  line-height: 18px;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+#selected-image-grid:hover .toggle-selection {
+  opacity: 1;
+}
+
+.selected-image .background-image {
   width: 100%;
   height: 100%;
   background-size: cover;
   background-repeat: no-repeat;
-  background-position: center center;
-  border: 0.125em solid #707070;
+  background-position: center top;
   padding: 0.125px;
   box-sizing: border-box;
+}
+
+.selected-image .background-image.unselected {
+  opacity: 0.1;
 }
 
 #selected-images-target {
