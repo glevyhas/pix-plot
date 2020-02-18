@@ -833,9 +833,14 @@ noscript {
   display: none;
 }
 
-#selected-image-grid {
+#selected-images-grid {
   display: flex;
   flex-wrap: wrap;
+}
+
+#selected-images-target {
+  max-height: 100%;
+  overflow: auto;
 }
 
 .selected-image {
@@ -849,6 +854,24 @@ noscript {
   position: relative;
   border: 0.125em solid #707070;
   background: #222;
+}
+
+.selected-image .background-image {
+  width: 100%;
+  height: 100%;
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-position: center top;
+  padding: 0.125px;
+  box-sizing: border-box;
+}
+
+.selected-image .background-image.unselected {
+  opacity: 0.1;
+}
+
+#selected-images-grid:hover .toggle-selection {
+  opacity: 1;
 }
 
 .toggle-selection {
@@ -869,29 +892,6 @@ noscript {
   transition: opacity 0.3s;
 }
 
-#selected-image-grid:hover .toggle-selection {
-  opacity: 1;
-}
-
-.selected-image .background-image {
-  width: 100%;
-  height: 100%;
-  background-size: cover;
-  background-repeat: no-repeat;
-  background-position: center top;
-  padding: 0.125px;
-  box-sizing: border-box;
-}
-
-.selected-image .background-image.unselected {
-  opacity: 0.1;
-}
-
-#selected-images-target {
-  max-height: 100%;
-  overflow: auto;
-}
-
 input[type=text] {
   padding: 10px 20px;
   font-size: 15px;
@@ -904,7 +904,7 @@ input[type=text] {
   vertical-align: top;
 }
 
-#selected-images-modal button {
+#download-link button {
   display: inline-block;
   margin-left: -5px;
   padding: 0.733em 20px;
@@ -919,6 +919,10 @@ input[type=text] {
   border-bottom-left-radius: 4px;
   height: 40px;
   box-sizing: border-box;
+}
+
+#selected-images-modal .modal-text-right {
+  white-space: nowrap;
 }
 
 #selected-images-count {
@@ -939,4 +943,26 @@ input[type=text] {
   font-weight: 800;
   text-align: center;
   font-size: 20px;
+}
+
+#download-as {
+  margin-top: 10px;
+}
+
+#download-as span {
+  margin-right: 2px;
+}
+
+#download-as button {
+  opacity: 1;
+  background-color: #d2d2d2;
+  padding: 4px 8px;
+  display: inline-block;
+  border-radius: 4px;
+  font-size: 12px;
+  margin: 2px;
+}
+
+#download-as button.active {
+  background-color: #eab755;
 }
