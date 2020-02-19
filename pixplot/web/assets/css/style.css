@@ -21,6 +21,7 @@ canvas {
 body,
 html {
   background: #111;
+  touch-action: none;
 }
 
 a {
