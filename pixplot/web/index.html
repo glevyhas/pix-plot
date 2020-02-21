@@ -171,7 +171,8 @@
         // target to be replaced by texture tree
         TEXTURE_LOOKUP_TREE
 
-        gl_FragColor.a = vOpacity;
+        gl_FragColor = mix(gl_FragColor, vec4(0.0), 1.0-vOpacity);
+        gl_FragColor.a = 1.0;
       }
     }
     </script>

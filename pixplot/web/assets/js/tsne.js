@@ -1568,7 +1568,7 @@ Selection.prototype.update = function() {
   // make the button that displays the modal clickable
   this.elems.modalButton.style.display = 'block';
   // make non-selected cells less opaque
-  this.setOpacities(0.2, true);
+  this.setOpacities(0.35, true);
   // indicate how many images the user has selected
   this.elems.countTarget.textContent = nSelected;
   this.elems.selectedImagesCount.style.display = 'block';
@@ -2189,7 +2189,7 @@ Filter.prototype.filterCells = function(names) {
     // update the buffer attributes that describe this cell to the GPU
     var meshes = world.group,
         attrs = meshes.children[cell.getIndexOfDrawCall()].geometry.attributes,
-        opacity = data.json.images[idx] in names ? 1 : 0.05;
+        opacity = data.json.images[idx] in names ? 1 : 0.35;
     attrs.opacity.array[cell.getIndexInDrawCall()] = opacity;
   }.bind(this))
   world.attrsNeedUpdate(['opacity']);
