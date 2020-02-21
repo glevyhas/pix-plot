@@ -73,6 +73,7 @@ config = {
   'pointgrid_fill': 0.05,
   'square_cells': False,
   'gzip': False,
+  'plot_id': str(uuid.uuid1()),
 }
 
 ##
@@ -277,7 +278,7 @@ def get_atlas_data(**kwargs):
   If square, center each cell in an nxn square, else use uniform height
   '''
   # if the atlas files already exist, load from cache
-  out_dir = os.path.join(kwargs['out_dir'], 'atlases', hash(**kwargs))
+  out_dir = os.path.join(kwargs['out_dir'], 'atlases', kwargs['plot_id'])
   if os.path.exists(out_dir) and kwargs['use_cache']:
     print(' * loading saved atlas data')
     return out_dir
@@ -454,7 +455,7 @@ def get_path(*args, **kwargs):
   sub_dir, filename = args
   out_dir = join(kwargs['out_dir'], sub_dir) if sub_dir else kwargs['out_dir']
   if kwargs.get('add_hash', True):
-    filename += '-' + hash(**kwargs)
+    filename += '-' + kwargs['plot_id']
   path = join(out_dir, filename + '.json')
   return path + '.gz' if kwargs.get('gzip', False) else path
 
@@ -518,16 +519,6 @@ def get_centroids(**kwargs):
   } for idx,i in enumerate(closest)]
   # save the centroids to disk and return the path to the saved json
   return write_json(get_path('centroids', 'centroid', **kwargs), data, **kwargs)
-
-
-def hash(**kwargs):
-  '''Hash `args` into a string and return that string. Overloads hash()'''
-  d = copy.deepcopy(kwargs)
-  for i in d:
-    if isinstance(d[i], np.ndarray):
-      d[i] = d[i].tolist()
-  s = json.dumps(d, sort_keys=True)
-  return sha224(s.encode(kwargs['encoding'])).hexdigest()
 
 
 def copy_web_assets(**kwargs):
@@ -633,6 +624,7 @@ def parse():
   parser.add_argument('--copy_web_only', action='store_true', help='update ./output/web without reprocessing data')
   parser.add_argument('--gzip', action='store_true', help='save outputs with gzip compression')
   parser.add_argument('--shuffle', action='store_true', help='shuffle the input images before data processing begins')
+  parser.add_argument('--plot_id', type=str, default=config['plot_id'], help='unique id for a plot; useful for resuming processing on a started plot')
   config.update(vars(parser.parse_args()))
   process_images(**config)
 
