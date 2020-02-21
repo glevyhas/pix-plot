@@ -206,7 +206,7 @@
     void main() {
       if (!render) discard;
       float dashSize = cameraPosition.z / 100.0;
-      float gapSize = 0.005;
+      float gapSize = dashSize * 0.4;
       if (mod(vLength + time, dashSize + gapSize) > dashSize) discard;
       gl_FragColor = vec4(0.9, 0.9, 0.9, 1.0);
     }
