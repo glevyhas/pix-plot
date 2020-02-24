@@ -1336,6 +1336,7 @@ function Selection() {
   this.renderBox = true; // are we rendering the box
   this.selected = {}; // d[cellIdx] = bool indicating selected
   this.elems = {}; // collection of DOM elements
+  this.downloadFiletype = 'csv'; // filetype to use when downloading selection
 }
 
 Selection.prototype.init = function() {
@@ -1347,6 +1348,9 @@ Selection.prototype.init = function() {
     modalTemplate: document.querySelector('#selected-images-template'),
     selectedImagesCount: document.querySelector('#selected-images-count'),
     countTarget: document.querySelector('#count-target'),
+    filetypeButtons: document.querySelectorAll('.filetype'),
+    downloadLink: document.querySelector('#download-link'),
+    downloadInput: document.querySelector('#download-filename'),
   }
   // initialize mesh, add listeners, and start render cycle
   this.initializeMesh();
@@ -1416,7 +1420,7 @@ Selection.prototype.addMouseEventListeners = function() {
   world.canvas.addEventListener('mouseup', function(e) {
     this.frozen = true;
     this.renderBox = false;
-    if (keyboard.shiftPressed()) return;
+    if (keyboard.shiftPressed() || keyboard.commandPressed()) return;
     if (!this.hasSelection()) this.clear();
     // user made a proper 'click' event -- mousedown and up in same location
     if ((e.clientX == this.mouseDown.x) && (e.clientY == this.mouseDown.y)) {
@@ -1444,6 +1448,7 @@ Selection.prototype.addModalEventListeners = function() {
     });
     this.elems.modalContainer.style.display = 'block';
   }.bind(this))
+  // toggle the inclusion of a cell in the selection
   this.elems.modalContainer.addEventListener('click', function(e) {
     if (e.target.className.includes('toggle-selection')) {
       e.preventDefault();
@@ -1459,6 +1464,20 @@ Selection.prototype.addModalEventListeners = function() {
         }
       }
     }
+  }.bind(this))
+  // let users set the download filetype
+  for (var i=0; i<this.elems.filetypeButtons.length; i++) {
+    this.elems.filetypeButtons[i].addEventListener('click', function(e) {
+      for (var j=0; j<this.elems.filetypeButtons.length; j++) {
+        this.elems.filetypeButtons[j].classList.remove('active');
+      }
+      e.target.classList.add('active');
+      this.downloadFiletype = e.target.id;
+    }.bind(this))
+  }
+  // let users trigger the download
+  this.elems.downloadLink.addEventListener('click', function(e) {
+    this.downloadSelected();
   }.bind(this))
 }
 
@@ -1623,13 +1642,52 @@ Selection.prototype.clear = function() {
 
 Selection.prototype.downloadSelected = function() {
   var images = this.getSelectedImages();
-  var input = document.querySelector('#download-filename');
-  var link = document.querySelector('#download-link');
+  // conditionally fetch the metadata for each selected image
+  var rows = [];
+  if (data.json.metadata) {
+    for (var i=0; i<images.length; i++) {
+      var metadata = {};
+      get(config.data.dir + '/metadata/file/' + images[i] + '.json', function(data) {
+        metadata[data.filename] = data;
+        // if all metadata has loaded prepare data download
+        if (Object.keys(metadata).length == images.length) {
+          var keys = Object.keys(metadata);
+          for (var i=0; i<keys.length; i++) {
+            var m = metadata[keys[i]];
+            rows.push([
+              m.filename || '',
+              (m.tags || []).join('|'),
+              m.description,
+              m.permalink,
+            ])
+          }
+          this.downloadRows(rows);
+        }
+      }.bind(this));
+    }
+  } else {
+    for (var i=0; i<images.length; i++) rows.push([images[i]]);
+    this.downloadRows(rows);
+  }
+}
+
+Selection.prototype.downloadRows = function(rows) {
+  var input = this.elems.downloadInput;
+  var link = this.elems.downloadLink;
+  var filetype = this.downloadFiletype;
   var filename = input.value || Date.now().toString();
-  filename = filename.endsWith('.json') ? filename : filename + '.json';
-  var blob = new Blob([JSON.stringify(images)], {type: 'octet/stream'});
-  link.href = window.URL.createObjectURL(blob);
-  link.download = filename;
+  filename = filename.endsWith('.' + filetype) ? filename : filename + '.' + filetype;
+  if (filetype == 'json') {
+    var blob = new Blob([JSON.stringify(rows)], {type: 'octet/stream'});
+  } else if (filetype == 'csv') {
+    var blob = new Blob([Papa.unparse(rows)], {type: 'text/plain'});
+  }
+  var a = document.createElement('a');
+  document.body.appendChild(a);
+  a.download = filename;
+  a.href = window.URL.createObjectURL(blob);
+  a.click();
+  a.parentNode.removeChild(a);
 }
 
 /**
