@@ -881,6 +881,7 @@ World.prototype.plot = function() {
     geometry.setAttribute('height', attrs.height);
     geometry.setAttribute('offset', attrs.offset);
     geometry.setAttribute('opacity', attrs.opacity);
+    geometry.setAttribute('selected', attrs.selected);
     geometry.setAttribute('position', attrs.position);
     geometry.setAttribute('textureIndex', attrs.textureIndex);
     var material = this.getShaderMaterial({
@@ -930,7 +931,8 @@ World.prototype.getGroupAttributes = function(cells) {
     it.color[it.colorIterator++] = rgb.r; // could be single float
     it.color[it.colorIterator++] = rgb.g; // unique color for GPU picking
     it.color[it.colorIterator++] = rgb.b; // unique color for GPU picking
-    it.opacity[it.opacityIterator++] = 1.0;
+    it.opacity[it.opacityIterator++] = 1.0; // cell opacity value
+    it.selected[it.selectedIterator++] = 0.0; // 1.0 if cell is selected, else 0.0
     it.width[it.widthIterator++] = cell.w; // px width of cell in lod atlas
     it.height[it.heightIterator++] = cell.h; // px height of cell in lod atlas
     it.offset[it.offsetIterator++] = cell.dx; // px offset of cell from left of tex
@@ -946,6 +948,7 @@ World.prototype.getGroupAttributes = function(cells) {
       pos1 = new IBA(it.pos1, 3, true, 1),
       color = new IBA(it.color, 3, true, 1),
       opacity = new IBA(it.opacity, 1, true, 1),
+      selected = new IBA(it.selected, 1, true, 1),
       texIndex = new IBA(it.texIndex, 1, true, 1),
       width = new IBA(it.width, 1, true, 1),
       height = new IBA(it.height, 1, true, 1),
@@ -954,6 +957,7 @@ World.prototype.getGroupAttributes = function(cells) {
   pos0.usage = THREE.DynamicDrawUsage;
   pos1.usage = THREE.DynamicDrawUsage;
   opacity.usage = THREE.DynamicDrawUsage;
+  selected.usage = THREE.DynamicDrawUsage;
   offset.usage = THREE.DynamicDrawUsage;
   var texIndices = this.getTexIndices(cells);
   return {
@@ -965,6 +969,7 @@ World.prototype.getGroupAttributes = function(cells) {
     height: height,
     offset: offset,
     opacity: opacity,
+    selected: selected,
     position: position,
     textureIndex: texIndex,
     textures: this.getTextures({
@@ -989,6 +994,7 @@ World.prototype.getCellIterators = function(n) {
     height: new Float32Array(n),
     offset: new Float32Array(n * 2),
     opacity: new Float32Array(n),
+    selected: new Float32Array(n),
     texIndex: new Float32Array(n),
     pos0Iterator: 0,
     pos1Iterator: 0,
@@ -997,6 +1003,7 @@ World.prototype.getCellIterators = function(n) {
     heightIterator: 0,
     offsetIterator: 0,
     opacityIterator: 0,
+    selectedIterator: 0,
     texIndexIterator: 0,
   }
 }
@@ -1104,6 +1111,14 @@ World.prototype.getShaderMaterial = function(obj) {
       lodPxHeight: {
         type: 'f',
         value: config.size.lodCell,
+      },
+      borderWidth: {
+        type: 'f',
+        value: 0.15,
+      },
+      borderColor: {
+        type: 'vec3',
+        value: new Float32Array([234/255, 183/255, 85/255]),
       }
     },
     vertexShader: vertex,
@@ -1568,7 +1583,7 @@ Selection.prototype.update = function() {
   // make the button that displays the modal clickable
   this.elems.modalButton.style.display = 'block';
   // make non-selected cells less opaque
-  this.setOpacities(0.35, true);
+  this.setSelected();
   // indicate how many images the user has selected
   this.elems.countTarget.textContent = nSelected;
   this.elems.selectedImagesCount.style.display = 'block';
@@ -1604,16 +1619,18 @@ Selection.prototype.update = function() {
   this.mesh.material.uniforms.render.value = true;
 }
 
-// update the cell opacities. If `useSelected` is true, differentiate between
-// cells inside and outside the box. `val` is default opacity value 0:1
-Selection.prototype.setOpacities = function(val, useSelected) {
-  var opacities = [];
+// update the cell opacities. If `bool` is true clear al selected cells
+Selection.prototype.setSelected = function(bool) {
+  var vals = [];
   for (var i=0; i<data.cells.length; i++) {
-    if (useSelected) opacities[i] = i in this.selected && this.selected[i] ? 1.0 : val;
-    else opacities[i] = val;
+    vals[i] = bool
+      ? 0.0
+      : i in this.selected && this.selected[i]
+        ? 1.0
+        : 0.0;
   }
-  world.group.children[0].geometry.attributes.opacity.array = new Float32Array(opacities);
-  world.group.children[0].geometry.attributes.opacity.needsUpdate = true;
+  world.group.children[0].geometry.attributes.selected.array = new Float32Array(vals);
+  world.group.children[0].geometry.attributes.selected.needsUpdate = true;
 }
 
 Selection.prototype.start = function() {
@@ -1631,7 +1648,7 @@ Selection.prototype.clear = function() {
   // unfreeze the mousemove listener
   this.frozen = false;
   // restore opacities in cells
-  this.setOpacities(1.0);
+  this.setSelected(true);
   // update the list of selected cells
   this.updateSelected();
   // remove the button that triggers the modal display
