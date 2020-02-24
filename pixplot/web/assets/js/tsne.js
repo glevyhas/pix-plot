@@ -60,6 +60,7 @@ function Config() {
       ease: Power2.easeInOut,
     }
   }
+  this.pickerMaxZ = 0.4; // max z value of camera to trigger picker modal
   this.atlasesPerTex = (this.size.texture/this.size.atlas)**2;
 }
 
@@ -1248,7 +1249,10 @@ World.prototype.flyToCellIdx = function(idx) {
   world.flyTo({
     x: cell.x,
     y: cell.y,
-    z: cell.z + (this.getPointScale() / 100),
+    z: Math.min(
+      config.pickerMaxZ-0.0001,
+      cell.z + (this.getPointScale() / 100)
+    ),
   })
 }
 
@@ -1767,7 +1771,7 @@ Picker.prototype.onMouseUp = function(e) {
   }
   // else we're in pan mode; zoom in if the camera is far away, else show the modal
   else if (world.mode == 'pan') {
-    return world.camera.position.z > 0.4
+    return world.camera.position.z > config.pickerMaxZ
       ? world.flyToCellIdx(cellIdx)
       : this.showModal(cellIdx);
   }

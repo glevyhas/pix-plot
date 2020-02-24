@@ -379,8 +379,8 @@
         <div class='modal-bottom' id='selected-image-meta'>
           <div class='modal-bottom-content'>
             <div class='modal-text-left'>
-              <div id='image-title'><%- decodeURIComponent(meta.filename) %></div>
-              <div id='image-text'><%- decodeURIComponent(meta.description) %></div>
+              <div id='image-title'><%- meta.filename ? decodeURIComponent(meta.filename) : decodeURIComponent(meta.src) %></div>
+              <div id='image-text'><%- meta.description ? decodeURIComponent(meta.description) : '' %></div>
             </div>
             <div class='modal-text-right'>
               <div id='meta-tags'>
