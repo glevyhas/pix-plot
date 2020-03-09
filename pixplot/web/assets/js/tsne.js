@@ -52,6 +52,12 @@ function Config() {
     atlas: 2048, // height of each atlas
     texture: webgl.limits.textureSize,
     lodTexture: 4096,
+    points: {
+      min: 0, // min point size
+      max: 0, // max point size
+      grid: 0, // initial point size for grid layouts
+      scatter: 0, // initial point size for scatter layouts
+    },
   }
   this.transitions = {
     duration: 2.5,
@@ -59,6 +65,9 @@ function Config() {
       value: 1,
       ease: Power2.easeInOut,
     }
+  }
+  this.elems = {
+    pointSize: document.querySelector('#pointsize-range-input'),
   }
   this.pickerMaxZ = 0.4; // max z value of camera to trigger picker modal
   this.atlasesPerTex = (this.size.texture/this.size.atlas)**2;
@@ -92,9 +101,7 @@ function Data() {
     x: { min: Number.POSITIVE_INFINITY, max: Number.NEGATIVE_INFINITY, },
     y: { min: Number.POSITIVE_INFINITY, max: Number.NEGATIVE_INFINITY, },
   };
-  world.loadHeightmap(function() {
-    this.load();
-  }.bind(this))
+  world.loadHeightmap(this.load.bind(this));
 }
 
 // Load json data with chart element positions
@@ -111,7 +118,7 @@ Data.prototype.load = function() {
         config.data.file = config.data.file + '.gz';
         this.load()
       } else {
-        console.log('ERROR: could not load manifest.json')
+        console.warn('ERROR: could not load manifest.json')
       }
     }.bind(this)
   )
@@ -123,11 +130,14 @@ Data.prototype.parseManifest = function(json) {
   config.size.cell = json.config.sizes.cell;
   config.size.atlas = json.config.sizes.atlas;
   config.size.lodCell = json.config.sizes.lod;
+  // set point size vals
+  config.size.points.grid = json.point_size;
+  config.size.points.max = json.point_size + (json.point_size*0.2);
+  config.size.points.scatter = 0.15 * config.size.points.max;
   // set the point scalar as a function of the number of cells
-  var elem = document.querySelector('#pointsize-range-input');
-  elem.min = 0;
-  elem.max = (json.point_size + (json.point_size*0.2));
-  elem.value = json.point_size;
+  config.elems.pointSize.min = 0;
+  config.elems.pointSize.max = config.size.points.max;
+  config.elems.pointSize.value = json.point_size;
   // set number of atlases and textures
   this.atlasCount = json.atlas.count;
   this.textureCount = Math.ceil(json.atlas.count / config.atlasesPerTex);
@@ -507,12 +517,12 @@ Layout.prototype.setOptions = function(options) {
 }
 
 Layout.prototype.selectActiveTab = function() {
-  // remove the active state from all icons
+  // remove the active class from all icons
   var icons = this.elem.querySelectorAll('img');
   for (var i=0; i<icons.length; i++) {
     icons[i].classList.remove('active');
   }
-  // add the active state to selected icon
+  // add the active class to selected icon
   document.querySelector('#layout-' + this.selected).classList.add('active');
 }
 
@@ -559,7 +569,7 @@ Layout.prototype.set = function(layoutKey, enableDelay) {
     delay = config.transitions.duration * 1000;
     world.flyTo(initialCameraPosition);
   }
-  // enable the jitter button if this is a umap or tsne layout
+  // enable the jitter button if this layout has a jittered option
   'jittered' in data.layouts[layoutKey]
     ? this.jitterElem.classList.add('visible', 'disabled')
     : this.jitterElem.classList.remove('visible');
@@ -567,6 +577,14 @@ Layout.prototype.set = function(layoutKey, enableDelay) {
   var jsonPath = this.jitterInput.checked && 'jittered' in data.layouts[layoutKey]
     ? getPath(data.layouts[layoutKey].jittered)
     : getPath(data.layouts[layoutKey].layout);
+  // set the point size given the selected layout
+  if (layout.selected == 'tsne' || layout.selected == 'umap') {
+    config.elems.pointSize.value = config.size.points.scatter;
+  }
+  if (layout.selected == 'grid' || layout.selected == 'rasterfairy') {
+    config.elems.pointSize.value = config.size.points.grid;
+  }
+  world.setUniform('scaleTarget', world.getPointScale());
   // begin the new layout transition
   setTimeout(function(jsonPath) {
     get(jsonPath, function(pos) {
@@ -583,7 +601,7 @@ Layout.prototype.set = function(layoutKey, enableDelay) {
       for (var drawCall in drawCallToCells) {
         var cells = drawCallToCells[drawCall];
         var mesh = world.group.children[drawCall];
-        // transition the transitionPercent attribute on the mesh
+        // interpolate the transitionPercent attribute on the mesh
         TweenLite.to(mesh.material.uniforms.transitionPercent,
           config.transitions.duration, config.transitions.ease);
         // update the target positional attributes on each cell
@@ -621,6 +639,8 @@ Layout.prototype.onTransitionComplete = function(obj) {
     obj.mesh.geometry.attributes.pos0.array[iter++] = cell.z;
   }.bind(this))
   obj.mesh.geometry.attributes.pos0.needsUpdate = true;
+  // set the current point scale value
+  world.setUniform('scale', world.getPointScale());
   // update the positional attribute and time uniform on the mesh
   obj.mesh.material.uniforms.transitionPercent = { type: 'f', value: 0, };
   world.state.transitioning = false;
@@ -762,10 +782,7 @@ World.prototype.addEventListeners = function() {
 **/
 
 World.prototype.addResizeListener = function() {
-  window.addEventListener('resize', function() {
-    if (this.resizeTimeout) window.clearTimeout(this.resizeTimeout);
-    this.resizeTimeout = window.setTimeout(this.handleResize.bind(this), 0);
-  }.bind(this), false);
+  window.addEventListener('resize', this.handleResize.bind(this), false);
 }
 
 World.prototype.handleResize = function() {
@@ -777,7 +794,6 @@ World.prototype.handleResize = function() {
   this.renderer.setSize(w, h, false);
   picker.tex.setSize(w, h);
   this.setPointScalar();
-  delete this.resizeTimeout;
   // re-enable the render (disabled by window blur event)
   this.state.displayed = true;
 }
@@ -792,12 +808,13 @@ World.prototype.setPointScalar = function() {
       !this.scene.children.length ||
       !picker.scene ||
       !picker.scene.children.length) return;
-  var scalar = this.getPointScale();
   // update the displayed and selector meshes
-  var meshes = this.group.children.concat(picker.scene.children[0].children)
-  for (var i=0; i<meshes.length; i++) {
-    meshes[i].material.uniforms.pointScale.value = scalar;
-  }
+  this.setUniform('scale', this.getPointScale())
+}
+
+
+World.prototype.setPointScalarTarget = function() {
+
 }
 
 /**
@@ -805,7 +822,7 @@ World.prototype.setPointScalar = function() {
 **/
 
 World.prototype.addScalarChangeListener = function() {
-  var elem = document.querySelector('#pointsize-range-input');
+  var elem = config.elems.pointSize;
   elem.addEventListener('change', this.setPointScalar.bind(this));
   elem.addEventListener('input', this.setPointScalar.bind(this));
 }
@@ -1054,9 +1071,13 @@ World.prototype.getTexture = function(canvas) {
 **/
 
 World.prototype.getPointScale = function() {
-  var canvasSize = getCanvasSize(),
-      scalar = parseFloat(document.querySelector('#pointsize-range-input').value);
-  return window.devicePixelRatio * canvasSize.h * scalar;
+  var scalar = parseFloat(config.elems.pointSize.value);
+  return this.scalePointSize(scalar);
+}
+
+World.prototype.scalePointSize = function(val) {
+  var canvasSize = getCanvasSize();
+  return val * window.devicePixelRatio * canvasSize.h;
 }
 
 /**
@@ -1089,7 +1110,11 @@ World.prototype.getShaderMaterial = function(obj) {
         type: 'f',
         value: 0,
       },
-      pointScale: {
+      scale: {
+        type: 'f',
+        value: this.getPointScale(),
+      },
+      scaleTarget: {
         type: 'f',
         value: this.getPointScale(),
       },
@@ -1120,11 +1145,19 @@ World.prototype.getShaderMaterial = function(obj) {
       borderColor: {
         type: 'vec3',
         value: new Float32Array([234/255, 183/255, 85/255]),
-      }
+      },
     },
     vertexShader: vertex,
     fragmentShader: fragment,
   });
+}
+
+// helper function to set uniforms on all meshes
+World.prototype.setUniform = function(key, val) {
+  var meshes = this.group.children.concat(picker.scene.children[0].children);
+  for (var i=0; i<meshes.length; i++) {
+    meshes[i].material.uniforms[key].value = val;
+  }
 }
 
 /**
@@ -1459,6 +1492,9 @@ Selection.prototype.addModalEventListeners = function() {
     if (e.target.className == 'modal-top') {
       this.elems.modalContainer.style.display = 'none';
     }
+    if (e.target.className == 'background-image') {
+      modal.showCells(this.getSelectedImageIndices());
+    }
   }.bind(this))
   // show the list of images the user selected
   this.elems.modalButton.addEventListener('click', function(e) {
@@ -1539,6 +1575,15 @@ Selection.prototype.getSelectedImages = function() {
   return data.json.images.filter(function(i, idx) {
     return this.selected[idx];
   }.bind(this))
+}
+
+// get a list of the image indices the user has selected
+Selection.prototype.getSelectedImageIndices = function() {
+  var l = [];
+  for (var i=0; i<Object.keys(this.selected).length; i++) {
+    if (this.selected[i]) l.push(i);
+  }
+  return l;
 }
 
 // return a boolean indicating whether the user has selected any cells
@@ -1750,7 +1795,7 @@ Picker.prototype.getClickOffsets = function(e) {
 Picker.prototype.onMouseUp = function(e) {
   // if click hit background, close the modal
   if (e.target.className == 'modal-top') {
-    return this.closeModal();
+    return modal.close();
   }
   // find the offset of the click event within the canvas
   var click = this.getClickOffsets(e);
@@ -1773,39 +1818,8 @@ Picker.prototype.onMouseUp = function(e) {
   else if (world.mode == 'pan') {
     return world.camera.position.z > config.pickerMaxZ
       ? world.flyToCellIdx(cellIdx)
-      : this.showModal(cellIdx);
+      : modal.show([cellIdx]);
   }
-}
-
-// called via this.onClick; shows the full-size selected image
-Picker.prototype.showModal = function(cellIdx) {
-  var template = document.querySelector('#selected-image-template').textContent;
-  var target = document.querySelector('#selected-image-target');
-  var filename = data.json.images[cellIdx];
-  var src = config.data.dir + '/originals/' + filename;
-  var image = new Image();
-  function showModal(data) {
-    target.innerHTML = _.template(template)({
-      meta: Object.assign({}, data || {}, {
-        src: config.data.dir + '/originals/' + filename,
-      })
-    })
-    target.style.display = 'block';
-  }
-  image.onload = function() {
-    showModal({});
-    try {
-      get(config.data.dir + '/metadata/file/' + filename + '.json', showModal);
-    } catch (err) {
-      showModal({})
-    }
-  }
-  image.src = src;
-}
-
-Picker.prototype.closeModal = function() {
-  window.location.href = '#';
-  document.querySelector('#selected-image-target').style.display = 'none';
 }
 
 // get the mesh in which to render picking elements
@@ -1839,6 +1853,92 @@ Picker.prototype.select = function(obj) {
   var id = (pixelBuffer[0] << 16) | (pixelBuffer[1] << 8) | (pixelBuffer[2]),
       cellIdx = id-1; // ids use id+1 as the id of null selections is 0
   return cellIdx;
+}
+
+/**
+* Create a modal for larger image viewing
+**/
+
+function Modal() {
+  this.cellIdx = null;
+  this.cellIndices = [];
+  this.addEventListeners();
+}
+
+Modal.prototype.show = function(cellIndices, initialCellIdx) {
+  this.displayed = true;
+  this.showCells(cellIndices, initialCellIdx);
+}
+
+Modal.prototype.showCells = function(cellIndices, initialCellIdx) {
+  var self = this;
+  this.displayed = true;
+  self.cellIndices = Object.assign([], cellIndices);
+  self.cellIdx = Number.isInteger(initialCellIdx) ? initialCellIdx : 0;
+  // parse data attributes
+  var multiImage = self.cellIndices.length > 1;
+  var filename = data.json.images[self.cellIndices[self.cellIdx]];
+  var src = config.data.dir + '/originals/' + filename;
+  // define function to show the modal
+  function showModal(json) {
+    var json = json || {};
+    var template = document.querySelector('#selected-image-template').textContent;
+    var target = document.querySelector('#selected-image-target');
+    var templateData = {
+      multiImage: multiImage,
+      meta: Object.assign({}, json || {}, {
+        src: src,
+        filename: json.filename || filename,
+      })
+    }
+    target.innerHTML = _.template(template)(templateData)
+    target.style.display = 'block';
+    // inject the loaded image into the DOM
+    document.querySelector('#selected-image-parent').appendChild(json.image);
+  }
+  // prepare the modal
+  var image = new Image();
+  image.id = 'selected-image';
+  image.onload = function() {
+    showModal({image: image})
+    get(config.data.dir + '/metadata/file/' + filename + '.json', function(json) {
+      showModal(Object.assign({}, json, {image: image}));
+    });
+  }
+  image.src = src;
+}
+
+Modal.prototype.close = function() {
+  window.location.href = '#';
+  document.querySelector('#selected-image-target').style.display = 'none';
+  this.cellIndices = [];
+  this.cellIdx = null;
+  this.displayed = false;
+}
+
+Modal.prototype.addEventListeners = function() {
+  window.addEventListener('keydown', this.handleKeydown.bind(this))
+}
+
+Modal.prototype.handleKeydown = function(e) {
+  if (e.keyCode == 37) this.showPreviousCell();
+  if (e.keyCode == 39) this.showNextCell();
+}
+
+Modal.prototype.showPreviousCell = function() {
+  if (!this.displayed) return;
+  var cellIdx = this.cellIdx > 0
+    ? this.cellIdx - 1
+    : this.cellIndices.length-1;
+  this.showCells(this.cellIndices, cellIdx);
+}
+
+Modal.prototype.showNextCell = function() {
+  if (!this.displayed) return;
+  var cellIdx = this.cellIdx < this.cellIndices.length-1
+    ? this.cellIdx + 1
+    : 0;
+  this.showCells(this.cellIndices, cellIdx);
 }
 
 /**
@@ -2493,6 +2593,7 @@ var webgl = new Webgl();
 var config = new Config();
 var filters = new Filters();
 var picker = new Picker();
+var modal = new Modal();
 var keyboard = new Keyboard();
 var selection = new Selection();
 var layout = new Layout();

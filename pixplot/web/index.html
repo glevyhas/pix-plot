@@ -45,8 +45,10 @@
     uniform mat4 modelViewMatrix;
     uniform mat4 projectionMatrix;
     uniform vec3 cameraPosition;
+    uniform float scale;
+    uniform float scaleTarget;
     uniform float transitionPercent;
-    uniform float pointScale;
+    uniform float scaleTransitionPercent;
     uniform float borderWidth;
 
     attribute vec3 position;      // base x y z position for all points
@@ -81,12 +83,14 @@
       // set point position as a mixture between the position + target
       vec3 pos0 = position + pos0;
       vec3 pos1 = position + pos1;
-      vec3 pos = mix(pos0, pos1, clamp(transitionPercent, 0.0, 1.0));
+      float percent = clamp(transitionPercent, 0.0, 1.0);
+      vec3 pos = mix(pos0, pos1, percent);
       vec4 world = modelViewMatrix * vec4(pos, 1.0);
       gl_Position = projectionMatrix * world;
 
       // use the unscaled point position and camera position to set point size
-      float pointSize = pointScale / -world.z;
+      float s = mix(scale, scaleTarget, percent);
+      float pointSize = s / -world.z;
 
       if (selected > 0.5) {
         gl_PointSize = pointSize + (pointSize * borderWidth);
@@ -180,7 +184,9 @@
             gl_PointCoord.y < y0 + borderW ||
             gl_PointCoord.y > y1 - borderW)) {
           gl_FragColor = vec4(borderColor, 1.0);
+
         } else {
+
           // get the x and y positions to sample for this cell's texture
           float x = center ? gl_PointCoord.x - x0 : gl_PointCoord.x;
           float y = center ? gl_PointCoord.y - y0 : gl_PointCoord.y;
@@ -364,8 +370,7 @@
     <script type='text/html' id='selected-image-template'>
       <div class='modal-content'>
         <div class='modal-top'>
-          <div class='modal-top-content'>
-            <img id='selected-image' src='<%- meta.src %>' alt='Image selected by user' />
+          <div class='modal-top-content' id='selected-image-parent'>
             <div class='icons'>
               <a target='_blank' id='eye-icon' href='<%- meta.permalink || "#" %>'>
                 <img src='assets/images/icons/eye-icon.png' alt='eye icon' />
@@ -374,6 +379,10 @@
                 <img src='assets/images/icons/download-icon.png' alt='download icon' />
               </a>
             </div>
+            <% if (multiImage) { %>
+              <img id='caret-left' class='image-caret' src='assets/images/icons/chevron.png' onclick='modal.showPreviousCell()'>
+              <img id='caret-right' class='image-caret' src='assets/images/icons/chevron.png' onclick='modal.showNextCell()'>
+            <% } %>
           </div>
         </div>
         <div class='modal-bottom' id='selected-image-meta'>
@@ -413,10 +422,10 @@
               <p>You have selected <b id='n-images-selected'><%- images.length %></b> images</p>
               <div id='selected-images-grid'>
                 <% _.forEach(images, function(image, idx) { %>
-                  <a class='selected-image' href='data/originals/<%- image %>' target='_blank'>
+                  <div class='selected-image'>
                     <div class='toggle-selection'>✕</div>
                     <div data-image='<%- image %>' class='background-image' style='background-image: url("data/thumbs/<%- image %>");'></div>
-                  </a>
+                  </div>
                 <% }); %>
               </div>
             </div>
