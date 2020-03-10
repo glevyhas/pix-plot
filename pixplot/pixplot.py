@@ -407,10 +407,13 @@ def get_rasterfairy_projection(**kwargs):
   if os.path.exists(out_path) and kwargs['use_cache']: return out_path
   umap = np.array(read_json(kwargs['umap'], **kwargs))
   umap = (umap + 1)/2 # scale 0:1
-  umap = coonswarp.rectifyCloud(umap, # stretch the distribution
-    perimeterSubdivisionSteps=4,
-    autoPerimeterOffset=False,
-    paddingScale=1.05)
+  try:
+    umap = coonswarp.rectifyCloud(umap, # stretch the distribution
+      perimeterSubdivisionSteps=4,
+      autoPerimeterOffset=False,
+      paddingScale=1.05)
+  except:
+    print(' * coonswarp rectification could not be performed')
   pos = rasterfairy.transformPointCloud2D(umap)[0]
   return write_layout(out_path, pos, **kwargs)
 
