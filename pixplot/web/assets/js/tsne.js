@@ -1493,7 +1493,8 @@ Selection.prototype.addModalEventListeners = function() {
       this.elems.modalContainer.style.display = 'none';
     }
     if (e.target.className == 'background-image') {
-      modal.showCells(this.getSelectedImageIndices());
+      var index = e.target.getAttribute('data-index');
+      modal.showCells(this.getSelectedImageIndices(), index);
     }
   }.bind(this))
   // show the list of images the user selected
@@ -1865,16 +1866,16 @@ function Modal() {
   this.addEventListeners();
 }
 
-Modal.prototype.show = function(cellIndices, initialCellIdx) {
+Modal.prototype.show = function(cellIndices, cellIdx) {
   this.displayed = true;
-  this.showCells(cellIndices, initialCellIdx);
+  this.showCells(cellIndices, cellIdx);
 }
 
-Modal.prototype.showCells = function(cellIndices, initialCellIdx) {
+Modal.prototype.showCells = function(cellIndices, cellIdx) {
   var self = this;
-  this.displayed = true;
+  self.displayed = true;
   self.cellIndices = Object.assign([], cellIndices);
-  self.cellIdx = Number.isInteger(initialCellIdx) ? initialCellIdx : 0;
+  self.cellIdx = !isNaN(parseInt(cellIdx)) ? parseInt(cellIdx) : 0;
   // parse data attributes
   var multiImage = self.cellIndices.length > 1;
   var filename = data.json.images[self.cellIndices[self.cellIdx]];

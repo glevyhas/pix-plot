@@ -424,7 +424,7 @@
                 <% _.forEach(images, function(image, idx) { %>
                   <div class='selected-image'>
                     <div class='toggle-selection'>✕</div>
-                    <div data-image='<%- image %>' class='background-image' style='background-image: url("data/thumbs/<%- image %>");'></div>
+                    <div data-index='<%- idx %>' data-image='<%- image %>' class='background-image' style='background-image: url("data/thumbs/<%- image %>");'></div>
                   </div>
                 <% }); %>
               </div>
