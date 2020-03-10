@@ -515,7 +515,6 @@ def get_centroids(**kwargs):
   data = [{
     'img': clean_filename(paths[idx]),
     'label': 'Cluster {}'.format(idx+1),
-    'idx': int(i),
   } for idx,i in enumerate(closest)]
   # save the centroids to disk and return the path to the saved json
   return write_json(get_path('centroids', 'centroid', **kwargs), data, **kwargs)
