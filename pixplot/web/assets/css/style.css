@@ -644,10 +644,15 @@ noscript {
   display: none;
 }
 
-#selected-image {
+#selected-image,
+#previous-image {
   max-height: 100%;
   max-width: 100%;
   box-sizing: border-box;
+}
+
+#previous-image {
+  display: none;
 }
 
 #selected-image-target .modal-content {
@@ -661,6 +666,25 @@ noscript {
   position: relative;
   padding: 25px;
   max-height: 100%;
+}
+
+.image-caret {
+  position: absolute;
+  height: 80px;
+  background-color: transparent;
+  top: 50%;
+  margin-top: -40px;
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+#caret-left {
+  left: -150px;
+}
+
+#caret-right {
+  right: -150px;
+  transform: rotate(180deg);
 }
 
 /**
