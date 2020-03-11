@@ -962,7 +962,7 @@ World.prototype.getGroupAttributes = function(cells) {
       pos1 = new THREE.BufferAttribute(it.pos1, 3, true, 1),
       color = new THREE.BufferAttribute(it.color, 3, true, 1),
       opacity = new THREE.BufferAttribute(it.opacity, 1, true, 1),
-      selected = new THREE.Uint8BufferAttribute(it.selected, 1, false, 1),
+      selected = new THREE.Uint8BufferAttribute(it.selected, 1, true, 1),
       texIndex = new THREE.Int8BufferAttribute(it.texIndex, 1, false, 1),
       width = new THREE.Uint8BufferAttribute(it.width, 1, false, 1),
       height = new THREE.Uint8BufferAttribute(it.height, 1, false, 1),
@@ -1684,7 +1684,7 @@ Selection.prototype.setSelected = function(bool) {
         ? 1.0
         : 0.0;
   }
-  world.group.children[0].geometry.attributes.selected.array = new Float32Array(vals);
+  world.group.children[0].geometry.attributes.selected.array = new Uint8Array(vals);
   world.group.children[0].geometry.attributes.selected.needsUpdate = true;
 }
 
