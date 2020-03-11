@@ -51,7 +51,7 @@ function Config() {
     lodCell: 128, // height of each cell in LOD
     atlas: 2048, // height of each atlas
     texture: webgl.limits.textureSize,
-    lodTexture: 4096,
+    lodTexture: 2**13,
     points: {
       min: 0, // min point size
       max: 0, // max point size
@@ -962,7 +962,7 @@ World.prototype.getGroupAttributes = function(cells) {
       pos1 = new THREE.BufferAttribute(it.pos1, 3, true, 1),
       color = new THREE.BufferAttribute(it.color, 3, true, 1),
       opacity = new THREE.BufferAttribute(it.opacity, 1, true, 1),
-      selected = new THREE.Uint8BufferAttribute(it.selected, 1, true, 1),
+      selected = new THREE.Uint8BufferAttribute(it.selected, 1, false, 1),
       texIndex = new THREE.Int8BufferAttribute(it.texIndex, 1, false, 1),
       width = new THREE.Uint8BufferAttribute(it.width, 1, false, 1),
       height = new THREE.Uint8BufferAttribute(it.height, 1, false, 1),
@@ -1057,6 +1057,9 @@ World.prototype.getTexture = function(canvas) {
   var tex = new THREE.Texture(canvas);
   tex.needsUpdate = true;
   tex.flipY = false;
+  tex.generateMipmaps = false;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearFilter;
   return tex;
 }
 
@@ -1954,10 +1957,11 @@ Modal.prototype.showNextCell = function() {
 function LOD() {
   var r = 1; // radius of grid to search for cells to activate
   this.tex = this.getCanvas(config.size.lodTexture); // lod high res texture
+  this.cell = this.getCanvas(config.size.lodCell);
   this.cellIdxToImage = {}; // image cache mapping cell idx to loaded image data
   this.grid = {}; // set by this.indexCells()
   this.minZ = 0.5; // minimum zoom level to update textures
-  this.framerate = 20; // number of frames required to update the lod one iteration
+  this.framerate = 1; // number of frames required to update the lod one iteration
   this.initialRadius = r; // starting radius for LOD
   this.state = {
     openCoords: this.getAllTexCoords(), // array of unused x,y lod tex offsets
@@ -2133,14 +2137,16 @@ LOD.prototype.addCellsToLodTexture = function() {
       this.state.gridPosToCoords[gridKey].push(Object.assign({}, coords, {cellIdx: cell.idx}));
       this.state.cellIdxToCoords[cell.idx] = coords;
       // draw the cell's image in a new canvas
-      this.tex.ctx.clearRect(coords.x, coords.y, config.size.lodCell, config.size.lodCell);
-      this.tex.ctx.drawImage(this.cellIdxToImage[cell.idx], coords.x, coords.y);
+      this.cell.ctx.clearRect(0, 0, config.size.lodCell, config.size.lodCell);
+      this.cell.ctx.drawImage(this.cellIdxToImage[cell.idx], 0, 0);
+      var tex = world.getTexture(this.cell.canvas);
+      world.renderer.copyTextureToTexture(coords, tex, this.tex.texture);
+      // activate the cell to update tex index and offsets
       cell.activate();
     }
   }
   // only update the texture and attributes if the lod tex changed
   if (textureNeedsUpdate) {
-    this.tex.texture.needsUpdate = true;
     world.attrsNeedUpdate(['textureIndex', 'offset']);
   }
 }
