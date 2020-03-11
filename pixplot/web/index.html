@@ -51,7 +51,6 @@
     uniform float scaleTransitionPercent;
     uniform float borderWidth;
 
-    attribute vec3 position;      // base x y z position for all points
     attribute vec3 pos0;          // x y z position offsets for an instance
     attribute vec3 pos1;          // x y z position to which we're transitioning
     attribute vec3 color;         // unique color for cell; used for raycasting
@@ -81,8 +80,6 @@
       vSelected = selected;
 
       // set point position as a mixture between the position + target
-      vec3 pos0 = position + pos0;
-      vec3 pos1 = position + pos1;
       float percent = clamp(transitionPercent, 0.0, 1.0);
       vec3 pos = mix(pos0, pos1, percent);
       vec4 world = modelViewMatrix * vec4(pos, 1.0);

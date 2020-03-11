@@ -890,8 +890,7 @@ World.prototype.plot = function() {
   for (var drawCallIdx in drawCallToCells) {
     var meshCells = drawCallToCells[drawCallIdx],
         attrs = this.getGroupAttributes(meshCells),
-        geometry = new THREE.InstancedBufferGeometry();
-    geometry.setAttribute('uv', attrs.uv);
+        geometry = new THREE.BufferGeometry();
     geometry.setAttribute('pos0', attrs.pos0);
     geometry.setAttribute('pos1', attrs.pos1);
     geometry.setAttribute('color', attrs.color);
@@ -900,8 +899,8 @@ World.prototype.plot = function() {
     geometry.setAttribute('offset', attrs.offset);
     geometry.setAttribute('opacity', attrs.opacity);
     geometry.setAttribute('selected', attrs.selected);
-    geometry.setAttribute('position', attrs.position);
     geometry.setAttribute('textureIndex', attrs.textureIndex);
+    geometry.setDrawRange(0, meshCells.length); // points not rendered unless draw range is specified
     var material = this.getShaderMaterial({
       firstTex: attrs.texStartIdx,
       textures: attrs.textures,
@@ -958,19 +957,15 @@ World.prototype.getGroupAttributes = function(cells) {
   }
 
   // format the arrays into THREE attributes
-  var BA = THREE.BufferAttribute,
-      IBA = THREE.InstancedBufferAttribute,
-      position = new BA(new Float32Array([0, 0, 0]), 3),
-      uv = new BA(new Float32Array([0, 0]), 2),
-      pos0 = new IBA(it.pos0, 3, true, 1),
-      pos1 = new IBA(it.pos1, 3, true, 1),
-      color = new IBA(it.color, 3, true, 1),
-      opacity = new IBA(it.opacity, 1, true, 1),
-      selected = new IBA(it.selected, 1, true, 1),
-      texIndex = new IBA(it.texIndex, 1, true, 1),
-      width = new IBA(it.width, 1, true, 1),
-      height = new IBA(it.height, 1, true, 1),
-      offset = new IBA(it.offset, 2, true, 1);
+  var pos0 = new THREE.BufferAttribute(it.pos0, 3, true, 1),
+      pos1 = new THREE.BufferAttribute(it.pos1, 3, true, 1),
+      color = new THREE.BufferAttribute(it.color, 3, true, 1),
+      opacity = new THREE.BufferAttribute(it.opacity, 1, true, 1),
+      selected = new THREE.BufferAttribute(it.selected, 1, true, 1),
+      texIndex = new THREE.BufferAttribute(it.texIndex, 1, true, 1),
+      width = new THREE.BufferAttribute(it.width, 1, true, 1),
+      height = new THREE.BufferAttribute(it.height, 1, true, 1),
+      offset = new THREE.BufferAttribute(it.offset, 2, true, 1);
   texIndex.usage = THREE.DynamicDrawUsage;
   pos0.usage = THREE.DynamicDrawUsage;
   pos1.usage = THREE.DynamicDrawUsage;
@@ -979,7 +974,6 @@ World.prototype.getGroupAttributes = function(cells) {
   offset.usage = THREE.DynamicDrawUsage;
   var texIndices = this.getTexIndices(cells);
   return {
-    uv: uv,
     pos0: pos0,
     pos1: pos1,
     color: color,
@@ -988,7 +982,6 @@ World.prototype.getGroupAttributes = function(cells) {
     offset: offset,
     opacity: opacity,
     selected: selected,
-    position: position,
     textureIndex: texIndex,
     textures: this.getTextures({
       startIdx: texIndices.first,
