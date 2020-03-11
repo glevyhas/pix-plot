@@ -961,11 +961,11 @@ World.prototype.getGroupAttributes = function(cells) {
       pos1 = new THREE.BufferAttribute(it.pos1, 3, true, 1),
       color = new THREE.BufferAttribute(it.color, 3, true, 1),
       opacity = new THREE.BufferAttribute(it.opacity, 1, true, 1),
-      selected = new THREE.BufferAttribute(it.selected, 1, true, 1),
-      texIndex = new THREE.BufferAttribute(it.texIndex, 1, true, 1),
-      width = new THREE.BufferAttribute(it.width, 1, true, 1),
-      height = new THREE.BufferAttribute(it.height, 1, true, 1),
-      offset = new THREE.BufferAttribute(it.offset, 2, true, 1);
+      selected = new THREE.Uint8BufferAttribute(it.selected, 1, false, 1),
+      texIndex = new THREE.Int8BufferAttribute(it.texIndex, 1, false, 1),
+      width = new THREE.Uint8BufferAttribute(it.width, 1, false, 1),
+      height = new THREE.Uint8BufferAttribute(it.height, 1, false, 1),
+      offset = new THREE.Uint16BufferAttribute(it.offset, 2, false, 1);
   texIndex.usage = THREE.DynamicDrawUsage;
   pos0.usage = THREE.DynamicDrawUsage;
   pos1.usage = THREE.DynamicDrawUsage;
@@ -1001,12 +1001,12 @@ World.prototype.getCellIterators = function(n) {
     pos0: new Float32Array(n * 3),
     pos1: new Float32Array(n * 3),
     color: new Float32Array(n * 3),
-    width: new Float32Array(n),
-    height: new Float32Array(n),
-    offset: new Float32Array(n * 2),
+    width: new Uint8Array(n),
+    height: new Uint8Array(n),
+    offset: new Uint16Array(n * 2),
     opacity: new Float32Array(n),
-    selected: new Float32Array(n),
-    texIndex: new Float32Array(n),
+    selected: new Uint8Array(n),
+    texIndex: new Int8Array(n),
     pos0Iterator: 0,
     pos1Iterator: 0,
     colorIterator: 0,
