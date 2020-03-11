@@ -1397,6 +1397,7 @@ function Selection() {
   this.selected = {}; // d[cellIdx] = bool indicating selected
   this.elems = {}; // collection of DOM elements
   this.downloadFiletype = 'csv'; // filetype to use when downloading selection
+  this.displayed = false;
 }
 
 Selection.prototype.init = function() {
@@ -1499,6 +1500,7 @@ Selection.prototype.addModalEventListeners = function() {
   this.elems.modalContainer.addEventListener('click', function(e) {
     if (e.target.className == 'modal-top') {
       this.elems.modalContainer.style.display = 'none';
+      this.displayed = false;
     }
     if (e.target.className == 'background-image') {
       var index = e.target.getAttribute('data-index');
@@ -1511,6 +1513,7 @@ Selection.prototype.addModalEventListeners = function() {
       images: this.getSelectedImages(),
     });
     this.elems.modalContainer.style.display = 'block';
+    this.displayed = true;
   }.bind(this))
   // toggle the inclusion of a cell in the selection
   this.elems.modalContainer.addEventListener('click', function(e) {
@@ -1589,7 +1592,7 @@ Selection.prototype.getSelectedImages = function() {
 // get a list of the image indices the user has selected
 Selection.prototype.getSelectedImageIndices = function() {
   var l = [];
-  for (var i=0; i<Object.keys(this.selected).length; i++) {
+  for (var i=0; i<data.json.images.length; i++) {
     if (this.selected[i]) l.push(i);
   }
   return l;
@@ -1827,7 +1830,7 @@ Picker.prototype.onMouseUp = function(e) {
   else if (world.mode == 'pan') {
     return world.camera.position.z > config.pickerMaxZ
       ? world.flyToCellIdx(cellIdx)
-      : modal.show([cellIdx]);
+      : modal.showCells([cellIdx]);
   }
 }
 
@@ -1872,11 +1875,6 @@ function Modal() {
   this.cellIdx = null;
   this.cellIndices = [];
   this.addEventListeners();
-}
-
-Modal.prototype.show = function(cellIndices, cellIdx) {
-  this.displayed = true;
-  this.showCells(cellIndices, cellIdx);
 }
 
 Modal.prototype.showCells = function(cellIndices, cellIdx) {
@@ -2070,6 +2068,9 @@ LOD.prototype.updateGridPosition = function() {
 // if there's a fetchQueue, fetch the next image, else fetch neighbors
 // nb: don't mutate fetchQueue, as that deletes items from this.grid
 LOD.prototype.fetchNextImage = function() {
+  // if the selection modal is displayed don't fetch additional images
+  if (selection.displayed) return;
+  // identfiy the next image to be loaded
   var cellIdx = this.state.fetchQueue[0];
   this.state.fetchQueue = this.state.fetchQueue.slice(1);
   // if there was a cell index in the load queue, load that next image
@@ -2103,7 +2104,7 @@ LOD.prototype.fetchNextImage = function() {
         this.state.fetchQueue = this.state.fetchQueue.concat(cellIndices);
       }
     }
-    if (this.state.openCoords && this.state.radius < 30) {
+    if (this.state.openCoords && this.state.radius < 100) {
       this.state.radius++;
     }
   }
