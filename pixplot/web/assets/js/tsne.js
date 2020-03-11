@@ -1398,6 +1398,7 @@ function Selection() {
   this.elems = {}; // collection of DOM elements
   this.downloadFiletype = 'csv'; // filetype to use when downloading selection
   this.displayed = false;
+  this.run = true; // if false, will disallow selection actions
 }
 
 Selection.prototype.init = function() {
@@ -1630,23 +1631,27 @@ Selection.prototype.getBoxDomain = function() {
 }
 
 Selection.prototype.update = function() {
+  // if the selection is disabled, exit
+  if (!this.run) {
+    return;
+  }
   // if there's no mesh rendered, exit
   if (!this.mesh) {
     return;
   }
   // if there are no selected cells, exit
-  var nSelected = this.getSelectedImages().length;
-  var nSelectedElem = document.querySelector('#n-images-selected');
-  if (nSelectedElem) nSelectedElem.textContent = nSelected;
-  if (!nSelected) {
+  var selected = this.getSelectedImageIndices();
+  var elem = document.querySelector('#n-images-selected');
+  if (elem) elem.textContent = selected.length;
+  if (!selected.length) {
     return;
   }
   // make the button that displays the modal clickable
   this.elems.modalButton.style.display = 'block';
   // make non-selected cells less opaque
-  this.setSelected();
+  this.setSelected(selected);
   // indicate how many images the user has selected
-  this.elems.countTarget.textContent = nSelected;
+  this.elems.countTarget.textContent = selected.length;
   this.elems.selectedImagesCount.style.display = 'block';
   // if we're not rendering the box, hide the box and exit
   if (!this.renderBox) {
@@ -1680,17 +1685,11 @@ Selection.prototype.update = function() {
   this.mesh.material.uniforms.render.value = true;
 }
 
-// update the cell opacities. If `bool` is true clear al selected cells
-Selection.prototype.setSelected = function(bool) {
-  var vals = [];
-  for (var i=0; i<data.cells.length; i++) {
-    vals[i] = bool
-      ? 0.0
-      : i in this.selected && this.selected[i]
-        ? 1.0
-        : 0.0;
-  }
-  world.group.children[0].geometry.attributes.selected.array = new Uint8Array(vals);
+// Set the selected attribute of cells to 1.0 if they're selected else 0.0
+Selection.prototype.setSelected = function(arr) {
+  var vals = new Uint8Array(data.cells.length);
+  for (var i=0; i<arr.length; i++) vals[arr[i]] = 1.0;
+  world.group.children[0].geometry.attributes.selected.array = vals;
   world.group.children[0].geometry.attributes.selected.needsUpdate = true;
 }
 
@@ -1709,7 +1708,7 @@ Selection.prototype.clear = function() {
   // unfreeze the mousemove listener
   this.frozen = false;
   // restore opacities in cells
-  this.setSelected(true);
+  this.setSelected([]);
   // update the list of selected cells
   this.updateSelected();
   // remove the button that triggers the modal display
