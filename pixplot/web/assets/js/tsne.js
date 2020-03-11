@@ -1289,6 +1289,17 @@ World.prototype.flyToCellIdx = function(idx) {
   })
 }
 
+// fly to the cell at index position `idx`
+World.prototype.flyToCellImage = function(img) {
+  var idx = null;
+  for (var i=0; i<data.json.images.length; i++) {
+    if (data.json.images[i] == img) idx = i;
+  }
+  if (!idx) return console.warn('The requested image could not be found');
+  var cell = data.cells[idx];
+  this.flyToCellIdx(idx);
+}
+
 /**
 * Get the initial camera location
 **/
@@ -2336,7 +2347,7 @@ Hotspots.prototype.init = function() {
     var hotspots = findAll('.hotspot');
     for (var i=0; i<hotspots.length; i++) {
       hotspots[i].addEventListener('click', function(idx) {
-        world.flyToCellIdx(data.hotspots.json[idx].idx);
+        world.flyToCellImage(data.hotspots.json[idx].img);
       }.bind(this, i))
     }
   }.bind(this))

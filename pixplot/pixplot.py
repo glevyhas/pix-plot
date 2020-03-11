@@ -407,10 +407,13 @@ def get_rasterfairy_projection(**kwargs):
   if os.path.exists(out_path) and kwargs['use_cache']: return out_path
   umap = np.array(read_json(kwargs['umap'], **kwargs))
   umap = (umap + 1)/2 # scale 0:1
-  umap = coonswarp.rectifyCloud(umap, # stretch the distribution
-    perimeterSubdivisionSteps=4,
-    autoPerimeterOffset=False,
-    paddingScale=1.05)
+  try:
+    umap = coonswarp.rectifyCloud(umap, # stretch the distribution
+      perimeterSubdivisionSteps=4,
+      autoPerimeterOffset=False,
+      paddingScale=1.05)
+  except:
+    print(' * coonswarp rectification could not be performed')
   pos = rasterfairy.transformPointCloud2D(umap)[0]
   return write_layout(out_path, pos, **kwargs)
 
@@ -515,7 +518,6 @@ def get_centroids(**kwargs):
   data = [{
     'img': clean_filename(paths[idx]),
     'label': 'Cluster {}'.format(idx+1),
-    'idx': int(i),
   } for idx,i in enumerate(closest)]
   # save the centroids to disk and return the path to the saved json
   return write_json(get_path('centroids', 'centroid', **kwargs), data, **kwargs)
