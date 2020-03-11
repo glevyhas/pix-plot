@@ -730,6 +730,7 @@ World.prototype.getControls = function() {
   var controls = new THREE.TrackballControls(this.camera, this.canvas);
   controls.zoomSpeed = 0.4;
   controls.panSpeed = 0.4;
+  controls.noRotate = true;
   return controls;
 }
 
