@@ -47,6 +47,7 @@
     uniform vec3 cameraPosition;
     uniform float transitionPercent;
     uniform float pointScale;
+    uniform float borderWidth;
 
     attribute vec3 position;      // base x y z position for all points
     attribute vec3 pos0;          // x y z position offsets for an instance
@@ -56,6 +57,7 @@
     attribute float height;       // px height of cell in lod texture
     attribute vec2 offset;        // px offset in tex from left, top
     attribute float opacity;      // opacity value for cell
+    attribute float selected;     // 1 if the cell is selected else 0
     attribute float textureIndex; // index of an instance's texture among all textures
 
     varying vec3 vColor;          // cell color
@@ -63,6 +65,7 @@
     varying float vWidth;         // px width of cell in lod texture
     varying float vHeight;        // px height of cell in lod texture
     varying float vOpacity;       // cell opacity
+    varying float vSelected;      // 1 if this cell is selected else 0
     varying float vTextureIndex;  // cell texture idx (varyings can't be int)
 
     void main() {
@@ -73,6 +76,7 @@
       vHeight = height;
       vOffset = offset;
       vOpacity = opacity;
+      vSelected = selected;
 
       // set point position as a mixture between the position + target
       vec3 pos0 = position + pos0;
@@ -82,7 +86,13 @@
       gl_Position = projectionMatrix * world;
 
       // use the unscaled point position and camera position to set point size
-      gl_PointSize = (pointScale / -world.z);
+      float pointSize = pointScale / -world.z;
+
+      if (selected > 0.5) {
+        gl_PointSize = pointSize + (pointSize * borderWidth);
+      } else {
+        gl_PointSize = pointSize;
+      }
     }
     </script>
 
@@ -109,12 +119,15 @@
     uniform float lodAtlasPxPerSide;
     uniform float cellPxHeight;
     uniform float lodPxHeight;
+    uniform float borderWidth;
+    uniform vec3 borderColor;
 
     varying vec3 vColor;         // cell's color (for gpu picking)
     varying vec2 vOffset;        // cell's offset in px from left, top of tex
     varying float vWidth;        // cell's width in lod tex in px
     varying float vHeight;       // cell's height in lod tex in px
     varying float vOpacity;      // cell's opacity
+    varying float vSelected;     // cell's presence (>0.5) or absence (<0.5) from selection
     varying float vTextureIndex; // cell's texture index
 
     // textures contains an array of sampler2Ds
@@ -126,6 +139,9 @@
     void main() {
       // is this cell a LOD cell?
       bool isLod = vTextureIndex < -0.5;
+
+      // get the width of the border on each side of the cell
+      float borderW = borderWidth / 2.0;
 
       // find the width and height of this cell in its texture (in px)
       float w = isLod ? vWidth : vWidth/vHeight*cellPxHeight;
@@ -157,21 +173,33 @@
       // this cell should be textured
       else {
 
-        // get the x and y positions to sample for this cell's texture
-        float x = center ? gl_PointCoord.x - x0 : gl_PointCoord.x;
-        float y = center ? gl_PointCoord.y - y0 : gl_PointCoord.y;
+        // check if the current pointcoord position is within the border
+        if (vSelected > 0.5 &&
+           (gl_PointCoord.x < x0 + borderW ||
+            gl_PointCoord.x > x1 - borderW ||
+            gl_PointCoord.y < y0 + borderW ||
+            gl_PointCoord.y > y1 - borderW)) {
+          gl_FragColor = vec4(borderColor, 1.0);
+        } else {
+          // get the x and y positions to sample for this cell's texture
+          float x = center ? gl_PointCoord.x - x0 : gl_PointCoord.x;
+          float y = center ? gl_PointCoord.y - y0 : gl_PointCoord.y;
 
-        // scale the x and y positions to the size of the texture
-        vec2 uv = vOffset + vec2(x, y) * big;
+          // scale the x and y positions to the size of the texture
+          vec2 uv = vOffset + vec2(x, y) * big;
 
-        // set variables consumed by fragment tree below
-        vec2 scaledUv = isLod ? uv/lodAtlasPxPerSide : uv/cellAtlasPxPerSide;
-        int textureIndex = isLod ? -1 : int(vTextureIndex);
+          // set variables consumed by fragment tree below
+          vec2 scaledUv = isLod ? uv/lodAtlasPxPerSide : uv/cellAtlasPxPerSide;
+          int textureIndex = isLod ? -1 : int(vTextureIndex);
 
-        // target to be replaced by texture tree
-        TEXTURE_LOOKUP_TREE
+          // target to be replaced by texture tree
+          TEXTURE_LOOKUP_TREE
 
-        gl_FragColor.a = vOpacity;
+          gl_FragColor = mix(gl_FragColor, vec4(0.0), 1.0-vOpacity);
+          gl_FragColor.a = 1.0;
+
+          if (vSelected > 0.5) gl_FragColor = mix(gl_FragColor, vec4(borderColor, 1.0), 0.15);
+        }
       }
     }
     </script>
@@ -205,7 +233,7 @@
     void main() {
       if (!render) discard;
       float dashSize = cameraPosition.z / 100.0;
-      float gapSize = 0.005;
+      float gapSize = dashSize * 0.4;
       if (mod(vLength + time, dashSize + gapSize) > dashSize) discard;
       gl_FragColor = vec4(0.9, 0.9, 0.9, 1.0);
     }
