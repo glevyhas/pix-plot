@@ -2600,6 +2600,7 @@ function scale(arr) {
 **/
 
 window.location.href = '#';
+window.devicePixelRatio = Math.min(window.devicePixelRatio, 2);
 var welcome = new Welcome();
 var webgl = new Webgl();
 var config = new Config();
