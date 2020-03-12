@@ -5,6 +5,7 @@ from keras.applications import Xception, VGG19, InceptionV3, imagenet_utils
 from os.path import basename, join, exists, dirname, realpath
 from keras.applications.inception_v3 import preprocess_input
 from sklearn.metrics import pairwise_distances_argmin_min
+from keras.backend.tensorflow_backend import set_session
 from sklearn.preprocessing import minmax_scale
 from keras_preprocessing.image import load_img
 from collections import defaultdict, Counter
@@ -19,12 +20,7 @@ from scipy.stats import kde
 from hdbscan import HDBSCAN
 from hashlib import sha224
 import keras.backend as K
-from keras.backend.tensorflow_backend import set_session
 import tensorflow as tf
-tf_config = tf.compat.v1.ConfigProto()
-tf_config.gpu_options.allow_growth = True
-tf_config.log_device_placement =  True
-sess = tf.compat.v1.Session(config=tf_config)
 from umap import UMAP
 import multiprocessing
 import pkg_resources
@@ -56,6 +52,12 @@ try:
   from urllib.parse import unquote # python 3
 except:
   from urllib import unquote # python 2
+
+# handle dynamic GPU memory allocation
+tf_config = tf.compat.v1.ConfigProto()
+tf_config.gpu_options.allow_growth = True
+tf_config.log_device_placement =  True
+sess = tf.compat.v1.Session(config=tf_config)
 
 '''
 NB: Keras Image class objects return image.size as w,h
