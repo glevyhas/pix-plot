@@ -19,7 +19,12 @@ from scipy.stats import kde
 from hdbscan import HDBSCAN
 from hashlib import sha224
 import keras.backend as K
+from keras.backend.tensorflow_backend import set_session
 import tensorflow as tf
+tf_config = tf.compat.v1.ConfigProto()
+tf_config.gpu_options.allow_growth = True
+tf_config.log_device_placement =  True
+sess = tf.compat.v1.Session(config=tf_config)
 from umap import UMAP
 import multiprocessing
 import pkg_resources
