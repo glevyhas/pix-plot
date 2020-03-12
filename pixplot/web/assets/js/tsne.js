@@ -66,9 +66,6 @@ function Config() {
       ease: Power2.easeInOut,
     }
   }
-  this.elems = {
-    pointSize: document.querySelector('#pointsize-range-input'),
-  }
   this.pickerMaxZ = 0.4; // max z value of camera to trigger picker modal
   this.atlasesPerTex = (this.size.texture/this.size.atlas)**2;
 }
@@ -135,9 +132,9 @@ Data.prototype.parseManifest = function(json) {
   config.size.points.max = json.point_size + (json.point_size*0.2);
   config.size.points.scatter = 0.15 * config.size.points.max;
   // set the point scalar as a function of the number of cells
-  config.elems.pointSize.min = 0;
-  config.elems.pointSize.max = config.size.points.max;
-  config.elems.pointSize.value = json.point_size;
+  world.elems.pointSize.min = 0;
+  world.elems.pointSize.max = config.size.points.max;
+  world.elems.pointSize.value = json.point_size;
   // set number of atlases and textures
   this.atlasCount = json.atlas.count;
   this.textureCount = Math.ceil(json.atlas.count / config.atlasesPerTex);
@@ -434,7 +431,7 @@ Cell.prototype.activate = function() {
   this.dx = lod.state.cellIdxToCoords[this.idx].x;
   this.dy = lod.state.cellIdxToCoords[this.idx].y;
   this.texIdx = -1;
-  ['textureIndex', 'offset'].forEach(this.mutateBuffer.bind(this));
+  ['textureIndex', 'offset'].forEach(this.setBuffer.bind(this));
 }
 
 // deactivate the cell in LOD
@@ -446,11 +443,11 @@ Cell.prototype.deactivate = function() {
   this.dx = d[0] + atlasOffset.x;
   this.dy = d[1] + atlasOffset.y;
   this.texIdx = this.getIndexOfTexture();
-  ['textureIndex', 'offset'].forEach(this.mutateBuffer.bind(this));
+  ['textureIndex', 'offset'].forEach(this.setBuffer.bind(this));
 }
 
 // update this cell's buffer values for bound attribute `attr`
-Cell.prototype.mutateBuffer = function(attr) {
+Cell.prototype.setBuffer = function(attr) {
   // find the buffer attributes that describe this cell to the GPU
   var meshes = world.group,
       attrs = meshes.children[this.getIndexOfDrawCall()].geometry.attributes,
@@ -477,11 +474,11 @@ Cell.prototype.mutateBuffer = function(attr) {
       attrs.pos0.array[(idxInDrawCall * 3) + 2] = this.z;
       return;
 
-    case 'target':
-      // set the cell's target translation
-      attrs.target.array[(idxInDrawCall * 3)] = this.tx;
-      attrs.target.array[(idxInDrawCall * 3) + 1] = this.ty;
-      attrs.target.array[(idxInDrawCall * 3) + 2] = this.tz;
+    case 'pos1':
+      // set the cell's translation
+      attrs.pos1.array[(idxInDrawCall * 3)] = this.tx;
+      attrs.pos1.array[(idxInDrawCall * 3) + 1] = this.ty;
+      attrs.pos1.array[(idxInDrawCall * 3) + 2] = this.tz;
       return;
   }
 }
@@ -511,14 +508,19 @@ function Layout() {
 Layout.prototype.setOptions = function(options) {
   this.options = options;
   this.selected = data.json.initial_layout || Object.keys(options)[0];
-  this.render();
-  this.selectActiveTab();
+  this.elems = {
+    input: document.querySelector('#jitter-input'),
+    container: document.querySelector('#jitter-container'),
+    icons: document.querySelector('#icons'),
+  }
+  this.addEventListeners();
+  this.selectActiveIcon();
   data.hotspots.showHide();
 }
 
-Layout.prototype.selectActiveTab = function() {
+Layout.prototype.selectActiveIcon = function() {
   // remove the active class from all icons
-  var icons = this.elem.querySelectorAll('img');
+  var icons = this.elems.icons.querySelectorAll('img');
   for (var i=0; i<icons.length; i++) {
     icons[i].classList.remove('active');
   }
@@ -526,25 +528,22 @@ Layout.prototype.selectActiveTab = function() {
   document.querySelector('#layout-' + this.selected).classList.add('active');
 }
 
-Layout.prototype.render = function() {
-  this.elem = document.querySelector('#icons');
-  this.jitterElem = document.querySelector('#jitter-container');
-  this.jitterInput = this.jitterElem.querySelector('input');
+Layout.prototype.addEventListeners = function() {
   // add icon click listeners
-  this.elem.addEventListener('click', function(e) {
+  this.elems.icons.addEventListener('click', function(e) {
     if (!e.target || !e.target.id || e.target.id == 'icons') return;
     this.set(e.target.id.replace('layout-', ''), true);
   }.bind(this));
-  // add the event listener to the jitter input
-  this.jitterElem.addEventListener('click', function(e) {
-    // handle click on containing element
+  // add the event listener to the input
+  this.elems.container.addEventListener('click', function(e) {
+    // allow clicks on containing element to update jitter state
     if (e.target.tagName != 'INPUT') {
-      if (this.jitterInput.checked) {
-        this.jitterInput.checked = false;
-        this.jitterElem.classList.remove('visible')
+      if (this.elems.input.checked) {
+        this.elems.input.checked = false;
+        this.elems.container.classList.remove('visible');
       } else {
-        this.jitterInput.checked = true;
-        this.jitterElem.classList.add('visible')
+        this.elems.input.checked = true;
+        this.elems.container.classList.add('visible');
       }
     }
     this.set(this.selected, false);
@@ -561,7 +560,7 @@ Layout.prototype.set = function(layoutKey, enableDelay) {
   // set the world mode back to pan
   world.setMode('pan');
   // select the active tab
-  this.selectActiveTab();
+  this.selectActiveIcon();
   // zoom the user out if they're zoomed in
   var initialCameraPosition = world.getInitialLocation();
   var delay = 0;
@@ -571,18 +570,18 @@ Layout.prototype.set = function(layoutKey, enableDelay) {
   }
   // enable the jitter button if this layout has a jittered option
   'jittered' in data.layouts[layoutKey]
-    ? this.jitterElem.classList.add('visible', 'disabled')
-    : this.jitterElem.classList.remove('visible');
+    ? this.elems.container.classList.add('visible', 'disabled')
+    : this.elems.container.classList.remove('visible')
   // determine the path to the json to display
-  var jsonPath = this.jitterInput.checked && 'jittered' in data.layouts[layoutKey]
+  var jsonPath = this.elems.input.checked && 'jittered' in data.layouts[layoutKey]
     ? getPath(data.layouts[layoutKey].jittered)
     : getPath(data.layouts[layoutKey].layout);
   // set the point size given the selected layout
   if (layout.selected == 'tsne' || layout.selected == 'umap') {
-    config.elems.pointSize.value = config.size.points.scatter;
+    world.elems.pointSize.value = config.size.points.scatter;
   }
   if (layout.selected == 'grid' || layout.selected == 'rasterfairy') {
-    config.elems.pointSize.value = config.size.points.grid;
+    world.elems.pointSize.value = config.size.points.grid;
   }
   world.setUniform('scaleTarget', world.getPointScale());
   // begin the new layout transition
@@ -595,56 +594,43 @@ Layout.prototype.set = function(layoutKey, enableDelay) {
         data.cells[i].tx = pos[i][0];
         data.cells[i].ty = pos[i][1];
         data.cells[i].tz = pos[i][2] || data.cells[i].getZ(pos[i][0], pos[i][1]);
+        data.cells[i].setBuffer('pos1');
       }
-      // get the draw call indices of each cell
-      var drawCallToCells = world.getDrawCallToCells();
-      for (var drawCall in drawCallToCells) {
-        var cells = drawCallToCells[drawCall];
-        var mesh = world.group.children[drawCall];
-        // interpolate the transitionPercent attribute on the mesh
-        TweenLite.to(mesh.material.uniforms.transitionPercent,
+      // update the transition uniforms and pos1 buffers on each mesh
+      for (var i=0; i<world.group.children.length; i++) {
+        world.group.children[i].geometry.attributes.pos1.needsUpdate = true;
+        TweenLite.to(world.group.children[i].material.uniforms.transitionPercent,
           config.transitions.duration, config.transitions.ease);
-        // update the target positional attributes on each cell
-        var iter = 0;
-        cells.forEach(function(cell) {
-          mesh.geometry.attributes.pos1.array[iter++] = cell.tx;
-          mesh.geometry.attributes.pos1.array[iter++] = cell.ty;
-          mesh.geometry.attributes.pos1.array[iter++] = cell.tz;
-        }.bind(this))
-        mesh.geometry.attributes.pos1.needsUpdate = true;
-        // set the cell's new position to enable future transitions
-        setTimeout(this.onTransitionComplete.bind(this, {
-          mesh: mesh,
-          cells: cells,
-        }), config.transitions.duration * 1000);
       }
+      // prepare to update all the cell buffers once transition completes
+      setTimeout(this.onTransitionComplete.bind(this), config.transitions.duration * 1000);
     }.bind(this))
   }.bind(this, jsonPath), delay);
 }
 
-// reset the cell translation buffers, update cell state
-// and reset the time uniforms after a positional transition completes
-Layout.prototype.onTransitionComplete = function(obj) {
+// reset cell state, mesh buffers, and transition uniforms
+Layout.prototype.onTransitionComplete = function() {
   // re-enable interactions with the jitter button
-  this.jitterElem.classList.remove('disabled');
+  this.elems.container.classList.remove('disabled');
   // show/hide the hotspots
   data.hotspots.showHide();
-  var iter = 0;
-  obj.cells.forEach(function(cell) {
+  // update the state and buffers for each cell
+  data.cells.forEach(function(cell) {
     cell.x = cell.tx;
     cell.y = cell.ty;
     cell.z = cell.tz;
-    obj.mesh.geometry.attributes.pos0.array[iter++] = cell.x;
-    obj.mesh.geometry.attributes.pos0.array[iter++] = cell.y;
-    obj.mesh.geometry.attributes.pos0.array[iter++] = cell.z;
-  }.bind(this))
-  obj.mesh.geometry.attributes.pos0.needsUpdate = true;
+    cell.setBuffer('pos0');
+  });
+  // pass each updated pos0 buffer to the gpu
+  for (var i=0; i<world.group.children.length; i++) {
+    world.group.children[i].geometry.attributes.pos0.needsUpdate = true;
+    world.group.children[i].material.uniforms.transitionPercent = { type: 'f', value: 0, };
+  }
+  // indicate the world is no longer transitioning
+  world.state.transitioning = false;
   // set the current point scale value
   world.setUniform('scale', world.getPointScale());
-  // update the positional attribute and time uniform on the mesh
-  obj.mesh.material.uniforms.transitionPercent = { type: 'f', value: 0, };
-  world.state.transitioning = false;
-  // reindex cells in LOD
+  // reindex cells in LOD given new positions
   lod.indexCells();
 }
 
@@ -678,6 +664,9 @@ function World() {
     displayed: false,
     mode: 'pan', // 'pan' || 'select'
   };
+  this.elems = {
+    pointSize: document.querySelector('#pointsize-range-input'),
+  }
   this.addEventListeners();
 }
 
@@ -795,8 +784,6 @@ World.prototype.handleResize = function() {
   this.renderer.setSize(w, h, false);
   picker.tex.setSize(w, h);
   this.setPointScalar();
-  // re-enable the render (disabled by window blur event)
-  this.state.displayed = true;
 }
 
 /**
@@ -805,27 +792,18 @@ World.prototype.handleResize = function() {
 
 World.prototype.setPointScalar = function() {
   // handle case of drag before scene renders
-  if (!this.scene ||
-      !this.scene.children.length ||
-      !picker.scene ||
-      !picker.scene.children.length) return;
+  if (!this.state.displayed) return;
   // update the displayed and selector meshes
   this.setUniform('scale', this.getPointScale())
 }
 
-
-World.prototype.setPointScalarTarget = function() {
-
-}
-
 /**
-* If the user asks for a new point size rerender scene
+* Update the point size when the user changes the input slider
 **/
 
 World.prototype.addScalarChangeListener = function() {
-  var elem = config.elems.pointSize;
-  elem.addEventListener('change', this.setPointScalar.bind(this));
-  elem.addEventListener('input', this.setPointScalar.bind(this));
+  this.elems.pointSize.addEventListener('change', this.setPointScalar.bind(this));
+  this.elems.pointSize.addEventListener('input', this.setPointScalar.bind(this));
 }
 
 /**
@@ -833,12 +811,6 @@ World.prototype.addScalarChangeListener = function() {
 **/
 
 World.prototype.addTabChangeListeners = function() {
-  window.addEventListener('blur', function() {
-    //this.state.displayed = false;
-  }.bind(this));
-  window.addEventListener('focus', function() {
-    this.state.displayed = true;
-  }.bind(this));
   // change the canvas size to handle Chromium bug 1034019
   window.addEventListener('visibilitychange', function() {
     this.canvas.width = this.canvas.width + 1;
@@ -1068,7 +1040,7 @@ World.prototype.getTexture = function(canvas) {
 **/
 
 World.prototype.getPointScale = function() {
-  var scalar = parseFloat(config.elems.pointSize.value);
+  var scalar = parseFloat(this.elems.pointSize.value);
   return this.scalePointSize(scalar);
 }
 
@@ -1154,6 +1126,17 @@ World.prototype.setUniform = function(key, val) {
   var meshes = this.group.children.concat(picker.scene.children[0].children);
   for (var i=0; i<meshes.length; i++) {
     meshes[i].material.uniforms[key].value = val;
+  }
+}
+
+// helper function to distribute an array with length data.cells over draw calls
+World.prototype.setBuffer = function(key, arr) {
+  var drawCallToCells = world.getDrawCallToCells();
+  for (var i in drawCallToCells) {
+    var cells = drawCallToCells[i];
+    var attr = world.group.children[i].geometry.attributes[key];
+    attr.array = arr.slice(cells[0].idx, cells[cells.length-1].idx+1);
+    attr.needsUpdate = true;
   }
 }
 
@@ -1687,10 +1670,11 @@ Selection.prototype.update = function() {
 
 // Set the selected attribute of cells to 1.0 if they're selected else 0.0
 Selection.prototype.setSelected = function(arr) {
+  // set the selection buffer
   var vals = new Uint8Array(data.cells.length);
   for (var i=0; i<arr.length; i++) vals[arr[i]] = 1.0;
-  world.group.children[0].geometry.attributes.selected.array = vals;
-  world.group.children[0].geometry.attributes.selected.needsUpdate = true;
+  // update the buffers of each draw call
+  world.setBuffer('selected', vals);
 }
 
 Selection.prototype.start = function() {
@@ -2318,14 +2302,12 @@ Filter.prototype.filterCells = function(names) {
   names = names.reduce(function(obj, n) {
     obj[n] = true; return obj;
   }, {}); // facilitate O(1) lookups
-  data.cells.forEach(function(cell, idx) {
-    // update the buffer attributes that describe this cell to the GPU
-    var meshes = world.group,
-        attrs = meshes.children[cell.getIndexOfDrawCall()].geometry.attributes,
-        opacity = data.json.images[idx] in names ? 1 : 0.35;
-    attrs.opacity.array[cell.getIndexInDrawCall()] = opacity;
-  }.bind(this))
-  world.attrsNeedUpdate(['opacity']);
+  // update the cell opacities
+  var arr = new Float32Array(data.cells.length);
+  for (var i=0; i<data.cells.length; i++) {
+    arr[i] = data.json.images[i] in names ? 1 : 0.35;
+  }
+  world.setBuffer('opacity', arr);
 }
 
 /**
