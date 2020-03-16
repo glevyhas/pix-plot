@@ -143,10 +143,15 @@ def get_manifest(**kwargs):
     for j in layouts[i]:
       get_heightmap(layouts[i][j], i + '-' + j, **kwargs)
   # create manifest json
+  point_size = 1 / math.ceil( len(kwargs['image_paths'])**(1/2) )
   manifest = {
     'layouts': layouts,
-    'initial_layout': 'grid',
-    'point_size': 1 / math.ceil( len(kwargs['image_paths'])**(1/2) ),
+    'initial_layout': 'umap',
+    'point_size': {
+      'min': 0,
+      'max': 1.2 * point_size,
+      'initial': 0.18 * point_size,
+    },
     'imagelist': get_path('imagelists', 'imagelist', **kwargs),
     'atlas_dir': kwargs['atlas_dir'],
     'config': {

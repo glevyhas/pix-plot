@@ -391,7 +391,8 @@ nav h2 {
   bottom: 0;
   left: 0;
   color: #fff;
-  padding: 10%;
+  padding: 40px;
+  padding-top: 100px;
   transition: transform 2s;
   z-index: 3;
   background: #000;
