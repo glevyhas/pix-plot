@@ -1958,7 +1958,6 @@ function LOD() {
   this.cellIdxToImage = {}; // image cache mapping cell idx to loaded image data
   this.grid = {}; // set by this.indexCells()
   this.minZ = 0.5; // minimum zoom level to update textures
-  this.framerate = 1; // number of frames required to update the lod one iteration
   this.initialRadius = r; // starting radius for LOD
   this.state = {
     openCoords: this.getAllTexCoords(), // array of unused x,y lod tex offsets
@@ -1968,7 +1967,6 @@ function LOD() {
     cellIdxToCoords: {}, // map from a cell idx to that cell's x, y offsets in lod texture
     cellsToActivate: [], // list of cells cached in this.cellIdxToImage and ready to be added to lod texture
     fetchQueue: [], // list of images that need to be fetched and cached
-    frame: 0, // lod's current frame number, used to call lod events every n frames
     radius: r, // current radius for LOD
     run: true, // bool indicating whether to use the lod mechanism
   };
@@ -2040,11 +2038,9 @@ LOD.prototype.update = function() {
   if (!this.state.run || world.state.flying || world.state.transitioning) return;
   this.updateGridPosition();
   this.fetchNextImage();
-  if (++this.state.frame % this.framerate == 0) {
-    world.camera.position.z < this.minZ
-      ? this.addCellsToLodTexture()
-      : this.clear();
-  }
+  world.camera.position.z < this.minZ
+    ? this.addCellsToLodTexture()
+    : this.clear();
 }
 
 LOD.prototype.updateGridPosition = function() {
