@@ -174,25 +174,27 @@ THREE.TrackballControls = function ( object, domElement ) {
         _eye.multiplyScalar( factor );
       } else {
 
-        factor = 1.0 + ( _zoomEnd.y - _zoomStart.y ) * _this.zoomSpeed;
+        var zoomDeltaY = _zoomEnd.y - _zoomStart.y;
+        factor = 1.0 + zoomDeltaY * _this.zoomSpeed;
         if ( factor !== 1.0 && factor > 0.0 ) {
 
-          // set the direction toward the location the user mousewheeled
-          factor = factor || 1.0 + ( _zoomEnd.y - _zoomStart.y ) * _this.zoomSpeed;
+          if (zoomDeltaY < 0) {
+            // zoom in towards mouse wheel location
+            dest.set(_mouseWheelLocation.x, _mouseWheelLocation.y, 0.0);
+            // convert target from screen coords (0:1) to clip coords (-1:1)
+            dest = dest.addScalar(-0.5).multiplyScalar(2.0);
 
-          // determine the coordinates to zoom towards
-          dest.set(_mouseWheelLocation.x, _mouseWheelLocation.y, 0.0);
-
-          // convert target from screen coords (0:1) to clip coords (-1:1)
-          dest = dest.addScalar(-0.5).multiplyScalar(2.0);
-
-          // find the world space coordinates of user mouse position during zoom
-          dest.unproject(_this.object);
-          var direction = dest.sub(_this.object.position).normalize(),
-              distance = - _this.object.position.z / direction.z,
-              scaled = direction.multiplyScalar(distance),
-              dest = _this.object.position.clone().add(scaled);
-
+            // find the world space coordinates of user mouse position during zoom
+            dest.unproject(_this.object);
+            var direction = dest.sub(_this.object.position).normalize(),
+                distance = - _this.object.position.z / direction.z,
+                scaled = direction.multiplyScalar(distance),
+                dest = _this.object.position.clone().add(scaled);
+          } else {
+            // zoom out towards plot origin
+            dest.set(0.0, 0.0, 1.0);
+            dest = _this.object.position.clone().sub(dest);
+          }
           // find the distance we're scrolling in the z plane
           var zz = _eye.clone().multiplyScalar(factor).z - _eye.clone().z;
 
