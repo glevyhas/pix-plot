@@ -142,7 +142,7 @@ Data.prototype.parseManifest = function(json) {
   // set layout values
   this.layouts = json.layouts;
   this.hotspots = new Hotspots();
-  layout.setOptions(Object.keys(this.layouts));
+  layout.init(Object.keys(this.layouts));
   // load the filter options if metadata present
   if (json.metadata) filters.loadFilters();
   // load each texture for this data set
@@ -506,7 +506,7 @@ function Layout() {
 *   be an attribute in data.cells[ithCell].layouts
 **/
 
-Layout.prototype.setOptions = function(options) {
+Layout.prototype.init = function(options) {
   this.options = options;
   this.selected = data.json.initial_layout || Object.keys(options)[0];
   this.elems = {
@@ -517,6 +517,7 @@ Layout.prototype.setOptions = function(options) {
   this.addEventListeners();
   this.selectActiveIcon();
   data.hotspots.showHide();
+  layout.showHideJitter();
 }
 
 Layout.prototype.selectActiveIcon = function() {
@@ -612,8 +613,11 @@ Layout.prototype.setPointScalar = function() {
 }
 
 Layout.prototype.showHideJitter = function() {
-  'jittered' in data.layouts[this.selected]
-    ? this.elems.container.classList.add('visible', 'disabled')
+  var jitterable = 'jittered' in data.layouts[this.selected];
+  jitterable
+    ? world.state.transitioning
+      ? this.elems.container.classList.add('visible', 'disabled')
+      : this.elems.container.classList.add('visible')
     : this.elems.container.classList.remove('visible')
 }
 
