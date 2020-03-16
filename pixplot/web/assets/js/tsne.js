@@ -55,6 +55,7 @@ function Config() {
     points: {
       min: 0, // min point size
       max: 0, // max point size
+      initial: 0, // initial point size
       grid: 0, // initial point size for grid layouts
       scatter: 0, // initial point size for scatter layouts
     },
@@ -123,18 +124,18 @@ Data.prototype.load = function() {
 
 Data.prototype.parseManifest = function(json) {
   this.json = json;
-  // set config vals
+  // set sizes of cells and atlases
   config.size.cell = json.config.sizes.cell;
   config.size.atlas = json.config.sizes.atlas;
   config.size.lodCell = json.config.sizes.lod;
   // set point size vals
-  config.size.points.grid = json.point_size;
-  config.size.points.max = json.point_size + (json.point_size*0.2);
-  config.size.points.scatter = 0.15 * config.size.points.max;
-  // set the point scalar as a function of the number of cells
+  config.size.points = json.point_size;
+  config.size.points.scatter = 0.2 * config.size.points.max;
+  config.size.points.grid = 0.85 * config.size.points.max;
+  // update the point size DOM element
   world.elems.pointSize.min = 0;
   world.elems.pointSize.max = config.size.points.max;
-  world.elems.pointSize.value = json.point_size;
+  world.elems.pointSize.value = config.size.points.initial;
   // set number of atlases and textures
   this.atlasCount = json.atlas.count;
   this.textureCount = Math.ceil(json.atlas.count / config.atlasesPerTex);
@@ -561,32 +562,23 @@ Layout.prototype.set = function(layoutKey, enableDelay) {
   world.setMode('pan');
   // select the active tab
   this.selectActiveIcon();
+  // enable the jitter button if this layout has a jittered option
+  this.showHideJitter();
+  // set the point size given the selected layout
+  this.setPointScalar();
   // zoom the user out if they're zoomed in
-  var initialCameraPosition = world.getInitialLocation();
-  var delay = 0;
+  var initialCameraPosition = world.getInitialLocation(),
+      delay = 0;
   if ((world.camera.position.z < initialCameraPosition.z) && enableDelay) {
     delay = config.transitions.duration * 1000;
     world.flyTo(initialCameraPosition);
   }
-  // enable the jitter button if this layout has a jittered option
-  'jittered' in data.layouts[layoutKey]
-    ? this.elems.container.classList.add('visible', 'disabled')
-    : this.elems.container.classList.remove('visible')
   // determine the path to the json to display
-  var jsonPath = this.elems.input.checked && 'jittered' in data.layouts[layoutKey]
-    ? getPath(data.layouts[layoutKey].jittered)
-    : getPath(data.layouts[layoutKey].layout);
-  // set the point size given the selected layout
-  if (layout.selected == 'tsne' || layout.selected == 'umap') {
-    world.elems.pointSize.value = config.size.points.scatter;
-  }
-  if (layout.selected == 'grid' || layout.selected == 'rasterfairy') {
-    world.elems.pointSize.value = config.size.points.grid;
-  }
-  world.setUniform('scaleTarget', world.getPointScale());
+  var jitter = this.elems.input.checked && 'jittered' in data.layouts[layoutKey],
+      layoutAttr = jitter ? 'jittered' : 'layout'
   // begin the new layout transition
-  setTimeout(function(jsonPath) {
-    get(jsonPath, function(pos) {
+  setTimeout(function() {
+    get(getPath(data.layouts[layoutKey][layoutAttr]), function(pos) {
       // clear the LOD mechanism
       lod.clear();
       // set the target locations of each point
@@ -605,7 +597,24 @@ Layout.prototype.set = function(layoutKey, enableDelay) {
       // prepare to update all the cell buffers once transition completes
       setTimeout(this.onTransitionComplete.bind(this), config.transitions.duration * 1000);
     }.bind(this))
-  }.bind(this, jsonPath), delay);
+  }.bind(this), delay);
+}
+
+// set the point size as a function of the current layout
+Layout.prototype.setPointScalar = function() {
+  if (this.selected == 'tsne' || this.selected == 'umap') {
+    world.elems.pointSize.value = config.size.points.scatter;
+  }
+  if (this.selected == 'grid' || this.selected == 'rasterfairy') {
+    world.elems.pointSize.value = config.size.points.grid;
+  }
+  world.setUniform('scaleTarget', world.getPointScale());
+}
+
+Layout.prototype.showHideJitter = function() {
+  'jittered' in data.layouts[this.selected]
+    ? this.elems.container.classList.add('visible', 'disabled')
+    : this.elems.container.classList.remove('visible')
 }
 
 // reset cell state, mesh buffers, and transition uniforms
@@ -782,6 +791,7 @@ World.prototype.handleResize = function() {
   this.camera.aspect = w / h;
   this.camera.updateProjectionMatrix();
   this.renderer.setSize(w, h, false);
+  this.controls.handleResize();
   picker.tex.setSize(w, h);
   this.setPointScalar();
 }
@@ -1324,7 +1334,9 @@ World.prototype.init = function() {
   selection.init();
   // draw the points and start the render loop
   this.plot();
+  //resize the canvas and scale rendered assets
   this.handleResize();
+  // initialize the first frame
   this.render();
   // set the mode
   this.setMode('pan');
@@ -2037,7 +2049,7 @@ LOD.prototype.updateGridPosition = function() {
   // if the user is in a new grid position unload old images and load new
   if (this.state.camPos.x !== camPos.x || this.state.camPos.y !== camPos.y) {
     if (this.state.radius > 1) {
-      this.state.radius = Math.ceil(this.state.radius*0.75);
+      this.state.radius = Math.ceil(this.state.radius*0.95);
     }
     this.state.camPos = camPos;
     this.state.neighborsRequested = 0;
