@@ -32,6 +32,7 @@ setup(
     'numpy>=1.16.0',
     'Pillow>=6.1.0',
     'pointgrid>=0.0.2',
+    'python-dateutil>=2.8.0',
     'scikit-learn>=0.19.0',
     'scipy>=1.1.0',
     'tensorflow>=1.14.0,<=2.0.0',
