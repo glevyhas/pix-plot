@@ -58,14 +58,16 @@ function Config() {
       initial: 0, // initial point size
       grid: 0, // initial point size for grid layouts
       scatter: 0, // initial point size for scatter layouts
+      date: 0, // initial point size for date layouts
     },
   }
   this.transitions = {
-    duration: 2.5,
-    ease: {
-      value: 1,
-      ease: Power2.easeInOut,
-    }
+    duration: 2,
+    delay: 0.4,
+  }
+  this.transitions.ease = {
+    value: 1.0 + this.transitions.delay,
+    ease: Power3.easeOut,
   }
   this.pickerMaxZ = 0.4; // max z value of camera to trigger picker modal
   this.atlasesPerTex = (this.size.texture/this.size.atlas)**2;
@@ -99,7 +101,7 @@ function Data() {
     x: { min: Number.POSITIVE_INFINITY, max: Number.NEGATIVE_INFINITY, },
     y: { min: Number.POSITIVE_INFINITY, max: Number.NEGATIVE_INFINITY, },
   };
-  world.loadHeightmap(this.load.bind(this));
+  world.getHeightMap(this.load.bind(this));
 }
 
 // Load json data with chart element positions
@@ -124,14 +126,11 @@ Data.prototype.load = function() {
 
 Data.prototype.parseManifest = function(json) {
   this.json = json;
-  // set sizes of cells and atlases
+  // set sizes of cells, atlases, and points
   config.size.cell = json.config.sizes.cell;
   config.size.atlas = json.config.sizes.atlas;
   config.size.lodCell = json.config.sizes.lod;
-  // set point size vals
-  config.size.points = json.point_size;
-  config.size.points.scatter = 0.2 * config.size.points.max;
-  config.size.points.grid = 0.85 * config.size.points.max;
+  config.size.points = json.point_sizes;
   // update the point size DOM element
   world.elems.pointSize.min = 0;
   world.elems.pointSize.max = config.size.points.max;
@@ -139,7 +138,6 @@ Data.prototype.parseManifest = function(json) {
   // set number of atlases and textures
   this.atlasCount = json.atlas.count;
   this.textureCount = Math.ceil(json.atlas.count / config.atlasesPerTex);
-  // set layout values
   this.layouts = json.layouts;
   this.hotspots = new Hotspots();
   layout.init(Object.keys(this.layouts));
@@ -367,7 +365,7 @@ function Cell(obj) {
 }
 
 Cell.prototype.getZ = function(x, y) {
-  return world.getHeightmapHeightAt(x, y) || 0;
+  return world.getHeightAt(x, y) || 0;
 }
 
 Cell.prototype.updateParentBoundingBox = function() {
@@ -495,7 +493,6 @@ Cell.prototype.setBuffer = function(attr) {
 **/
 
 function Layout() {
-  this.elem = null;
   this.jitterElem = null;
   this.selected = null;
   this.options = [];
@@ -527,7 +524,11 @@ Layout.prototype.selectActiveIcon = function() {
     icons[i].classList.remove('active');
   }
   // add the active class to selected icon
-  document.querySelector('#layout-' + this.selected).classList.add('active');
+  try {
+    document.querySelector('#layout-' + this.selected).classList.add('active');
+  } catch (err) {
+    console.warn(' * the requested layout has no icon:', this.layout)
+  }
 }
 
 Layout.prototype.addEventListeners = function() {
@@ -536,9 +537,8 @@ Layout.prototype.addEventListeners = function() {
     if (!e.target || !e.target.id || e.target.id == 'icons') return;
     this.set(e.target.id.replace('layout-', ''), true);
   }.bind(this));
-  // add the event listener to the input
+  // allow clicks on jitter container to update jitter state
   this.elems.container.addEventListener('click', function(e) {
-    // allow clicks on containing element to update jitter state
     if (e.target.tagName != 'INPUT') {
       if (this.elems.input.checked) {
         this.elems.input.checked = false;
@@ -553,33 +553,29 @@ Layout.prototype.addEventListeners = function() {
 }
 
 // Transition to a new layout; layout must be an attr on Cell.layouts
-Layout.prototype.set = function(layoutKey, enableDelay) {
+Layout.prototype.set = function(layout, enableDelay) {
   // disallow new transitions when we're transitioning
   if (world.state.transitioning) return;
   world.state.transitioning = true;
   // set the selected layout
-  this.selected = layoutKey;
+  this.selected = layout;
   // set the world mode back to pan
   world.setMode('pan');
   // select the active tab
   this.selectActiveIcon();
-  // enable the jitter button if this layout has a jittered option
-  this.showHideJitter();
   // set the point size given the selected layout
   this.setPointScalar();
+  // set any uniforms that need adjusting given the selected layout
+  this.setUniforms();
   // zoom the user out if they're zoomed in
-  var initialCameraPosition = world.getInitialLocation(),
-      delay = 0;
-  if ((world.camera.position.z < initialCameraPosition.z) && enableDelay) {
-    delay = config.transitions.duration * 1000;
-    world.flyTo(initialCameraPosition);
-  }
+  var delay = this.recenterCamera(enableDelay);
+  // enable the jitter button if this layout has a jittered option
+  var jitter = this.showHideJitter();
   // determine the path to the json to display
-  var jitter = this.elems.input.checked && 'jittered' in data.layouts[layoutKey],
-      layoutAttr = jitter ? 'jittered' : 'layout'
+  var layoutType = jitter ? 'jittered' : 'layout'
   // begin the new layout transition
   setTimeout(function() {
-    get(getPath(data.layouts[layoutKey][layoutAttr]), function(pos) {
+    get(getPath(data.layouts[layout][layoutType]), function(pos) {
       // clear the LOD mechanism
       lod.clear();
       // set the target locations of each point
@@ -601,17 +597,30 @@ Layout.prototype.set = function(layoutKey, enableDelay) {
   }.bind(this), delay);
 }
 
-// set the point size as a function of the current layout
-Layout.prototype.setPointScalar = function() {
-  if (this.selected == 'tsne' || this.selected == 'umap') {
-    world.elems.pointSize.value = config.size.points.scatter;
+// return the camera to its starting position
+Layout.prototype.recenterCamera = function(enableDelay) {
+  var initialCameraPosition = world.getInitialLocation();
+  if ((world.camera.position.z < initialCameraPosition.z) && enableDelay) {
+    world.flyTo(initialCameraPosition);
+    return config.transitions.duration * 1000;
   }
-  if (this.selected == 'grid' || this.selected == 'rasterfairy') {
-    world.elems.pointSize.value = config.size.points.grid;
-  }
-  world.setUniform('scaleTarget', world.getPointScale());
+  return 0;
 }
 
+// set the point size as a function of the current layout
+Layout.prototype.setPointScalar = function() {
+  var size = false, // size for points
+      l = this.selected; // selected layout
+  if (l == 'tsne' || l == 'umap') size = config.size.points.scatter;
+  if (l == 'grid' || l == 'rasterfairy') size = config.size.points.grid;
+  if (l == 'date') size = config.size.points.date;
+  if (size) {
+    world.elems.pointSize.value = size;
+    world.setUniform('scaleTarget', world.getPointScale());
+  }
+}
+
+// show/hide the jitter and return a bool whether to jitter the new layout
 Layout.prototype.showHideJitter = function() {
   var jitterable = 'jittered' in data.layouts[this.selected];
   jitterable
@@ -619,6 +628,12 @@ Layout.prototype.showHideJitter = function() {
       ? this.elems.container.classList.add('visible', 'disabled')
       : this.elems.container.classList.add('visible')
     : this.elems.container.classList.remove('visible')
+  return jitterable && this.elems.input.checked;
+}
+
+// adjust any uniforms on meshes that must change given the selected layout
+Layout.prototype.setUniforms = function() {
+  text.mesh.material.uniforms.render.value = this.selected == 'date' ? 1.0 : 0.0;
 }
 
 // reset cell state, mesh buffers, and transition uniforms
@@ -637,7 +652,7 @@ Layout.prototype.onTransitionComplete = function() {
   // pass each updated pos0 buffer to the gpu
   for (var i=0; i<world.group.children.length; i++) {
     world.group.children[i].geometry.attributes.pos0.needsUpdate = true;
-    world.group.children[i].material.uniforms.transitionPercent = { type: 'f', value: 0, };
+    world.group.children[i].material.uniforms.transitionPercent = { type: 'f', value: 0 };
   }
   // indicate the world is no longer transitioning
   world.state.transitioning = false;
@@ -679,7 +694,7 @@ function World() {
   };
   this.elems = {
     pointSize: document.querySelector('#pointsize-range-input'),
-  }
+  };
   this.addEventListeners();
 }
 
@@ -741,7 +756,7 @@ World.prototype.getControls = function() {
 **/
 
 // load the heightmap
-World.prototype.loadHeightmap = function(callback) {
+World.prototype.getHeightMap = function(callback) {
   // load an image for setting 3d vertex positions
   var img = new Image();
   img.crossOrigin = 'Anonymous';
@@ -758,7 +773,7 @@ World.prototype.loadHeightmap = function(callback) {
 }
 
 // determine the height of the heightmap at coordinates x,y
-World.prototype.getHeightmapHeightAt = function(x, y) {
+World.prototype.getHeightAt = function(x, y) {
   var x = (x+1)/2, // rescale x,y axes from -1:1 to 0:1
       y = (y+1)/2,
       row = Math.floor(y * (this.heightmap.height-1)),
@@ -1054,13 +1069,9 @@ World.prototype.getTexture = function(canvas) {
 **/
 
 World.prototype.getPointScale = function() {
-  var scalar = parseFloat(this.elems.pointSize.value);
-  return this.scalePointSize(scalar);
-}
-
-World.prototype.scalePointSize = function(val) {
-  var canvasSize = getCanvasSize();
-  return val * window.devicePixelRatio * canvasSize.h;
+  var scalar = parseFloat(this.elems.pointSize.value),
+      canvasSize = getCanvasSize();
+  return scalar * window.devicePixelRatio * canvasSize.h;
 }
 
 /**
@@ -1129,6 +1140,10 @@ World.prototype.getShaderMaterial = function(obj) {
         type: 'vec3',
         value: new Float32Array([234/255, 183/255, 85/255]),
       },
+      delay: {
+        type: 'f',
+        value: config.transitions.delay,
+      }
     },
     vertexShader: vertex,
     fragmentShader: fragment,
@@ -1300,9 +1315,9 @@ World.prototype.flyToCellImage = function(img) {
 
 World.prototype.getInitialLocation = function() {
   return {
-    x: this.center.x,
-    y: this.center.y,
-    z: 1,
+    x: 0, //this.center.x,
+    y: 0, //this.center.y,
+    z: 1.2,
   }
 }
 
@@ -1434,8 +1449,14 @@ Selection.prototype.initializeMesh = function() {
   geometry.setAttribute('length', lengthAttr);
   var material = new THREE.RawShaderMaterial({
     uniforms: {
-      time: {value: 0, type: 'float'},
-      render: {value: false, 'type': 'bool'},
+      time: {
+        type: 'float',
+        value: 0,
+      },
+      render: {
+        type: 'bool',
+        value: false,
+      },
     },
     vertexShader: document.querySelector('#dashed-vertex-shader').textContent,
     fragmentShader: document.querySelector('#dashed-fragment-shader').textContent,
@@ -1867,6 +1888,145 @@ Picker.prototype.select = function(obj) {
 }
 
 /**
+* Draw text into the scene
+**/
+
+function Text() {}
+
+Text.prototype.init = function() {
+  this.count = 10**5; // max number of characters to represent
+  this.point = 128.0; // px of each letter in atlas texture
+  this.scale = 0; // 8 so 'no date' fits in one grid space
+  this.kerning = 0; // scalar specifying y axis letter spacing
+  this.canvas = null; // px of each size in the canvas
+  this.texture = {map: null, tex: null}; // set after label data loads
+  this.json = {}; // will store the label and layout data
+  this.createMesh();
+  this.addEventListeners();
+}
+
+Text.prototype.addEventListeners = function() {
+  window.addEventListener('resize', function() {
+    this.mesh.material.uniforms.scale.value = world.getPointScale();
+  }.bind(this))
+}
+
+Text.prototype.getTexture = function() {
+  var canvas = document.createElement('canvas'),
+      ctx = canvas.getContext('2d'),
+      characterMap = {},
+      xOffset = 0.2, // offset to draw letters in center of grid position
+      yOffset = 0.2, // offset to draw full letters w/ baselines...
+      charFirst = 48, // ord of the first character in the map
+      charLast = 122, // ord of the last character in the map
+      skips = ':;<=>?@[\\]^_`', // any characters to skip in the map
+      chars = charLast - charFirst - skips.length + 1; // n characters to include in map
+  this.canvas = this.point * Math.ceil(chars**(1/2))
+  canvas.width = this.canvas; //
+  canvas.height = this.canvas;
+  canvas.id = 'character-canvas';
+  ctx.font = this.point + 'px Monospace';
+  // give the canvas a black background for pixel discarding
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#ffffff';
+  // draw the letters on the canvas
+  var x = 0,
+      y = 0;
+  for (var i=charFirst; i<charLast+1; i++) {
+    var char = String.fromCharCode(i);
+    if (skips.includes(char)) continue;
+    characterMap[char] = {x: x, y: y};
+    ctx.fillText(char, x+(xOffset*this.point), y+this.point-(yOffset*this.point));
+    x += this.point;
+    if (x > canvas.width - this.point) {
+      x = 0;
+      y += this.point;
+    }
+  }
+  // build a three texture with the canvas
+  var tex = new THREE.Texture(canvas);
+  tex.flipY = false;
+  tex.needsUpdate = true;
+  return {map: characterMap, tex: tex};
+}
+
+Text.prototype.createMesh = function() {
+  get(getPath(data.json.layouts.date.labels), function(json) {
+    this.json = json;
+    // set mesh sizing attributes based on number of columns in each bar group
+    this.scale = config.size.points.date;
+    this.kerning = this.scale * 0.8;
+    // create the texture
+    this.texture = this.getTexture()
+    // create the mesh
+    var offsets = [],
+        positions = [];
+    this.json.labels.forEach(function(word, idx) {
+      for (var c=0; c<word.length; c++) {
+        var offset = word[c] in this.texture.map
+          ? this.texture.map[word[c]]
+          : {
+              x: this.canvas-this.point, // fallback for letters not in canvas
+              y: this.canvas-this.point,
+            }
+        offsets.push(offset.x);
+        offsets.push(offset.y);
+        positions.push(this.json.positions[idx][0] + this.kerning*c);
+        positions.push(this.json.positions[idx][1]);
+        positions.push(0);
+      }
+    }.bind(this));
+    // create the geometry
+    var geometry = new THREE.BufferGeometry()
+    var positions = new THREE.BufferAttribute(new Float32Array(positions), 3);
+    var offsets = new THREE.BufferAttribute(new Uint16Array(offsets), 2);
+    geometry.setAttribute('position', positions);
+    geometry.setAttribute('offset', offsets);
+    var material = new THREE.RawShaderMaterial({
+      uniforms: {
+        size: {
+          type: 'f',
+          value: this.size,
+        },
+        point: {
+          type: 'f',
+          value: this.point,
+        },
+        canvas: {
+          type: 'f',
+          value: this.canvas,
+        },
+        scale: {
+          type: 'f',
+          value: this.getPointScale(),
+        },
+        render: {
+          type: 'bool',
+          value: false,
+        },
+        texture: {
+          type: 't',
+          value: this.texture.tex,
+        },
+        render: {
+          type: 'f',
+          value: 0, // 0=false; 1=true
+        },
+      },
+      vertexShader: document.querySelector('#text-vertex-shader').textContent,
+      fragmentShader: document.querySelector('#text-fragment-shader').textContent,
+    });
+    this.mesh = new THREE.Points(geometry, material);
+    world.scene.add(this.mesh);
+  }.bind(this))
+}
+
+Text.prototype.getPointScale = function() {
+  return window.devicePixelRatio * window.innerHeight * this.scale;
+}
+
+/**
 * Create a modal for larger image viewing
 **/
 
@@ -1957,7 +2117,7 @@ function LOD() {
   this.cell = this.getCanvas(config.size.lodCell);
   this.cellIdxToImage = {}; // image cache mapping cell idx to loaded image data
   this.grid = {}; // set by this.indexCells()
-  this.minZ = 0.5; // minimum zoom level to update textures
+  this.minZ = 0.8; // minimum zoom level to update textures
   this.initialRadius = r; // starting radius for LOD
   this.state = {
     openCoords: this.getAllTexCoords(), // array of unused x,y lod tex offsets
@@ -2049,7 +2209,7 @@ LOD.prototype.updateGridPosition = function() {
   // if the user is in a new grid position unload old images and load new
   if (this.state.camPos.x !== camPos.x || this.state.camPos.y !== camPos.y) {
     if (this.state.radius > 1) {
-      this.state.radius = Math.ceil(this.state.radius*0.95);
+      this.state.radius = Math.ceil(this.state.radius*0.8);
     }
     this.state.camPos = camPos;
     this.state.neighborsRequested = 0;
@@ -2099,7 +2259,7 @@ LOD.prototype.fetchNextImage = function() {
         this.state.fetchQueue = this.state.fetchQueue.concat(cellIndices);
       }
     }
-    if (this.state.openCoords && this.state.radius < 100) {
+    if (this.state.openCoords && this.state.radius < 30) {
       this.state.radius++;
     }
   }
@@ -2195,69 +2355,6 @@ LOD.prototype.clear = function() {
 }
 
 /**
-* Handle load progress and welcome scene events
-**/
-
-function Welcome() {
-  this.progressElem = find('#progress');
-  this.loaderTextElem = find('#loader-text');
-  this.loaderSceneElem = find('#loader-scene');
-  this.buttonElem = find('#enter-button');
-  this.buttonElem.addEventListener('click', this.onButtonClick.bind(this));
-}
-
-Welcome.prototype.onButtonClick = function(e) {
-  if (e.target.className.indexOf('active') > -1) {
-    requestAnimationFrame(function() {
-      this.removeLoader(function() {
-        this.startWorld();
-      }.bind(this));
-    }.bind(this));
-  }
-}
-
-Welcome.prototype.removeLoader = function(onSuccess) {
-  var blocks = document.querySelectorAll('.block');
-  for (var i=0; i<blocks.length; i++) {
-    setTimeout(function(i) {
-      blocks[i].style.animation = 'exit 300s';
-      setTimeout(function(i) {
-        blocks[i].parentNode.removeChild(blocks[i]);
-        if (i == blocks.length-1) onSuccess();
-      }.bind(this, i), 1000)
-    }.bind(this, i), i*100)
-  }
-  document.querySelector('#progress').style.opacity = 0;
-}
-
-Welcome.prototype.updateProgress = function() {
-  var progress = valueSum(data.textureProgress) / data.textureCount;
-  // remove the decimal value from the load progress
-  progress = progress.toString();
-  var index = progress.indexOf('.');
-  if (index > -1) progress = progress.substring(0, index);
-  // display the load progress
-  this.progressElem.textContent = progress + '%';
-  if (progress == 100 &&
-      data.loadedTextures == data.textureCount &&
-      world.heightmap) {
-    this.buttonElem.className += ' active';
-  }
-}
-
-Welcome.prototype.startWorld = function() {
-  requestAnimationFrame(function() {
-    world.init();
-    picker.init();
-    setTimeout(function() {
-      document.querySelector('#loader-scene').classList += 'hidden';
-      document.querySelector('#header-controls').style.opacity = 1;
-      world.state.displayed = true;
-    }.bind(this), 50);
-  }.bind(this))
-}
-
-/**
 * Configure filters
 **/
 
@@ -2267,7 +2364,7 @@ function Filters() {
 
 Filters.prototype.loadFilters = function() {
   var url = config.data.dir + '/metadata/filters/filters.json';
-  get(url, function(data) {
+  get(getPath(url), function(data) {
     for (var i=0; i<data.length; i++) this.filters.push(new Filter(data[i]));
   }.bind(this))
 }
@@ -2348,7 +2445,7 @@ Hotspots.prototype.init = function() {
 }
 
 Hotspots.prototype.showHide = function() {
-  c = ['grid'].indexOf(layout.selected) > -1 ? 'disabled' : '';
+  c = ['umap'].indexOf(layout.selected) > -1 ? '' : 'disabled';
   document.querySelector('nav').className = c;
 }
 
@@ -2418,6 +2515,70 @@ Keyboard.prototype.shiftPressed = function() {
 
 Keyboard.prototype.commandPressed = function() {
   return this.pressed[91];
+}
+
+/**
+* Handle load progress and welcome scene events
+**/
+
+function Welcome() {
+  this.progressElem = find('#progress');
+  this.loaderTextElem = find('#loader-text');
+  this.loaderSceneElem = find('#loader-scene');
+  this.buttonElem = find('#enter-button');
+  this.buttonElem.addEventListener('click', this.onButtonClick.bind(this));
+}
+
+Welcome.prototype.onButtonClick = function(e) {
+  if (e.target.className.indexOf('active') > -1) {
+    requestAnimationFrame(function() {
+      this.removeLoader(function() {
+        this.startWorld();
+      }.bind(this));
+    }.bind(this));
+  }
+}
+
+Welcome.prototype.removeLoader = function(onSuccess) {
+  var blocks = document.querySelectorAll('.block');
+  for (var i=0; i<blocks.length; i++) {
+    setTimeout(function(i) {
+      blocks[i].style.animation = 'exit 300s';
+      setTimeout(function(i) {
+        blocks[i].parentNode.removeChild(blocks[i]);
+        if (i == blocks.length-1) onSuccess();
+      }.bind(this, i), 1000)
+    }.bind(this, i), i*100)
+  }
+  document.querySelector('#progress').style.opacity = 0;
+}
+
+Welcome.prototype.updateProgress = function() {
+  var progress = valueSum(data.textureProgress) / data.textureCount;
+  // remove the decimal value from the load progress
+  progress = progress.toString();
+  var index = progress.indexOf('.');
+  if (index > -1) progress = progress.substring(0, index);
+  // display the load progress
+  this.progressElem.textContent = progress + '%';
+  if (progress == 100 &&
+      data.loadedTextures == data.textureCount &&
+      world.heightmap) {
+    this.buttonElem.className += ' active';
+  }
+}
+
+Welcome.prototype.startWorld = function() {
+  requestAnimationFrame(function() {
+    world.init();
+    text.init();
+    picker.init();
+    setTimeout(function() {
+      document.querySelector('#loader-scene').classList += 'hidden';
+      document.querySelector('#header-controls').style.opacity = 1;
+      world.state.displayed = true;
+    }.bind(this), 50);
+  }.bind(this))
 }
 
 /**
@@ -2605,5 +2766,6 @@ var keyboard = new Keyboard();
 var selection = new Selection();
 var layout = new Layout();
 var world = new World();
+var text = new Text();
 var lod = new LOD();
 var data = new Data();
