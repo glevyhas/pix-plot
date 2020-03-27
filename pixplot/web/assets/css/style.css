@@ -2,13 +2,6 @@
   margin: 0;
   padding: 0;
   font-family: 'Open Sans';
-  -webkit-touch-callout: none; /* iOS Safari */
-    -webkit-user-select: none; /* Safari */
-     -khtml-user-select: none; /* Konqueror HTML */
-       -moz-user-select: none; /* Old versions of Firefox */
-        -ms-user-select: none; /* Internet Explorer/Edge */
-            user-select: none; /* Non-prefixed version, currently
-                                  supported by Chrome, Opera and Firefox */
 }
 
 body,
@@ -67,6 +60,19 @@ select:disabled {
   opacity: 0.4;
 }
 
+.no-highlight {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/**
+* Canvases
+**/
+
 #canvas-container {
   position: absolute;
   top: 0;
@@ -93,6 +99,13 @@ select:disabled {
   max-height: 90%;
 }
 
+#character-canvas {
+  position: absolute;
+  top: 60px;
+  left: 100px;
+  z-index: 1;
+}
+
 #pixplot-canvas {
   height: 100%;
   width: 100%;
@@ -108,52 +121,6 @@ select:disabled {
 
 #pixplot-canvas.select {
   cursor: crosshair;
-}
-
-/**
-* Range slider
-**/
-
-input[type=range] {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 100%;
-  height: 2px;
-  border-radius: 10px;
-  background: #c3c3c3;
-  outline: none;
-}
-
-input[type=range]::-webkit-slider-thumb,
-input[type=range]::-moz-range-thumb,
-input[type=range]::-ms-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 18px;
-  height: 18px;
-  background: #eee;
-  cursor: pointer;
-}
-
-#range-slider {
-  margin-right: 10px;
-  width: 100px;
-  display: inline-block;
-}
-
-#range-slider label {
-  color: #c3c3c3;
-  font-size: 0.67em;
-  font-family: courier;
-  position: absolute;
-  top: 1px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-#pointsize-range-input {
-  position: relative;
-  top: 4px;
 }
 
 /**
@@ -253,6 +220,52 @@ input[type=range]::-ms-thumb {
   top: 0;
   display: inline-block;
   margin: 0 10px;
+}
+
+/**
+* Range slider
+**/
+
+input[type=range] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 2px;
+  border-radius: 10px;
+  background: #c3c3c3;
+  outline: none;
+}
+
+input[type=range]::-webkit-slider-thumb,
+input[type=range]::-moz-range-thumb,
+input[type=range]::-ms-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  background: #eee;
+  cursor: pointer;
+}
+
+#range-slider {
+  margin-right: 10px;
+  width: 100px;
+  display: inline-block;
+}
+
+#range-slider label {
+  color: #c3c3c3;
+  font-size: 0.67em;
+  font-family: courier;
+  position: absolute;
+  top: 1px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+#pointsize-range-input {
+  position: relative;
+  top: 4px;
 }
 
 /**
@@ -392,8 +405,8 @@ nav h2 {
   left: 0;
   color: #fff;
   padding: 40px;
-  padding-top: 100px;
-  transition: transform 2s;
+  padding-top: 120px;
+  transition: transform 1s;
   z-index: 3;
   background: #000;
   max-height: 100%;
@@ -407,7 +420,7 @@ nav h2 {
 }
 
 #loader-scene.hidden {
-  transform: translateY(-1000vh);
+  transform: translateY(-100%);
 }
 
 #loader-text {
