@@ -6,6 +6,7 @@ from os.path import basename, join, exists, dirname, realpath
 from keras.applications.inception_v3 import preprocess_input
 from sklearn.metrics import pairwise_distances_argmin_min
 from keras.backend.tensorflow_backend import set_session
+from dateutil.parser import parse as parse_date
 from sklearn.preprocessing import minmax_scale
 from keras_preprocessing.image import load_img
 from collections import defaultdict, Counter
@@ -68,7 +69,7 @@ config = {
   'images': None,
   'metadata': None,
   'out_dir': 'output',
-  'use_cache': True,
+  'use_cache': False,
   'encoding': 'utf8',
   'min_cluster_size': 20,
   'atlas_size': 2048,
@@ -138,20 +139,25 @@ def get_manifest(**kwargs):
     pos[ i['idx'] ].append([ i['x'], i['y'] ])
   # obtain the paths to each layout's JSON positions
   layouts = get_layouts(**kwargs)
-  # create a heightmap for each layout
-  for i in layouts:
-    for j in layouts[i]:
-      get_heightmap(layouts[i][j], i + '-' + j, **kwargs)
+  # create a heightmap for the umap layout
+  if 'umap' in layouts and layouts['umap']:
+    get_heightmap(layouts['umap']['layout'], 'umap', **kwargs)
+  # fetch the date distribution data for point sizing
+  if 'date' in layouts and layouts['date']:
+    date_layout = read_json(layouts['date']['labels'], **kwargs)
+  # specify point size scalars
+  point_sizes = {}
+  point_sizes['min'] = 0
+  point_sizes['grid'] = 1 / math.ceil(len(kwargs['image_paths'])**(1/2))
+  point_sizes['max'] = point_sizes['grid'] * 1.2
+  point_sizes['scatter'] = point_sizes['grid'] * .2
+  point_sizes['date'] = 1 / ((date_layout['cols']+1) * len(date_layout['labels']))
+  point_sizes['initial'] = point_sizes['scatter']
   # create manifest json
-  point_size = 1 / math.ceil( len(kwargs['image_paths'])**(1/2) )
   manifest = {
     'layouts': layouts,
     'initial_layout': 'umap',
-    'point_size': {
-      'min': 0,
-      'max': 1.2 * point_size,
-      'initial': 0.18 * point_size,
-    },
+    'point_sizes': point_sizes,
     'imagelist': get_path('imagelists', 'imagelist', **kwargs),
     'atlas_dir': kwargs['atlas_dir'],
     'config': {
@@ -205,18 +211,7 @@ def filter_images(**kwargs):
     image_paths.append(i.path)
   # handle the case user provided no metadata
   if not kwargs.get('metadata', False): return image_paths
-  # handle csv metadata
-  l = []
-  if kwargs['metadata'].endswith('.csv'):
-    headers = ['filename', 'tags', 'description', 'permalink']
-    with open(kwargs['metadata']) as f:
-      for i in list(csv.reader(f)):
-        l.append({headers[j]: i[j] for j,_ in enumerate(headers)})
-  # handle json metadata
-  else:
-    for i in glob2.glob(kwargs['metadata']):
-      with open(i) as f:
-        l.append(json.load(f))
+  l = get_metadata_list(**kwargs)
   # retain only records with image and metadata
   img_bn = set([clean_filename(i) for i in image_paths])
   meta_bn = set([clean_filename(i.get('filename', '')) for i in l])
@@ -229,6 +224,25 @@ def filter_images(**kwargs):
   kwargs['metadata'] = [i for i in l if clean_filename(i['filename']) in both]
   write_metadata(**kwargs)
   return [i for i in image_paths if clean_filename(i) in both]
+
+
+def get_metadata_list(**kwargs):
+  '''Return a list of objects with image metadata'''
+  if not kwargs['metadata']: return []
+  # handle csv metadata
+  l = []
+  if kwargs['metadata'].endswith('.csv'):
+    headers = ['filename', 'tags', 'description', 'permalink', 'date']
+    with open(kwargs['metadata']) as f:
+      rows = list(csv.reader(f))
+      for i in rows:
+        l.append({headers[j]: i[j] if i[j] else '' for j,_ in enumerate(headers)})
+  # handle json metadata
+  else:
+    for i in glob2.glob(kwargs['metadata']):
+      with open(i) as f:
+        l.append(json.load(f))
+  return l
 
 
 def get_image_paths(**kwargs):
@@ -350,11 +364,12 @@ def save_atlas(atlas, out_dir, n):
 def get_layouts(*args, **kwargs):
   '''Get the image positions in each projection'''
   vecs = vectorize_images(**kwargs)
-  umap = get_umap_projection(vecs=vecs, **kwargs)
-  raster = get_rasterfairy_projection(umap=umap, **kwargs)
-  grid = get_grid_projection(**kwargs)
-  umap_grid = get_pointgrid_projection(umap, 'umap', **kwargs)
-  return {
+  umap = get_umap_layout(vecs=vecs, **kwargs)
+  raster = get_rasterfairy_layout(umap=umap, **kwargs)
+  grid = get_grid_layout(**kwargs)
+  umap_grid = get_pointgrid_layout(umap, 'umap', **kwargs)
+  date = get_date_layout(**kwargs)
+  layouts = {
     'umap': {
       'layout': umap,
       'jittered': umap_grid,
@@ -365,8 +380,9 @@ def get_layouts(*args, **kwargs):
     'rasterfairy': {
       'layout': raster,
     },
+    'date': date,
   }
-
+  return layouts
 
 def vectorize_images(**kwargs):
   '''Create and return vector representation of Image() instances'''
@@ -390,7 +406,7 @@ def vectorize_images(**kwargs):
   return np.array(vecs)
 
 
-def get_umap_projection(**kwargs):
+def get_umap_layout(**kwargs):
   '''Get the x,y positions of images passed through a umap projection'''
   print(' * creating UMAP layout')
   out_path = get_path('layouts', 'umap', **kwargs)
@@ -402,7 +418,7 @@ def get_umap_projection(**kwargs):
   return write_layout(out_path, z, **kwargs)
 
 
-def get_tsne_projection(**kwargs):
+def get_tsne_layout(**kwargs):
   '''Get the x,y positions of images passed through a TSNE projection'''
   print(' * creating TSNE layout with ' + str(multiprocessing.cpu_count()) + ' cores...')
   out_path = get_path('layouts', 'tsne', **kwargs)
@@ -412,7 +428,7 @@ def get_tsne_projection(**kwargs):
   return write_layout(out_path, z, **kwargs)
 
 
-def get_rasterfairy_projection(**kwargs):
+def get_rasterfairy_layout(**kwargs):
   '''Get the x, y position of images passed through a rasterfairy projection'''
   print(' * creating rasterfairy layout')
   out_path = get_path('layouts', 'rasterfairy', **kwargs)
@@ -430,7 +446,7 @@ def get_rasterfairy_projection(**kwargs):
   return write_layout(out_path, pos, **kwargs)
 
 
-def get_grid_projection(**kwargs):
+def get_grid_layout(**kwargs):
   '''Get the x,y positions of images in a grid projection'''
   print(' * creating grid layout')
   out_path = get_path('layouts', 'grid', **kwargs)
@@ -446,7 +462,7 @@ def get_grid_projection(**kwargs):
   return write_layout(out_path, z, **kwargs)
 
 
-def get_pointgrid_projection(path, label, **kwargs):
+def get_pointgrid_layout(path, label, **kwargs):
   '''Gridify the positions in `path` and return the path to this new layout'''
   print(' * creating {} pointgrid'.format(label))
   out_path = get_path('layouts', label + '-jittered', **kwargs)
@@ -456,13 +472,114 @@ def get_pointgrid_projection(path, label, **kwargs):
   return write_layout(out_path, z, **kwargs)
 
 
-def add_z_dim(X, val=0.001):
-  '''Given X with shape (n,2) return (n,3) with val as X[:,2]'''
-  if X.shape[1] == 2:
-    z = np.zeros((X.shape[0], 3)) + val
-    for idx, i in enumerate(X): z[idx] += np.array((i[0], i[1], 0))
-    return z.tolist()
-  return X.tolist()
+def get_date_layout(cols=3, bin_units='years', **kwargs):
+  '''
+  Get the x,y positions of input images based on their dates
+  @param int cols: the number of columns to plot for each bar
+  @param str bin_units: the temporal units to use when creating bins
+  '''
+  print(' * creating date layout with {} colums'.format(cols))
+  # convert dates to datetime.datetime units (if possible) then format/round date
+  metadata = get_metadata_list(**kwargs)
+  if not len(metadata): return False
+  # if the data layouts have been cached, return them
+  positions_out_path = get_path('layouts', 'timeline', **kwargs)
+  labels_out_path = get_path('layouts', 'timeline-labels', **kwargs)
+  if os.path.exists(positions_out_path) and \
+     os.path.exists(labels_out_path) and \
+     kwargs['use_cache']:
+    return {
+      'layout': positions_out_path,
+      'labels': labels_out_path,
+    }
+  # date layout is not cached, so fetch dates and process
+  datestrings = [i.get('date', 'no_date') for i in metadata]
+  dates = [datestring_to_date(i) for i in datestrings]
+  rounded_dates = [round_date(i, bin_units) for i in dates]
+  # create d[formatted_date] = [indices into datestrings of dates that round to formatted_date]
+  d = defaultdict(list)
+  for idx, i in enumerate(rounded_dates):
+    d[i].append(idx)
+  # determine the number of distinct grid positions in the x and y axes
+  n_coords_x = (cols+1)*len(d)
+  n_coords_y = 1 + max([len(d[i]) for i in d]) // cols
+  if n_coords_y > n_coords_x: return get_date_layout(cols=int(cols*2), **kwargs)
+  # create a mesh of grid positions in clip space -1:1 given the time distribution
+  grid_x = (np.arange(0,n_coords_x)/(n_coords_x-1))*2
+  grid_y = (np.arange(0,n_coords_y)/(n_coords_x-1))*2
+  # divide each grid axis by half its max length to center at the origin 0,0
+  grid_x = grid_x - np.max(grid_x)/2.0
+  grid_y = grid_y - np.max(grid_y)/2.0
+  # make dates increase from left to right by sorting keys of d
+  d_keys = np.array(list(d.keys()))
+  seconds = np.array([date_to_seconds(dates[ d[i][0] ]) for i in d_keys])
+  d_keys = d_keys[np.argsort(seconds)]
+  # determine which images will fill which units of the grid established above
+  coords = np.zeros((len(datestrings), 2)) # 2D array with x, y clip-space coords of each date
+  for jdx, j in enumerate(d_keys):
+    for kdx, k in enumerate(d[j]):
+      x = jdx*(cols+1) + (kdx%cols)
+      y = kdx // cols
+      coords[k] = [grid_x[x], grid_y[y]]
+  # find the positions of labels
+  label_positions = np.array([ [ grid_x[i*(cols+1)], grid_y[0] ] for i in range(len(d)) ])
+  # move the labels down in the y dimension by a grid units
+  dx = (grid_x[1]-grid_x[0]) # size of a single cell
+  label_positions[:,1] = label_positions[:,1] - dx
+  # quantize the label positions and label positions
+  image_positions = round_floats(coords)
+  label_positions = round_floats(label_positions.tolist())
+  # write and return the paths to the date based layout
+  return {
+    'layout': write_json(positions_out_path, image_positions, **kwargs),
+    'labels': write_json(labels_out_path, {
+      'positions': label_positions,
+      'labels': d_keys.tolist(),
+      'cols': cols,
+    }, **kwargs),
+  }
+
+
+def datestring_to_date(datestring):
+  '''
+  Given a string representing a date return a datetime object
+  '''
+  try:
+    return parse_date(str(datestring), fuzzy=True, default=datetime.datetime(9999, 1, 1))
+  except Exception as exc:
+    print(' * could not parse datestring {}'.format(datestring))
+    return datestring
+
+
+def date_to_seconds(date):
+  '''
+  Given a datetime object return an integer representation for that datetime
+  '''
+  if isinstance(date, datetime.datetime):
+    return (date - datetime.datetime.today()).total_seconds()
+  else:
+    return - float('inf')
+
+
+def round_date(date, unit):
+  '''
+  Return `date` truncated to the temporal unit specified in `units`
+  '''
+  if not isinstance(date, datetime.datetime): return 'no_date'
+  formatted = date.strftime('%d %B %Y -- %X')
+  if unit in set(['seconds', 'minutes', 'hours']):
+    date = formatted.split('--')[1].strip()
+    if unit == 'seconds': date = date
+    elif unit == 'minutes': date = ':'.join(d.split(':')[:-1]) + ':00'
+    elif unit == 'hours': date = date.split(':')[0] + ':00:00'
+  elif unit in set(['days', 'months', 'years', 'decades', 'centuries']):
+    date = formatted.split('--')[0].strip()
+    if unit == 'days': date = date
+    elif unit == 'months': date = ' '.join(date.split()[1:])
+    elif unit == 'years': date = date.split()[-1]
+    elif unit == 'decades': date = str(int(date.split()[-1])//10) + '0'
+    elif unit == 'centuries': date = str(int(date.split()[-1])//100) + '00'
+  return date
 
 
 def get_path(*args, **kwargs):
@@ -478,8 +595,13 @@ def get_path(*args, **kwargs):
 def write_layout(path, obj, **kwargs):
   '''Write layout json `obj` to disk and return the path to the saved file'''
   obj = (minmax_scale(obj)-0.5)*2 # scale -1:1
-  obj = [[round(float(j), 5) for j in i] for i in obj]
+  obj = round_floats(obj, 5)
   return write_json(path, obj, **kwargs)
+
+
+def round_floats(obj, digits=5):
+  '''Return 2D array obj with rounded float precision'''
+  return [[round(float(j), digits) for j in i] for i in obj]
 
 
 def write_json(path, obj, **kwargs):
@@ -557,7 +679,9 @@ def get_version():
 
 def get_heightmap(path, label, **kwargs):
   '''Create a heightmap using the distribution of points stored at `path`'''
-  X = np.array(read_json(path, **kwargs))
+  X = read_json(path, **kwargs)
+  if 'positions' in X: X = X['positions']
+  X = np.array(X)
   # create kernel density estimate of distribution X
   nbins = 200
   x, y = X.T
