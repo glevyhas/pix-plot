@@ -1907,6 +1907,7 @@ Text.prototype.init = function() {
 
 Text.prototype.addEventListeners = function() {
   window.addEventListener('resize', function() {
+    if (!this.mesh) return;
     this.mesh.material.uniforms.scale.value = world.getPointScale();
   }.bind(this))
 }
