@@ -155,6 +155,7 @@ def get_manifest(**kwargs):
   point_sizes['initial'] = point_sizes['scatter']
   # create manifest json
   manifest = {
+    'plot_id': kwargs['plot_id'],
     'layouts': layouts,
     'initial_layout': 'umap',
     'point_sizes': point_sizes,
