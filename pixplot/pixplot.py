@@ -1,25 +1,23 @@
 from __future__ import division
 import warnings; warnings.filterwarnings('ignore')
 from keras.preprocessing.image import save_img, img_to_array, array_to_img
-from keras.applications import Xception, VGG19, InceptionV3, imagenet_utils
 from os.path import basename, join, exists, dirname, realpath
 from keras.applications.inception_v3 import preprocess_input
+from keras.applications import InceptionV3, imagenet_utils
 from sklearn.metrics import pairwise_distances_argmin_min
 from keras.backend.tensorflow_backend import set_session
 from dateutil.parser import parse as parse_date
 from sklearn.preprocessing import minmax_scale
 from keras_preprocessing.image import load_img
-from collections import defaultdict, Counter
 from pointgrid import align_points_to_grid
 from distutils.dir_util import copy_tree
 from iiif_downloader import Manifest
-from sklearn.cluster import KMeans
+from collections import defaultdict
 from rasterfairy import coonswarp
 import matplotlib.pyplot as plt
 from keras.models import Model
 from scipy.stats import kde
 from hdbscan import HDBSCAN
-from hashlib import sha224
 import keras.backend as K
 import tensorflow as tf
 from umap import UMAP
@@ -27,9 +25,6 @@ import multiprocessing
 import pkg_resources
 import rasterfairy
 import numpy as np
-import distutils
-import functools
-import itertools
 import datetime
 import argparse
 import random
@@ -112,9 +107,8 @@ def copy_web_assets(**kwargs):
   for i in ['index.html', os.path.join('assets', 'js', 'tsne.js')]:
     path = os.path.join(dest, i)
     with open(path, 'r') as f:
-      f = f.read().replace('VERSION_NUMBER', get_version())
       with open(path, 'w') as out:
-        out.write(f)
+        out.write(f.read().replace('VERSION_NUMBER', get_version()))
   if kwargs['copy_web_only']: sys.exit()
 
 
