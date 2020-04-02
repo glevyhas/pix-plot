@@ -1,4 +1,4 @@
-// version: VERSION_NUMBER
+// version: 0.0.78
 
 /**
 *
@@ -527,7 +527,7 @@ Layout.prototype.selectActiveIcon = function() {
   try {
     document.querySelector('#layout-' + this.selected).classList.add('active');
   } catch (err) {
-    console.warn(' * the requested layout has no icon:', this.layout)
+    console.warn(' * the requested layout has no icon:', this.selected)
   }
 }
 
@@ -556,6 +556,7 @@ Layout.prototype.addEventListeners = function() {
 Layout.prototype.set = function(layout, enableDelay) {
   // disallow new transitions when we're transitioning
   if (world.state.transitioning) return;
+  if (!(layout in data.json.layouts)) return;
   world.state.transitioning = true;
   // set the selected layout
   this.selected = layout;
@@ -1359,6 +1360,8 @@ World.prototype.init = function() {
   this.render();
   // set the mode
   this.setMode('pan');
+  // set the display boolean
+  world.state.displayed = true;
 }
 
 /**
@@ -1888,18 +1891,112 @@ Picker.prototype.select = function(obj) {
 }
 
 /**
+* Add date based layout and filtering
+**/
+
+function Dates() {}
+
+Dates.prototype.init = function() {
+  if (!data.json.layouts.date) return;
+  // set elems used below
+  this.elems = {
+    slider: document.querySelector('#date-slider'),
+  }
+  // dates domain, selected range, and filename to date map
+  this.state = {
+    data: {},
+    min: null,
+    max: null,
+    selected: [null, null],
+  }
+  // add the dates object to the filters for joint filtering
+  filters.filters.push(this);
+  // function for filtering images
+  this.selectImage = function(image) { return true };
+  // init
+  this.load();
+  this.addWords();
+}
+
+Dates.prototype.load = function() {
+  get(getPath('output/data/metadata/dates.json'), function(json) {
+    // set range slider domain
+    this.state.min = json.domain.min;
+    this.state.max = json.domain.max;
+    // store a map from image name to year
+    var keys = Object.keys(json.dates);
+    keys.forEach(function(k) {
+      try {
+        var _k = parseInt(k);
+      } catch(err) {
+        var _k = k;
+      }
+      json.dates[k].forEach(function(img) {
+        this.state.data[img] = _k;
+      }.bind(this))
+      this.selectImage = function(image) {
+        var year = this.state.data[image];
+        // if the selected years are the starting domain, select all images
+        if (this.state.selected[0] == this.state.min &&
+            this.state.selected[1] == this.state.max) return true;
+        if (!year || !Number.isInteger(year)) return false;
+        return year >= this.state.selected[0] && year <= this.state.selected[1];
+      }
+    }.bind(this))
+    // add the filter now that the dates have loaded
+    this.addFilter();
+  }.bind(this))
+}
+
+Dates.prototype.addWords = function() {
+  get(getPath(data.json.layouts.date.labels), function(json) {
+    var l = [];
+    json.labels.forEach(function(word, idx) {
+      l.push({
+        word: word,
+        x: json.positions[idx][0],
+        y: json.positions[idx][1],
+      })
+    })
+    text.setWords(l);
+  })
+}
+
+Dates.prototype.addFilter = function() {
+  this.slider = noUiSlider.create(this.elems.slider, {
+    start: [this.state.min, this.state.max],
+    tooltips: [true, true],
+    step: 1,
+    behaviour: 'drag',
+    connect: true,
+    range: {
+      'min': this.state.min,
+      'max': this.state.max,
+    },
+    format: {
+      to: function (value) { return parseInt(value) },
+      from: function (value) { return parseInt(value) },
+    },
+  });
+  this.slider.on('update', function(values) {
+    this.state.selected = values;
+    filters.filterImages();
+  }.bind(this))
+}
+
+/**
 * Draw text into the scene
 **/
 
 function Text() {}
 
 Text.prototype.init = function() {
-  this.count = 10**5; // max number of characters to represent
+  this.count = 1000; // max number of characters to represent
   this.point = 128.0; // px of each letter in atlas texture
   this.scale = 0; // 8 so 'no date' fits in one grid space
   this.kerning = 0; // scalar specifying y axis letter spacing
   this.canvas = null; // px of each size in the canvas
-  this.texture = {map: null, tex: null}; // set after label data loads
+  this.texture = this.getTexture(); // map = {letter: px offsets}, tex = texture
   this.json = {}; // will store the label and layout data
   this.createMesh();
   this.addEventListeners();
@@ -1912,6 +2009,7 @@ Text.prototype.addEventListeners = function() {
   }.bind(this))
 }
 
+// create a basic ascii texture with cells for each letter
 Text.prototype.getTexture = function() {
   var canvas = document.createElement('canvas'),
       ctx = canvas.getContext('2d'),
@@ -1952,75 +2050,77 @@ Text.prototype.getTexture = function() {
   return {map: characterMap, tex: tex};
 }
 
+// initialize the text mesh
 Text.prototype.createMesh = function() {
-  get(getPath(data.json.layouts.date.labels), function(json) {
-    this.json = json;
-    // set mesh sizing attributes based on number of columns in each bar group
-    this.scale = config.size.points.date;
-    this.kerning = this.scale * 0.8;
-    // create the texture
-    this.texture = this.getTexture()
-    // create the mesh
-    var offsets = [],
-        positions = [];
-    this.json.labels.forEach(function(word, idx) {
-      for (var c=0; c<word.length; c++) {
-        var offset = word[c] in this.texture.map
-          ? this.texture.map[word[c]]
-          : {
-              x: this.canvas-this.point, // fallback for letters not in canvas
-              y: this.canvas-this.point,
-            }
-        offsets.push(offset.x);
-        offsets.push(offset.y);
-        positions.push(this.json.positions[idx][0] + this.kerning*c);
-        positions.push(this.json.positions[idx][1]);
-        positions.push(0);
-      }
-    }.bind(this));
-    // create the geometry
-    var geometry = new THREE.BufferGeometry()
-    var positions = new THREE.BufferAttribute(new Float32Array(positions), 3);
-    var offsets = new THREE.BufferAttribute(new Uint16Array(offsets), 2);
-    geometry.setAttribute('position', positions);
-    geometry.setAttribute('offset', offsets);
-    var material = new THREE.RawShaderMaterial({
-      uniforms: {
-        size: {
-          type: 'f',
-          value: this.size,
-        },
-        point: {
-          type: 'f',
-          value: this.point,
-        },
-        canvas: {
-          type: 'f',
-          value: this.canvas,
-        },
-        scale: {
-          type: 'f',
-          value: this.getPointScale(),
-        },
-        render: {
-          type: 'bool',
-          value: false,
-        },
-        texture: {
-          type: 't',
-          value: this.texture.tex,
-        },
-        render: {
-          type: 'f',
-          value: 0, // 0=false; 1=true
-        },
+  // set mesh sizing attributes based on number of columns in each bar group
+  this.scale = config.size.points.date;
+  this.kerning = this.scale * 0.8;
+  // create the mesh
+  var geometry = new THREE.BufferGeometry(),
+      positions = new THREE.BufferAttribute(new Float32Array(this.count*3), 3),
+      offsets = new THREE.BufferAttribute(new Uint16Array(this.count*2), 2);
+  geometry.setAttribute('position', positions);
+  geometry.setAttribute('offset', offsets);
+  var material = new THREE.RawShaderMaterial({
+    uniforms: {
+      point: {
+        type: 'f',
+        value: this.point,
       },
-      vertexShader: document.querySelector('#text-vertex-shader').textContent,
-      fragmentShader: document.querySelector('#text-fragment-shader').textContent,
-    });
-    this.mesh = new THREE.Points(geometry, material);
-    world.scene.add(this.mesh);
-  }.bind(this))
+      canvas: {
+        type: 'f',
+        value: this.canvas,
+      },
+      scale: {
+        type: 'f',
+        value: this.getPointScale(),
+      },
+      render: {
+        type: 'bool',
+        value: false,
+      },
+      texture: {
+        type: 't',
+        value: this.texture.tex,
+      },
+      render: {
+        type: 'f',
+        value: 0, // 0=false; 1=true
+      },
+    },
+    vertexShader: document.querySelector('#text-vertex-shader').textContent,
+    fragmentShader: document.querySelector('#text-fragment-shader').textContent,
+  });
+  this.mesh = new THREE.Points(geometry, material);
+  this.mesh.frustumCulled = false;
+  world.scene.add(this.mesh);
+}
+
+// arr = [{word: x: y: z: }, ...]
+Text.prototype.setWords = function(arr) {
+  var offsets = new Uint16Array(this.count*2),
+      positions = new Float32Array(this.count*3),
+      offsetIdx = 0,
+      positionIdx = 0;
+  arr.forEach(function(i, idx) {
+    for (var c=0; c<i.word.length; c++) {
+      var offset = i.word[c] in this.texture.map
+        ? this.texture.map[i.word[c]]
+        : {
+            x: this.canvas-this.point, // fallback for letters not in canvas
+            y: this.canvas-this.point,
+          }
+      offsets[offsetIdx++] = offset.x;
+      offsets[offsetIdx++] = offset.y;
+      positions[positionIdx++] = i.x + this.kerning*c;
+      positions[positionIdx++] = i.y;
+      positions[positionIdx++] = i.z || 0;
+    }
+    this.mesh.geometry.attributes.position.array = positions;
+    this.mesh.geometry.attributes.offset.array = offsets;
+    this.mesh.geometry.attributes.position.needsUpdate = true;
+    this.mesh.geometry.attributes.offset.needsUpdate = true;
+  }.bind(this));
 }
 
 Text.prototype.getPointScale = function() {
@@ -2361,22 +2461,41 @@ LOD.prototype.clear = function() {
 
 function Filters() {
   this.filters = [];
+  self.values = [];
+  this.selected = null;
 }
 
 Filters.prototype.loadFilters = function() {
   var url = config.data.dir + '/metadata/filters/filters.json';
   get(getPath(url), function(data) {
-    for (var i=0; i<data.length; i++) this.filters.push(new Filter(data[i]));
+    for (var i=0; i<data.length; i++) {
+      this.filters.push(new Filter(data[i]));
+    }
   }.bind(this))
+}
+
+// determine which images to keep in the current selection
+Filters.prototype.filterImages = function() {
+  var arr = new Float32Array(data.cells.length);
+  for (var i=0; i<data.json.images.length; i++) {
+    var keep = true;
+    for (var j=0; j<this.filters.length; j++) {
+      if (this.filters[j].selectImage &&
+          !this.filters[j].selectImage(data.json.images[i])) {
+        keep = false;
+        break;
+      }
+    }
+    arr[i] = keep ? 1.0 : 0.35;
+  }
+  world.setBuffer('opacity', arr);
 }
 
 function Filter(obj) {
   this.values = obj.filter_values || [];
   this.name = obj.filter_name || '';
-  if (this.values.length > 1) this.createSelect();
-}
-
-Filter.prototype.createSelect = function() {
+  if (this.values.length <= 1) return;
+  // create the filter's select
   var select = document.createElement('select'),
       option = document.createElement('option');
   option.textContent = 'All Values';
@@ -2387,37 +2506,29 @@ Filter.prototype.createSelect = function() {
     option.textContent = this.values[i].replace(/__/g, ' ');
     select.appendChild(option);
   }
-  select.onchange = this.onChange.bind(this);
+  // add the change listener
+  var self = this;
+  select.onchange = function(e) {
+    self.selected = e.target.value;
+    if (self.selected == 'All Values') {
+      // function that indicates whether to include an image in a selection
+      self.selectImage = function(image) { return true; }
+      filters.filterImages();
+    } else {
+      var filename = self.selected.replace(/\//g, '-').replace(/ /g, '__') + '.json',
+          path = getPath(config.data.dir + '/metadata/options/' + filename);
+      get(path, function(json) {
+        var vals = json.reduce(function(obj, i) {
+          obj[i] = true;
+          return obj;
+        }, {})
+        self.selectImage = function(image) { return image in vals; }
+        filters.filterImages();
+      })
+    }
+  }
+  // add the select to the DOM
   find('#filters').appendChild(select);
-}
-
-Filter.prototype.onChange = function(e) {
-  var val = e.target.value;
-  // case where user selected the 'All Values' option
-  if (val === 'All Values') {
-    this.filterCells(data.cells.reduce(function(arr, cell, cellIdx) {
-      arr.push(data.json.images[cellIdx]); return arr;
-    }.bind(this), []))
-  // case where user selected a specific option
-  } else {
-    // each {{ level-name }}.json file should use double underscore instead of whitespace
-    var level = val.replace(/\//g, '-').replace(/ /g, '__') + '.json',
-        url = config.data.dir + '/metadata/options/' + level;
-    get(url, this.filterCells);
-  }
-}
-
-// mutate the opacity of each cell to activate / deactivate
-Filter.prototype.filterCells = function(names) {
-  names = names.reduce(function(obj, n) {
-    obj[n] = true; return obj;
-  }, {}); // facilitate O(1) lookups
-  // update the cell opacities
-  var arr = new Float32Array(data.cells.length);
-  for (var i=0; i<data.cells.length; i++) {
-    arr[i] = data.json.images[i] in names ? 1 : 0.35;
-  }
-  world.setBuffer('opacity', arr);
 }
 
 /**
@@ -2572,13 +2683,15 @@ Welcome.prototype.updateProgress = function() {
 Welcome.prototype.startWorld = function() {
   requestAnimationFrame(function() {
     world.init();
-    text.init();
     picker.init();
-    setTimeout(function() {
-      document.querySelector('#loader-scene').classList += 'hidden';
-      document.querySelector('#header-controls').style.opacity = 1;
-      world.state.displayed = true;
-    }.bind(this), 50);
+    text.init();
+    dates.init();
+    setTimeout(() => {
+      requestAnimationFrame(() => {
+        document.querySelector('#loader-scene').classList += 'hidden';
+        document.querySelector('#header-controls').style.opacity = 1;
+      })
+    }, 1500)
   }.bind(this))
 }
 
@@ -2768,5 +2881,6 @@ var selection = new Selection();
 var layout = new Layout();
 var world = new World();
 var text = new Text();
+var dates = new Dates();
 var lod = new LOD();
 var data = new Data();

@@ -135,6 +135,7 @@ select:disabled {
   z-index: 100;
   overflow: hidden;
   box-shadow: 2px 1px 2px rgba(39, 39, 39, 0.2);
+  font-size: 0;
 }
 
 #header,
@@ -148,44 +149,17 @@ select:disabled {
   height: 40px;
 }
 
-#app-name,
-#tagline {
+#app-name {
   display: inline-block;
   height: 100%;
   vertical-align: top;
   padding: 18px 34px;
   box-sizing: border-box;
   font-weight: 300;
-}
-
-#app-name {
   background: #444;
   color: #fff;
-  font-size: 1.3em;
+  font-size: 21px;
   letter-spacing: 0.1em;
-}
-
-#tagline {
-  color: #999;
-  font-size: 1em;
-  padding-top: 20px;
-  font-weight: 400;
-  letter-spacing: .025em;
-  position: absolute;
-  z-index: 1;
-  background-color: #333;
-  white-space: nowrap;
-}
-
-#tagline::after {
-  content: '';
-  height: 100%;
-  width: 30px;
-  background: linear-gradient(90deg, rgb(51, 51, 51), rgb(51, 51, 51, 0));
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  right: -30px;
 }
 
 @media(max-width: 335px) {
@@ -245,6 +219,7 @@ input[type=range]::-ms-thumb {
   height: 18px;
   background: #eee;
   cursor: pointer;
+  border-radius: 18px;
 }
 
 #range-slider {
@@ -255,8 +230,7 @@ input[type=range]::-ms-thumb {
 
 #range-slider label {
   color: #c3c3c3;
-  font-size: 0.67em;
-  font-family: courier;
+  font-size: 9px;
   position: absolute;
   top: 1px;
   letter-spacing: 0.05em;
@@ -266,6 +240,48 @@ input[type=range]::-ms-thumb {
 #pointsize-range-input {
   position: relative;
   top: 4px;
+}
+
+/**
+* Dual range slider
+**/
+
+#date-slider {
+  height: 6px;
+  width: 100px;
+  display: inline-block;
+  vertical-align: top;
+  position: relative;
+  top: 19px;
+  margin-left: 10px;
+}
+
+#date-slider .noUi-connect {
+  background: #eab755;
+}
+
+#date-slider .noUi-handle {
+  background: #eee;
+  box-shadow: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 16px;
+  right: -8px;
+  border: 1px solid #888;
+}
+
+#date-slider .noUi-handle::before,
+#date-slider .noUi-handle::after {
+  display: none;
+}
+
+#date-slider .noUi-tooltip {
+  font-size: 9px;
+  padding: 0;
+  margin-bottom: 1px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #c4c4c4;
 }
 
 /**
@@ -756,7 +772,10 @@ noscript {
   font-weight: 400;
   max-height: 73px;
   overflow: auto;
-  padding-right: 15px;
+}
+
+#image-date {
+  margin-left: 4px;
 }
 
 .modal-text-left {
