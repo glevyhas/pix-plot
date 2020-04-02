@@ -2,6 +2,7 @@
 <html lang='en'>
   <head>
     <link href='https://fonts.googleapis.com/css?family=Open+Sans:300,400,600' rel='stylesheet'>
+    <link rel='stylesheet' type='text/css' href='assets/css/no-ui-slider.css'>
     <link rel='stylesheet' type='text/css' href='assets/css/style.css'>
     <title>Visualizing Image Fields</title>
     <meta charset='utf-8'/>
@@ -277,7 +278,6 @@
 
     uniform sampler2D texture;
     uniform float render;
-    uniform float size;
     uniform float point;
     uniform float canvas;
 
@@ -350,7 +350,6 @@
         <img id='logo' src='assets/images/dhlab-logo.svg' alt='DHLab logo' />
       </a>
       <div id='app-name'>PixPlot</div>
-      <div id='tagline'>Image fields in a Local Collection</div>
       <div id='header-controls'>
         <div id='range-slider'>
           <label>Point Size</label>
@@ -362,6 +361,7 @@
           <img id='layout-rasterfairy' src='assets/images/icons/rasterfairy.svg' />
         </div>
         <div id='filters'></div>
+        <div id='date-slider'></div>
       </div>
     </header>
     <!-- Loader -->
@@ -435,7 +435,8 @@
           <div class='modal-bottom-content'>
             <div class='modal-text-left'>
               <div id='image-title'><%- meta.filename ? decodeURIComponent(meta.filename) : decodeURIComponent(meta.src) %></div>
-              <div id='image-text'><%- meta.description ? decodeURIComponent(meta.description) : '' %></div>
+              <span id='image-text'><%- meta.description ? decodeURIComponent(meta.description) : '' %></span>
+              <span id='image-date'><%- meta.date ? '(' + meta.date + ')' : '' %></span>
             </div>
             <div class='modal-text-right'>
               <div id='meta-tags'>
@@ -514,6 +515,7 @@
     <script type='text/javascript' src='assets/vendor/dist/stats.min.js'></script>
     <script type='text/javascript' src='assets/vendor/dist/gunzip.min.js'></script>
     <script type='text/javascript' src='assets/vendor/dist/papaparse.min.js'></script>
+    <script type='text/javascript' src='assets/vendor/dist/no-ui-slider.min.js'></script>
     <script type='text/javascript' src='assets/js/tsne.js'></script>
     <script>
       (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
