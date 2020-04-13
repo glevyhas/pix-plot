@@ -1,4 +1,4 @@
-// version: 0.0.78
+// version: VERSION_NUMBER
 
 /**
 *
@@ -1916,6 +1916,8 @@ Dates.prototype.init = function() {
   // init
   this.load();
   this.addWords();
+  // display the layout icon
+  document.querySelector('#layout-date').style.display = 'inline-block';
 }
 
 Dates.prototype.load = function() {

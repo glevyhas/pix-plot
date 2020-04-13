@@ -292,17 +292,23 @@ input[type=range]::-ms-thumb {
   display: inline-block;
   position: relative;
   top: 5px;
+  vertical-align: top;
 }
 
 #icons img {
   width: 21px;
   margin: 0 8px;
-  opacity: 0.3;
+  opacity: 0.2;
   cursor: pointer;
+  vertical-align: top;
 }
 
 #icons img.active {
   opacity: 1;
+}
+
+#layout-date {
+  display: none;
 }
 
 /**
@@ -679,6 +685,7 @@ noscript {
   max-height: 100%;
   max-width: 100%;
   box-sizing: border-box;
+  background-color: #222;
 }
 
 #previous-image {
@@ -951,7 +958,7 @@ noscript {
 }
 
 input[type=text] {
-  padding: 10px 20px;
+  padding: 10px;
   font-size: 15px;
   border-radius: 3px;
   border: none;
