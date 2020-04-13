@@ -107,8 +107,9 @@ def copy_web_assets(**kwargs):
   for i in ['index.html', os.path.join('assets', 'js', 'tsne.js')]:
     path = os.path.join(dest, i)
     with open(path, 'r') as f:
+      f = f.read().replace('VERSION_NUMBER', get_version())
       with open(path, 'w') as out:
-        out.write(f.read().replace('VERSION_NUMBER', get_version()))
+        out.write(f)
   if kwargs['copy_web_only']: sys.exit()
 
 
