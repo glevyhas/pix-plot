@@ -2,6 +2,7 @@
 <html lang='en'>
   <head>
     <link href='https://fonts.googleapis.com/css?family=Open+Sans:300,400,600' rel='stylesheet'>
+    <link rel='stylesheet' type='text/css' href='assets/css/no-ui-slider.css'>
     <link rel='stylesheet' type='text/css' href='assets/css/style.css'>
     <title>Visualizing Image Fields</title>
     <meta charset='utf-8'/>
@@ -15,8 +16,6 @@
     * which describes the position of each vertex in screen coordinates.
     *
     * To do so, we can use the following variables defined by Three.js:
-    *   attribute vec3 position - stores each vertex's position in world space
-    *   attribute vec2 uv - sets each vertex's the texture coordinates
     *   uniform mat4 projectionMatrix - maps camera space into screen space
     *   uniform mat4 modelViewMatrix - combines:
     *     model matrix: maps a point's local coordinate space into world space
@@ -40,7 +39,7 @@
     #define SELECTING
 
     // set float precision
-    precision highp float;
+    precision mediump float;
 
     uniform mat4 modelViewMatrix;
     uniform mat4 projectionMatrix;
@@ -50,6 +49,7 @@
     uniform float transitionPercent;
     uniform float scaleTransitionPercent;
     uniform float borderWidth;
+    uniform float delay;
 
     attribute vec3 pos0;          // x y z position offsets for an instance
     attribute vec3 pos1;          // x y z position to which we're transitioning
@@ -79,8 +79,15 @@
       vOpacity = opacity;
       vSelected = selected;
 
+      // determine how far this point has proceeded in its transition
+      float delayX = (pos1.x + 1.0) / 2.0;
+      float delayY = (pos0.y + 1.0) / 2.0;
+      // pos0 has domains -1:1, so the delay sum above is <= 2.0
+      float d = ((delayX + delayY) / 2.0) * delay;
+
+      float percent = clamp(transitionPercent - d, 0.0, 1.0);
+
       // set point position as a mixture between the position + target
-      float percent = clamp(transitionPercent, 0.0, 1.0);
       vec3 pos = mix(pos0, pos1, percent);
       vec4 world = modelViewMatrix * vec4(pos, 1.0);
       gl_Position = projectionMatrix * world;
@@ -113,7 +120,7 @@
     #define SHADER_NAME instancedFragment
     #define SELECTING
 
-    precision highp float;
+    precision mediump float;
 
     uniform float useColor;
     uniform float cellAtlasPxPerSide;
@@ -131,10 +138,9 @@
     varying float vSelected;     // cell's presence (>0.5) or absence (<0.5) from selection
     varying float vTextureIndex; // cell's texture index
 
-    // textures contains an array of sampler2Ds
     #ifndef SELECTING
-      uniform sampler2D textures[N_TEXTURES];
-      uniform sampler2D lodTexture;
+      uniform sampler2D textures[N_TEXTURES]; // array of sampler2Ds
+      uniform sampler2D lodTexture; // single sampler2D
     #endif
 
     void main() {
@@ -148,11 +154,11 @@
       float w = isLod ? vWidth : vWidth/vHeight*cellPxHeight;
       float h = isLod ? vHeight : cellPxHeight;
 
-      // set boolean indicating whether to center cells
-      bool center = true;
-
       // find the length of the cell in its longest dimension (in px)
       float big = max(w, h);
+
+      // set boolean indicating whether to center cells
+      bool center = true;
 
       // find min, max vals of 0:1 scaled x axis to be textured
       float x0 = center ? (big-w)/2.0/big : 0.0;
@@ -207,8 +213,9 @@
     }
     </script>
 
+    <!-- Selection lasso -->
     <script type='x-shader/x-vertex' id='dashed-vertex-shader'>
-    precision highp float;
+    precision mediump float;
 
     uniform mat4 modelViewMatrix;
     uniform mat4 projectionMatrix;
@@ -216,6 +223,7 @@
 
     attribute vec3 position;
     attribute float length;
+
     varying float vLength;
 
     void main() {
@@ -226,12 +234,13 @@
     </script>
 
     <script type='x-shader/x-fragment' id='dashed-fragment-shader'>
-    precision highp float;
+    precision mediump float;
 
+    uniform vec3 cameraPosition;
     uniform bool render;
     uniform float time;
+
     varying float vLength;
-    uniform vec3 cameraPosition;
 
     void main() {
       if (!render) discard;
@@ -239,6 +248,46 @@
       float gapSize = dashSize * 0.4;
       if (mod(vLength + time, dashSize + gapSize) > dashSize) discard;
       gl_FragColor = vec4(0.9, 0.9, 0.9, 1.0);
+    }
+    </script>
+
+    <!-- Text sprites -->
+    <script type='x-shader/x-vertex' id='text-vertex-shader'>
+    precision mediump float;
+
+    uniform mat4 modelViewMatrix;
+    uniform mat4 projectionMatrix;
+    uniform vec3 cameraPosition;
+    uniform float scale;
+
+    attribute vec2 offset;
+    attribute vec3 position;
+
+    varying vec2 vOffset;
+
+    void main() {
+      vec4 world = modelViewMatrix * vec4(position, 1.0);
+      gl_Position = projectionMatrix * world;
+      gl_PointSize = scale / -world.z;
+      vOffset = offset;
+    }
+    </script>
+
+    <script type='x-shader/x-fragment' id='text-fragment-shader'>
+    precision mediump float;
+
+    uniform sampler2D texture;
+    uniform float render;
+    uniform float point;
+    uniform float canvas;
+
+    varying vec2 vOffset;
+
+    void main() {
+      vec2 uv = vec2(vOffset.x/point + gl_PointCoord.x, vOffset.y/point + gl_PointCoord.y);
+      uv *= point/canvas;
+      gl_FragColor = texture2D(texture, uv);
+      if (gl_FragColor.r < 0.1 || render < 0.5) discard;
     }
     </script>
 
@@ -296,23 +345,24 @@
     </script>
 
     <!-- Header -->
-    <header id='header'>
+    <header id='header' class='no-highlight'>
       <a href='https://dhlab.yale.edu' target='_blank'>
         <img id='logo' src='assets/images/dhlab-logo.svg' alt='DHLab logo' />
       </a>
       <div id='app-name'>PixPlot</div>
-      <div id='tagline'>Image fields in a Local Collection</div>
       <div id='header-controls'>
         <div id='range-slider'>
           <label>Point Size</label>
           <input id='pointsize-range-input' min='0' max='0.03' value='0' step='0.00001' type='range' />
         </div>
         <div id='icons'>
-          <img id='layout-grid' src='assets/images/icons/alphabetic.svg' />
-          <img id='layout-umap' src='assets/images/icons/scatter.svg' />
-          <img id='layout-rasterfairy' src='assets/images/icons/rasterfairy.svg' />
+          <img id='layout-date' src='assets/images/icons/date-layout.svg' />
+          <img id='layout-grid' src='assets/images/icons/az-layout.svg' />
+          <img id='layout-umap' src='assets/images/icons/scatter-layout.svg' />
+          <img id='layout-rasterfairy' src='assets/images/icons/grid-layout.svg' />
         </div>
         <div id='filters'></div>
+        <div id='date-slider'></div>
       </div>
     </header>
     <!-- Loader -->
@@ -350,7 +400,7 @@
     </div>
     <!-- Hotspot Navigation -->
     <nav>
-      <div class='nav-inner'>
+      <div class='nav-inner no-highlight'>
         <h2>Hotspots</h2>
         <div id='hotspots'></div>
         <script type='text/html' id='hotspot-template'>
@@ -386,7 +436,8 @@
           <div class='modal-bottom-content'>
             <div class='modal-text-left'>
               <div id='image-title'><%- meta.filename ? decodeURIComponent(meta.filename) : decodeURIComponent(meta.src) %></div>
-              <div id='image-text'><%- meta.description ? decodeURIComponent(meta.description) : '' %></div>
+              <span id='image-text'><%- meta.description ? decodeURIComponent(meta.description) : '' %></span>
+              <span id='image-date'><%- meta.date ? '(' + meta.date + ')' : '' %></span>
             </div>
             <div class='modal-text-right'>
               <div id='meta-tags'>
@@ -399,13 +450,13 @@
         </div>
       </div>
     </script>
-    <div id='selected-image-target'></div>
+    <div id='selected-image-target' class='no-highlight'></div>
     <!-- Image Selection: multi-image selection -->
-    <div id='selected-images-count'>
+    <div id='selected-images-count' class='no-highlight'>
       <div id='count-target'>0</div>
       <div>images selected</div>
     </div>
-    <div id='selection-icons'>
+    <div id='selection-icons' class='no-highlight'>
       <img id='pan' src='assets/images/icons/pan.svg' class='active' />
       <img id='select' src='assets/images/icons/select.svg' class='' />
     </div>
@@ -465,6 +516,7 @@
     <script type='text/javascript' src='assets/vendor/dist/stats.min.js'></script>
     <script type='text/javascript' src='assets/vendor/dist/gunzip.min.js'></script>
     <script type='text/javascript' src='assets/vendor/dist/papaparse.min.js'></script>
+    <script type='text/javascript' src='assets/vendor/dist/no-ui-slider.min.js'></script>
     <script type='text/javascript' src='assets/js/tsne.js'></script>
     <script>
       (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){

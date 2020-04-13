@@ -58,14 +58,16 @@ function Config() {
       initial: 0, // initial point size
       grid: 0, // initial point size for grid layouts
       scatter: 0, // initial point size for scatter layouts
+      date: 0, // initial point size for date layouts
     },
   }
   this.transitions = {
-    duration: 2.5,
-    ease: {
-      value: 1,
-      ease: Power2.easeInOut,
-    }
+    duration: 2,
+    delay: 0.4,
+  }
+  this.transitions.ease = {
+    value: 1.0 + this.transitions.delay,
+    ease: Power3.easeOut,
   }
   this.pickerMaxZ = 0.4; // max z value of camera to trigger picker modal
   this.atlasesPerTex = (this.size.texture/this.size.atlas)**2;
@@ -99,7 +101,7 @@ function Data() {
     x: { min: Number.POSITIVE_INFINITY, max: Number.NEGATIVE_INFINITY, },
     y: { min: Number.POSITIVE_INFINITY, max: Number.NEGATIVE_INFINITY, },
   };
-  world.loadHeightmap(this.load.bind(this));
+  world.getHeightMap(this.load.bind(this));
 }
 
 // Load json data with chart element positions
@@ -124,14 +126,11 @@ Data.prototype.load = function() {
 
 Data.prototype.parseManifest = function(json) {
   this.json = json;
-  // set sizes of cells and atlases
+  // set sizes of cells, atlases, and points
   config.size.cell = json.config.sizes.cell;
   config.size.atlas = json.config.sizes.atlas;
   config.size.lodCell = json.config.sizes.lod;
-  // set point size vals
-  config.size.points = json.point_size;
-  config.size.points.scatter = 0.2 * config.size.points.max;
-  config.size.points.grid = 0.85 * config.size.points.max;
+  config.size.points = json.point_sizes;
   // update the point size DOM element
   world.elems.pointSize.min = 0;
   world.elems.pointSize.max = config.size.points.max;
@@ -139,7 +138,6 @@ Data.prototype.parseManifest = function(json) {
   // set number of atlases and textures
   this.atlasCount = json.atlas.count;
   this.textureCount = Math.ceil(json.atlas.count / config.atlasesPerTex);
-  // set layout values
   this.layouts = json.layouts;
   this.hotspots = new Hotspots();
   layout.init(Object.keys(this.layouts));
@@ -367,7 +365,7 @@ function Cell(obj) {
 }
 
 Cell.prototype.getZ = function(x, y) {
-  return world.getHeightmapHeightAt(x, y) || 0;
+  return world.getHeightAt(x, y) || 0;
 }
 
 Cell.prototype.updateParentBoundingBox = function() {
@@ -495,7 +493,6 @@ Cell.prototype.setBuffer = function(attr) {
 **/
 
 function Layout() {
-  this.elem = null;
   this.jitterElem = null;
   this.selected = null;
   this.options = [];
@@ -527,7 +524,11 @@ Layout.prototype.selectActiveIcon = function() {
     icons[i].classList.remove('active');
   }
   // add the active class to selected icon
-  document.querySelector('#layout-' + this.selected).classList.add('active');
+  try {
+    document.querySelector('#layout-' + this.selected).classList.add('active');
+  } catch (err) {
+    console.warn(' * the requested layout has no icon:', this.selected)
+  }
 }
 
 Layout.prototype.addEventListeners = function() {
@@ -536,9 +537,8 @@ Layout.prototype.addEventListeners = function() {
     if (!e.target || !e.target.id || e.target.id == 'icons') return;
     this.set(e.target.id.replace('layout-', ''), true);
   }.bind(this));
-  // add the event listener to the input
+  // allow clicks on jitter container to update jitter state
   this.elems.container.addEventListener('click', function(e) {
-    // allow clicks on containing element to update jitter state
     if (e.target.tagName != 'INPUT') {
       if (this.elems.input.checked) {
         this.elems.input.checked = false;
@@ -553,33 +553,30 @@ Layout.prototype.addEventListeners = function() {
 }
 
 // Transition to a new layout; layout must be an attr on Cell.layouts
-Layout.prototype.set = function(layoutKey, enableDelay) {
+Layout.prototype.set = function(layout, enableDelay) {
   // disallow new transitions when we're transitioning
   if (world.state.transitioning) return;
+  if (!(layout in data.json.layouts)) return;
   world.state.transitioning = true;
   // set the selected layout
-  this.selected = layoutKey;
+  this.selected = layout;
   // set the world mode back to pan
   world.setMode('pan');
   // select the active tab
   this.selectActiveIcon();
-  // enable the jitter button if this layout has a jittered option
-  this.showHideJitter();
   // set the point size given the selected layout
   this.setPointScalar();
+  // set any uniforms that need adjusting given the selected layout
+  this.setUniforms();
   // zoom the user out if they're zoomed in
-  var initialCameraPosition = world.getInitialLocation(),
-      delay = 0;
-  if ((world.camera.position.z < initialCameraPosition.z) && enableDelay) {
-    delay = config.transitions.duration * 1000;
-    world.flyTo(initialCameraPosition);
-  }
+  var delay = this.recenterCamera(enableDelay);
+  // enable the jitter button if this layout has a jittered option
+  var jitter = this.showHideJitter();
   // determine the path to the json to display
-  var jitter = this.elems.input.checked && 'jittered' in data.layouts[layoutKey],
-      layoutAttr = jitter ? 'jittered' : 'layout'
+  var layoutType = jitter ? 'jittered' : 'layout'
   // begin the new layout transition
   setTimeout(function() {
-    get(getPath(data.layouts[layoutKey][layoutAttr]), function(pos) {
+    get(getPath(data.layouts[layout][layoutType]), function(pos) {
       // clear the LOD mechanism
       lod.clear();
       // set the target locations of each point
@@ -601,17 +598,30 @@ Layout.prototype.set = function(layoutKey, enableDelay) {
   }.bind(this), delay);
 }
 
-// set the point size as a function of the current layout
-Layout.prototype.setPointScalar = function() {
-  if (this.selected == 'tsne' || this.selected == 'umap') {
-    world.elems.pointSize.value = config.size.points.scatter;
+// return the camera to its starting position
+Layout.prototype.recenterCamera = function(enableDelay) {
+  var initialCameraPosition = world.getInitialLocation();
+  if ((world.camera.position.z < initialCameraPosition.z) && enableDelay) {
+    world.flyTo(initialCameraPosition);
+    return config.transitions.duration * 1000;
   }
-  if (this.selected == 'grid' || this.selected == 'rasterfairy') {
-    world.elems.pointSize.value = config.size.points.grid;
-  }
-  world.setUniform('scaleTarget', world.getPointScale());
+  return 0;
 }
 
+// set the point size as a function of the current layout
+Layout.prototype.setPointScalar = function() {
+  var size = false, // size for points
+      l = this.selected; // selected layout
+  if (l == 'tsne' || l == 'umap') size = config.size.points.scatter;
+  if (l == 'grid' || l == 'rasterfairy') size = config.size.points.grid;
+  if (l == 'date') size = config.size.points.date;
+  if (size) {
+    world.elems.pointSize.value = size;
+    world.setUniform('scaleTarget', world.getPointScale());
+  }
+}
+
+// show/hide the jitter and return a bool whether to jitter the new layout
 Layout.prototype.showHideJitter = function() {
   var jitterable = 'jittered' in data.layouts[this.selected];
   jitterable
@@ -619,6 +629,12 @@ Layout.prototype.showHideJitter = function() {
       ? this.elems.container.classList.add('visible', 'disabled')
       : this.elems.container.classList.add('visible')
     : this.elems.container.classList.remove('visible')
+  return jitterable && this.elems.input.checked;
+}
+
+// adjust any uniforms on meshes that must change given the selected layout
+Layout.prototype.setUniforms = function() {
+  text.mesh.material.uniforms.render.value = this.selected == 'date' ? 1.0 : 0.0;
 }
 
 // reset cell state, mesh buffers, and transition uniforms
@@ -637,7 +653,7 @@ Layout.prototype.onTransitionComplete = function() {
   // pass each updated pos0 buffer to the gpu
   for (var i=0; i<world.group.children.length; i++) {
     world.group.children[i].geometry.attributes.pos0.needsUpdate = true;
-    world.group.children[i].material.uniforms.transitionPercent = { type: 'f', value: 0, };
+    world.group.children[i].material.uniforms.transitionPercent = { type: 'f', value: 0 };
   }
   // indicate the world is no longer transitioning
   world.state.transitioning = false;
@@ -679,7 +695,7 @@ function World() {
   };
   this.elems = {
     pointSize: document.querySelector('#pointsize-range-input'),
-  }
+  };
   this.addEventListeners();
 }
 
@@ -741,7 +757,7 @@ World.prototype.getControls = function() {
 **/
 
 // load the heightmap
-World.prototype.loadHeightmap = function(callback) {
+World.prototype.getHeightMap = function(callback) {
   // load an image for setting 3d vertex positions
   var img = new Image();
   img.crossOrigin = 'Anonymous';
@@ -758,7 +774,7 @@ World.prototype.loadHeightmap = function(callback) {
 }
 
 // determine the height of the heightmap at coordinates x,y
-World.prototype.getHeightmapHeightAt = function(x, y) {
+World.prototype.getHeightAt = function(x, y) {
   var x = (x+1)/2, // rescale x,y axes from -1:1 to 0:1
       y = (y+1)/2,
       row = Math.floor(y * (this.heightmap.height-1)),
@@ -1054,13 +1070,9 @@ World.prototype.getTexture = function(canvas) {
 **/
 
 World.prototype.getPointScale = function() {
-  var scalar = parseFloat(this.elems.pointSize.value);
-  return this.scalePointSize(scalar);
-}
-
-World.prototype.scalePointSize = function(val) {
-  var canvasSize = getCanvasSize();
-  return val * window.devicePixelRatio * canvasSize.h;
+  var scalar = parseFloat(this.elems.pointSize.value),
+      canvasSize = getCanvasSize();
+  return scalar * window.devicePixelRatio * canvasSize.h;
 }
 
 /**
@@ -1129,6 +1141,10 @@ World.prototype.getShaderMaterial = function(obj) {
         type: 'vec3',
         value: new Float32Array([234/255, 183/255, 85/255]),
       },
+      delay: {
+        type: 'f',
+        value: config.transitions.delay,
+      }
     },
     vertexShader: vertex,
     fragmentShader: fragment,
@@ -1300,9 +1316,9 @@ World.prototype.flyToCellImage = function(img) {
 
 World.prototype.getInitialLocation = function() {
   return {
-    x: this.center.x,
-    y: this.center.y,
-    z: 1,
+    x: 0, //this.center.x,
+    y: 0, //this.center.y,
+    z: 1.2,
   }
 }
 
@@ -1344,6 +1360,8 @@ World.prototype.init = function() {
   this.render();
   // set the mode
   this.setMode('pan');
+  // set the display boolean
+  world.state.displayed = true;
 }
 
 /**
@@ -1434,8 +1452,14 @@ Selection.prototype.initializeMesh = function() {
   geometry.setAttribute('length', lengthAttr);
   var material = new THREE.RawShaderMaterial({
     uniforms: {
-      time: {value: 0, type: 'float'},
-      render: {value: false, 'type': 'bool'},
+      time: {
+        type: 'float',
+        value: 0,
+      },
+      render: {
+        type: 'bool',
+        value: false,
+      },
     },
     vertexShader: document.querySelector('#dashed-vertex-shader').textContent,
     fragmentShader: document.querySelector('#dashed-fragment-shader').textContent,
@@ -1867,6 +1891,245 @@ Picker.prototype.select = function(obj) {
 }
 
 /**
+* Add date based layout and filtering
+**/
+
+function Dates() {}
+
+Dates.prototype.init = function() {
+  if (!data.json.layouts.date) return;
+  // set elems used below
+  this.elems = {
+    slider: document.querySelector('#date-slider'),
+  }
+  // dates domain, selected range, and filename to date map
+  this.state = {
+    data: {},
+    min: null,
+    max: null,
+    selected: [null, null],
+  }
+  // add the dates object to the filters for joint filtering
+  filters.filters.push(this);
+  // function for filtering images
+  this.selectImage = function(image) { return true };
+  // init
+  this.load();
+  this.addWords();
+  // display the layout icon
+  document.querySelector('#layout-date').style.display = 'inline-block';
+}
+
+Dates.prototype.load = function() {
+  get(getPath('output/data/metadata/dates.json'), function(json) {
+    // set range slider domain
+    this.state.min = json.domain.min;
+    this.state.max = json.domain.max;
+    // store a map from image name to year
+    var keys = Object.keys(json.dates);
+    keys.forEach(function(k) {
+      try {
+        var _k = parseInt(k);
+      } catch(err) {
+        var _k = k;
+      }
+      json.dates[k].forEach(function(img) {
+        this.state.data[img] = _k;
+      }.bind(this))
+      this.selectImage = function(image) {
+        var year = this.state.data[image];
+        // if the selected years are the starting domain, select all images
+        if (this.state.selected[0] == this.state.min &&
+            this.state.selected[1] == this.state.max) return true;
+        if (!year || !Number.isInteger(year)) return false;
+        return year >= this.state.selected[0] && year <= this.state.selected[1];
+      }
+    }.bind(this))
+    // add the filter now that the dates have loaded
+    this.addFilter();
+  }.bind(this))
+}
+
+Dates.prototype.addWords = function() {
+  get(getPath(data.json.layouts.date.labels), function(json) {
+    var l = [];
+    json.labels.forEach(function(word, idx) {
+      l.push({
+        word: word,
+        x: json.positions[idx][0],
+        y: json.positions[idx][1],
+      })
+    })
+    text.setWords(l);
+  })
+}
+
+Dates.prototype.addFilter = function() {
+  this.slider = noUiSlider.create(this.elems.slider, {
+    start: [this.state.min, this.state.max],
+    tooltips: [true, true],
+    step: 1,
+    behaviour: 'drag',
+    connect: true,
+    range: {
+      'min': this.state.min,
+      'max': this.state.max,
+    },
+    format: {
+      to: function (value) { return parseInt(value) },
+      from: function (value) { return parseInt(value) },
+    },
+  });
+  this.slider.on('update', function(values) {
+    this.state.selected = values;
+    filters.filterImages();
+  }.bind(this))
+}
+
+/**
+* Draw text into the scene
+**/
+
+function Text() {}
+
+Text.prototype.init = function() {
+  this.count = 1000; // max number of characters to represent
+  this.point = 128.0; // px of each letter in atlas texture
+  this.scale = 0; // 8 so 'no date' fits in one grid space
+  this.kerning = 0; // scalar specifying y axis letter spacing
+  this.canvas = null; // px of each size in the canvas
+  this.texture = this.getTexture(); // map = {letter: px offsets}, tex = texture
+  this.json = {}; // will store the label and layout data
+  this.createMesh();
+  this.addEventListeners();
+}
+
+Text.prototype.addEventListeners = function() {
+  window.addEventListener('resize', function() {
+    if (!this.mesh) return;
+    this.mesh.material.uniforms.scale.value = world.getPointScale();
+  }.bind(this))
+}
+
+// create a basic ascii texture with cells for each letter
+Text.prototype.getTexture = function() {
+  var canvas = document.createElement('canvas'),
+      ctx = canvas.getContext('2d'),
+      characterMap = {},
+      xOffset = 0.2, // offset to draw letters in center of grid position
+      yOffset = 0.2, // offset to draw full letters w/ baselines...
+      charFirst = 48, // ord of the first character in the map
+      charLast = 122, // ord of the last character in the map
+      skips = ':;<=>?@[\\]^_`', // any characters to skip in the map
+      chars = charLast - charFirst - skips.length + 1; // n characters to include in map
+  this.canvas = this.point * Math.ceil(chars**(1/2))
+  canvas.width = this.canvas; //
+  canvas.height = this.canvas;
+  canvas.id = 'character-canvas';
+  ctx.font = this.point + 'px Monospace';
+  // give the canvas a black background for pixel discarding
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#ffffff';
+  // draw the letters on the canvas
+  var x = 0,
+      y = 0;
+  for (var i=charFirst; i<charLast+1; i++) {
+    var char = String.fromCharCode(i);
+    if (skips.includes(char)) continue;
+    characterMap[char] = {x: x, y: y};
+    ctx.fillText(char, x+(xOffset*this.point), y+this.point-(yOffset*this.point));
+    x += this.point;
+    if (x > canvas.width - this.point) {
+      x = 0;
+      y += this.point;
+    }
+  }
+  // build a three texture with the canvas
+  var tex = new THREE.Texture(canvas);
+  tex.flipY = false;
+  tex.needsUpdate = true;
+  return {map: characterMap, tex: tex};
+}
+
+// initialize the text mesh
+Text.prototype.createMesh = function() {
+  // set mesh sizing attributes based on number of columns in each bar group
+  this.scale = config.size.points.date;
+  this.kerning = this.scale * 0.8;
+  // create the mesh
+  var geometry = new THREE.BufferGeometry(),
+      positions = new THREE.BufferAttribute(new Float32Array(this.count*3), 3),
+      offsets = new THREE.BufferAttribute(new Uint16Array(this.count*2), 2);
+  geometry.setAttribute('position', positions);
+  geometry.setAttribute('offset', offsets);
+  var material = new THREE.RawShaderMaterial({
+    uniforms: {
+      point: {
+        type: 'f',
+        value: this.point,
+      },
+      canvas: {
+        type: 'f',
+        value: this.canvas,
+      },
+      scale: {
+        type: 'f',
+        value: this.getPointScale(),
+      },
+      render: {
+        type: 'bool',
+        value: false,
+      },
+      texture: {
+        type: 't',
+        value: this.texture.tex,
+      },
+      render: {
+        type: 'f',
+        value: 0, // 0=false; 1=true
+      },
+    },
+    vertexShader: document.querySelector('#text-vertex-shader').textContent,
+    fragmentShader: document.querySelector('#text-fragment-shader').textContent,
+  });
+  this.mesh = new THREE.Points(geometry, material);
+  this.mesh.frustumCulled = false;
+  world.scene.add(this.mesh);
+}
+
+// arr = [{word: x: y: z: }, ...]
+Text.prototype.setWords = function(arr) {
+  var offsets = new Uint16Array(this.count*2),
+      positions = new Float32Array(this.count*3),
+      offsetIdx = 0,
+      positionIdx = 0;
+  arr.forEach(function(i, idx) {
+    for (var c=0; c<i.word.length; c++) {
+      var offset = i.word[c] in this.texture.map
+        ? this.texture.map[i.word[c]]
+        : {
+            x: this.canvas-this.point, // fallback for letters not in canvas
+            y: this.canvas-this.point,
+          }
+      offsets[offsetIdx++] = offset.x;
+      offsets[offsetIdx++] = offset.y;
+      positions[positionIdx++] = i.x + this.kerning*c;
+      positions[positionIdx++] = i.y;
+      positions[positionIdx++] = i.z || 0;
+    }
+    this.mesh.geometry.attributes.position.array = positions;
+    this.mesh.geometry.attributes.offset.array = offsets;
+    this.mesh.geometry.attributes.position.needsUpdate = true;
+    this.mesh.geometry.attributes.offset.needsUpdate = true;
+  }.bind(this));
+}
+
+Text.prototype.getPointScale = function() {
+  return window.devicePixelRatio * window.innerHeight * this.scale;
+}
+
+/**
 * Create a modal for larger image viewing
 **/
 
@@ -1957,7 +2220,7 @@ function LOD() {
   this.cell = this.getCanvas(config.size.lodCell);
   this.cellIdxToImage = {}; // image cache mapping cell idx to loaded image data
   this.grid = {}; // set by this.indexCells()
-  this.minZ = 0.5; // minimum zoom level to update textures
+  this.minZ = 0.8; // minimum zoom level to update textures
   this.initialRadius = r; // starting radius for LOD
   this.state = {
     openCoords: this.getAllTexCoords(), // array of unused x,y lod tex offsets
@@ -2049,7 +2312,7 @@ LOD.prototype.updateGridPosition = function() {
   // if the user is in a new grid position unload old images and load new
   if (this.state.camPos.x !== camPos.x || this.state.camPos.y !== camPos.y) {
     if (this.state.radius > 1) {
-      this.state.radius = Math.ceil(this.state.radius*0.95);
+      this.state.radius = Math.ceil(this.state.radius*0.8);
     }
     this.state.camPos = camPos;
     this.state.neighborsRequested = 0;
@@ -2099,7 +2362,7 @@ LOD.prototype.fetchNextImage = function() {
         this.state.fetchQueue = this.state.fetchQueue.concat(cellIndices);
       }
     }
-    if (this.state.openCoords && this.state.radius < 100) {
+    if (this.state.openCoords && this.state.radius < 30) {
       this.state.radius++;
     }
   }
@@ -2195,90 +2458,46 @@ LOD.prototype.clear = function() {
 }
 
 /**
-* Handle load progress and welcome scene events
-**/
-
-function Welcome() {
-  this.progressElem = find('#progress');
-  this.loaderTextElem = find('#loader-text');
-  this.loaderSceneElem = find('#loader-scene');
-  this.buttonElem = find('#enter-button');
-  this.buttonElem.addEventListener('click', this.onButtonClick.bind(this));
-}
-
-Welcome.prototype.onButtonClick = function(e) {
-  if (e.target.className.indexOf('active') > -1) {
-    requestAnimationFrame(function() {
-      this.removeLoader(function() {
-        this.startWorld();
-      }.bind(this));
-    }.bind(this));
-  }
-}
-
-Welcome.prototype.removeLoader = function(onSuccess) {
-  var blocks = document.querySelectorAll('.block');
-  for (var i=0; i<blocks.length; i++) {
-    setTimeout(function(i) {
-      blocks[i].style.animation = 'exit 300s';
-      setTimeout(function(i) {
-        blocks[i].parentNode.removeChild(blocks[i]);
-        if (i == blocks.length-1) onSuccess();
-      }.bind(this, i), 1000)
-    }.bind(this, i), i*100)
-  }
-  document.querySelector('#progress').style.opacity = 0;
-}
-
-Welcome.prototype.updateProgress = function() {
-  var progress = valueSum(data.textureProgress) / data.textureCount;
-  // remove the decimal value from the load progress
-  progress = progress.toString();
-  var index = progress.indexOf('.');
-  if (index > -1) progress = progress.substring(0, index);
-  // display the load progress
-  this.progressElem.textContent = progress + '%';
-  if (progress == 100 &&
-      data.loadedTextures == data.textureCount &&
-      world.heightmap) {
-    this.buttonElem.className += ' active';
-  }
-}
-
-Welcome.prototype.startWorld = function() {
-  requestAnimationFrame(function() {
-    world.init();
-    picker.init();
-    setTimeout(function() {
-      document.querySelector('#loader-scene').classList += 'hidden';
-      document.querySelector('#header-controls').style.opacity = 1;
-      world.state.displayed = true;
-    }.bind(this), 50);
-  }.bind(this))
-}
-
-/**
 * Configure filters
 **/
 
 function Filters() {
   this.filters = [];
+  self.values = [];
+  this.selected = null;
 }
 
 Filters.prototype.loadFilters = function() {
   var url = config.data.dir + '/metadata/filters/filters.json';
-  get(url, function(data) {
-    for (var i=0; i<data.length; i++) this.filters.push(new Filter(data[i]));
+  get(getPath(url), function(data) {
+    for (var i=0; i<data.length; i++) {
+      this.filters.push(new Filter(data[i]));
+    }
   }.bind(this))
+}
+
+// determine which images to keep in the current selection
+Filters.prototype.filterImages = function() {
+  var arr = new Float32Array(data.cells.length);
+  for (var i=0; i<data.json.images.length; i++) {
+    var keep = true;
+    for (var j=0; j<this.filters.length; j++) {
+      if (this.filters[j].selectImage &&
+          !this.filters[j].selectImage(data.json.images[i])) {
+        keep = false;
+        break;
+      }
+    }
+    arr[i] = keep ? 1.0 : 0.35;
+  }
+  world.setBuffer('opacity', arr);
 }
 
 function Filter(obj) {
   this.values = obj.filter_values || [];
   this.name = obj.filter_name || '';
-  if (this.values.length > 1) this.createSelect();
-}
-
-Filter.prototype.createSelect = function() {
+  if (this.values.length <= 1) return;
+  // create the filter's select
   var select = document.createElement('select'),
       option = document.createElement('option');
   option.textContent = 'All Values';
@@ -2289,37 +2508,29 @@ Filter.prototype.createSelect = function() {
     option.textContent = this.values[i].replace(/__/g, ' ');
     select.appendChild(option);
   }
-  select.onchange = this.onChange.bind(this);
+  // add the change listener
+  var self = this;
+  select.onchange = function(e) {
+    self.selected = e.target.value;
+    if (self.selected == 'All Values') {
+      // function that indicates whether to include an image in a selection
+      self.selectImage = function(image) { return true; }
+      filters.filterImages();
+    } else {
+      var filename = self.selected.replace(/\//g, '-').replace(/ /g, '__') + '.json',
+          path = getPath(config.data.dir + '/metadata/options/' + filename);
+      get(path, function(json) {
+        var vals = json.reduce(function(obj, i) {
+          obj[i] = true;
+          return obj;
+        }, {})
+        self.selectImage = function(image) { return image in vals; }
+        filters.filterImages();
+      })
+    }
+  }
+  // add the select to the DOM
   find('#filters').appendChild(select);
-}
-
-Filter.prototype.onChange = function(e) {
-  var val = e.target.value;
-  // case where user selected the 'All Values' option
-  if (val === 'All Values') {
-    this.filterCells(data.cells.reduce(function(arr, cell, cellIdx) {
-      arr.push(data.json.images[cellIdx]); return arr;
-    }.bind(this), []))
-  // case where user selected a specific option
-  } else {
-    // each {{ level-name }}.json file should use double underscore instead of whitespace
-    var level = val.replace(/\//g, '-').replace(/ /g, '__') + '.json',
-        url = config.data.dir + '/metadata/options/' + level;
-    get(url, this.filterCells);
-  }
-}
-
-// mutate the opacity of each cell to activate / deactivate
-Filter.prototype.filterCells = function(names) {
-  names = names.reduce(function(obj, n) {
-    obj[n] = true; return obj;
-  }, {}); // facilitate O(1) lookups
-  // update the cell opacities
-  var arr = new Float32Array(data.cells.length);
-  for (var i=0; i<data.cells.length; i++) {
-    arr[i] = data.json.images[i] in names ? 1 : 0.35;
-  }
-  world.setBuffer('opacity', arr);
 }
 
 /**
@@ -2348,7 +2559,7 @@ Hotspots.prototype.init = function() {
 }
 
 Hotspots.prototype.showHide = function() {
-  c = ['grid'].indexOf(layout.selected) > -1 ? 'disabled' : '';
+  c = ['umap'].indexOf(layout.selected) > -1 ? '' : 'disabled';
   document.querySelector('nav').className = c;
 }
 
@@ -2418,6 +2629,72 @@ Keyboard.prototype.shiftPressed = function() {
 
 Keyboard.prototype.commandPressed = function() {
   return this.pressed[91];
+}
+
+/**
+* Handle load progress and welcome scene events
+**/
+
+function Welcome() {
+  this.progressElem = find('#progress');
+  this.loaderTextElem = find('#loader-text');
+  this.loaderSceneElem = find('#loader-scene');
+  this.buttonElem = find('#enter-button');
+  this.buttonElem.addEventListener('click', this.onButtonClick.bind(this));
+}
+
+Welcome.prototype.onButtonClick = function(e) {
+  if (e.target.className.indexOf('active') > -1) {
+    requestAnimationFrame(function() {
+      this.removeLoader(function() {
+        this.startWorld();
+      }.bind(this));
+    }.bind(this));
+  }
+}
+
+Welcome.prototype.removeLoader = function(onSuccess) {
+  var blocks = document.querySelectorAll('.block');
+  for (var i=0; i<blocks.length; i++) {
+    setTimeout(function(i) {
+      blocks[i].style.animation = 'exit 300s';
+      setTimeout(function(i) {
+        blocks[i].parentNode.removeChild(blocks[i]);
+        if (i == blocks.length-1) onSuccess();
+      }.bind(this, i), 1000)
+    }.bind(this, i), i*100)
+  }
+  document.querySelector('#progress').style.opacity = 0;
+}
+
+Welcome.prototype.updateProgress = function() {
+  var progress = valueSum(data.textureProgress) / data.textureCount;
+  // remove the decimal value from the load progress
+  progress = progress.toString();
+  var index = progress.indexOf('.');
+  if (index > -1) progress = progress.substring(0, index);
+  // display the load progress
+  this.progressElem.textContent = progress + '%';
+  if (progress == 100 &&
+      data.loadedTextures == data.textureCount &&
+      world.heightmap) {
+    this.buttonElem.className += ' active';
+  }
+}
+
+Welcome.prototype.startWorld = function() {
+  requestAnimationFrame(function() {
+    world.init();
+    picker.init();
+    text.init();
+    dates.init();
+    setTimeout(() => {
+      requestAnimationFrame(() => {
+        document.querySelector('#loader-scene').classList += 'hidden';
+        document.querySelector('#header-controls').style.opacity = 1;
+      })
+    }, 1500)
+  }.bind(this))
 }
 
 /**
@@ -2605,5 +2882,7 @@ var keyboard = new Keyboard();
 var selection = new Selection();
 var layout = new Layout();
 var world = new World();
+var text = new Text();
+var dates = new Dates();
 var lod = new LOD();
 var data = new Data();

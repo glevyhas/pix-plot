@@ -102,11 +102,15 @@ pixplot --images "path/to/images/*.jpg" --metadata "path/to/metadata.csv"
 
 Your metadata should be in a comma-separated value file (CSV), should contain one row for each of your input images, and should contain exactly the following columns in the following order.
 
-| Filename | Metadata Tags | Description | Permalink   |
-| -------- | ------------- | ----------- | ----------- |
+| Filename | Metadata Tags | Description | Permalink        |
+| -------- | ------------- | ----------- | ---------------- |
 | bees.jpg | honey&#124;yellow  | bees' knees | https://... |
 
 The CSV should contain no headers.
+
+If desired, you can add a fifth column "year" that will be used to create a data-based layout of your images:
+
+![App preview](./pixplot/web/assets/images/date-layout.png?raw=true)
 
 ## IIIF Images
 

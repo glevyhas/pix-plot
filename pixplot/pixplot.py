@@ -1,24 +1,23 @@
 from __future__ import division
 import warnings; warnings.filterwarnings('ignore')
 from keras.preprocessing.image import save_img, img_to_array, array_to_img
-from keras.applications import Xception, VGG19, InceptionV3, imagenet_utils
 from os.path import basename, join, exists, dirname, realpath
 from keras.applications.inception_v3 import preprocess_input
+from keras.applications import InceptionV3, imagenet_utils
 from sklearn.metrics import pairwise_distances_argmin_min
 from keras.backend.tensorflow_backend import set_session
+from dateutil.parser import parse as parse_date
 from sklearn.preprocessing import minmax_scale
 from keras_preprocessing.image import load_img
-from collections import defaultdict, Counter
 from pointgrid import align_points_to_grid
 from distutils.dir_util import copy_tree
 from iiif_downloader import Manifest
-from sklearn.cluster import KMeans
+from collections import defaultdict
 from rasterfairy import coonswarp
 import matplotlib.pyplot as plt
 from keras.models import Model
 from scipy.stats import kde
 from hdbscan import HDBSCAN
-from hashlib import sha224
 import keras.backend as K
 import tensorflow as tf
 from umap import UMAP
@@ -26,9 +25,6 @@ import multiprocessing
 import pkg_resources
 import rasterfairy
 import numpy as np
-import distutils
-import functools
-import itertools
 import datetime
 import argparse
 import random
@@ -56,7 +52,7 @@ except:
 # handle dynamic GPU memory allocation
 tf_config = tf.compat.v1.ConfigProto()
 tf_config.gpu_options.allow_growth = True
-tf_config.log_device_placement =  True
+tf_config.log_device_placement = True
 sess = tf.compat.v1.Session(config=tf_config)
 
 '''
@@ -83,103 +79,43 @@ config = {
   'plot_id': str(uuid.uuid1()),
 }
 
+
 ##
-# Main
+# Entry
 ##
+
 
 def process_images(**kwargs):
   '''Main method for processing user images and metadata'''
   copy_web_assets(**kwargs)
   kwargs['out_dir'] = join(kwargs['out_dir'], 'data')
-  kwargs['image_paths'] = filter_images(**kwargs)
+  image_paths, metadata = filter_images(**kwargs)
+  kwargs['image_paths'] = image_paths
+  kwargs['metadata'] = metadata
   kwargs['atlas_dir'] = get_atlas_data(**kwargs)
   get_manifest(**kwargs)
   write_images(**kwargs)
   print(' * done!')
 
 
-def stream_images(*args, **kwargs):
-  '''Read in all images from args[0], a list of image paths'''
-  images = []
-  for idx, i in enumerate(kwargs['image_paths']):
-    try:
-      image = Image(i)
-      yield image
-    except:
-      print(' * image', i, 'could not be processed')
+def copy_web_assets(**kwargs):
+  '''Copy the /web directory from the pixplot source to the users cwd'''
+  src = join(dirname(realpath(__file__)), 'web')
+  dest = join(os.getcwd(), kwargs['out_dir'])
+  copy_tree(src, dest)
+  # write version numbers into output
+  for i in ['index.html', os.path.join('assets', 'js', 'tsne.js')]:
+    path = os.path.join(dest, i)
+    with open(path, 'r') as f:
+      f = f.read().replace('VERSION_NUMBER', get_version())
+      with open(path, 'w') as out:
+        out.write(f)
+  if kwargs['copy_web_only']: sys.exit()
 
 
-def write_images(**kwargs):
-  '''Write all originals and thumbs to the output dir'''
-  for i in stream_images(**kwargs):
-    # copy original for lightbox
-    out_dir = join(kwargs['out_dir'], 'originals')
-    if not exists(out_dir): os.makedirs(out_dir)
-    out_path = join(out_dir, clean_filename(i.path))
-    shutil.copy(i.path, out_path)
-    # copy thumb for lod texture
-    out_dir = join(kwargs['out_dir'], 'thumbs')
-    if not exists(out_dir): os.makedirs(out_dir)
-    out_path = join(out_dir, clean_filename(i.path))
-    img = array_to_img(i.resize_to_max(kwargs['lod_cell_height']))
-    save_img(out_path, img)
-
-
-def get_manifest(**kwargs):
-  '''Create and return the base object for the manifest output file'''
-  # load the atlas data
-  atlas_data = json.load(open(join(kwargs['atlas_dir'], 'atlas_positions.json')))
-  # store each cell's size and atlas position
-  atlas_ids = set([i['idx'] for i in atlas_data])
-  sizes = [[] for _ in atlas_ids]
-  pos = [[] for _ in atlas_ids]
-  for idx, i in enumerate(atlas_data):
-    sizes[ i['idx'] ].append([ i['w'], i['h'] ])
-    pos[ i['idx'] ].append([ i['x'], i['y'] ])
-  # obtain the paths to each layout's JSON positions
-  layouts = get_layouts(**kwargs)
-  # create a heightmap for each layout
-  for i in layouts:
-    for j in layouts[i]:
-      get_heightmap(layouts[i][j], i + '-' + j, **kwargs)
-  # create manifest json
-  point_size = 1 / math.ceil( len(kwargs['image_paths'])**(1/2) )
-  manifest = {
-    'layouts': layouts,
-    'initial_layout': 'umap',
-    'point_size': {
-      'min': 0,
-      'max': 1.2 * point_size,
-      'initial': 0.18 * point_size,
-    },
-    'imagelist': get_path('imagelists', 'imagelist', **kwargs),
-    'atlas_dir': kwargs['atlas_dir'],
-    'config': {
-      'sizes': {
-        'atlas': kwargs['atlas_size'],
-        'cell': kwargs['cell_size'],
-        'lod': kwargs['lod_cell_height'],
-      },
-    },
-    'metadata': True if kwargs['metadata'] else False,
-    'centroids': get_centroids(vecs=read_json(layouts['umap']['layout'], **kwargs), **kwargs),
-    'creation_date': datetime.datetime.today().strftime('%d-%B-%Y-%H:%M:%S'),
-    'version': get_version(),
-  }
-  path = get_path('manifests', 'manifest', **kwargs)
-  write_json(path, manifest, **kwargs)
-  path = get_path(None, 'manifest', add_hash=False, **kwargs)
-  write_json(path, manifest, **kwargs)
-  # create images json
-  imagelist = {
-    'cell_sizes': sizes,
-    'images': [clean_filename(i) for i in kwargs['image_paths']],
-    'atlas': {
-      'count': len(atlas_ids),
-      'positions': pos,
-    },
-  }
-  write_json(manifest['imagelist'], imagelist)
+##
+# Images
+##
 
 
 def filter_images(**kwargs):
@@ -204,20 +140,10 @@ def filter_images(**kwargs):
       continue
     image_paths.append(i.path)
   # handle the case user provided no metadata
-  if not kwargs.get('metadata', False): return image_paths
-  # handle csv metadata
-  l = []
-  if kwargs['metadata'].endswith('.csv'):
-    headers = ['filename', 'tags', 'description', 'permalink']
-    with open(kwargs['metadata']) as f:
-      for i in list(csv.reader(f)):
-        l.append({headers[j]: i[j] for j,_ in enumerate(headers)})
-  # handle json metadata
-  else:
-    for i in glob2.glob(kwargs['metadata']):
-      with open(i) as f:
-        l.append(json.load(f))
-  # retain only records with image and metadata
+  if not kwargs.get('metadata', False):
+    return [image_paths, []]
+  # handle user metadata: retain only records with image and metadata
+  l = get_metadata_list(**kwargs)
   img_bn = set([clean_filename(i) for i in image_paths])
   meta_bn = set([clean_filename(i.get('filename', '')) for i in l])
   both = img_bn.intersection(meta_bn)
@@ -226,9 +152,17 @@ def filter_images(**kwargs):
     print(' ! Some images are missing metadata:\n  -', '\n  - '.join(no_meta[:10]))
     if len(no_meta) > 10: print(' ...', len(no_meta)-10, 'more')
     with open('missing-metadata.txt', 'w') as out: out.write('\n'.join(no_meta))
-  kwargs['metadata'] = [i for i in l if clean_filename(i['filename']) in both]
+  # get the sorted lists of images and metadata
+  d = {clean_filename(i['filename']): i for i in l}
+  metadata = []
+  images = []
+  for i in image_paths:
+    if clean_filename(i) in both:
+      metadata.append(d[clean_filename(i)])
+      images.append(i)
+  kwargs['metadata'] = metadata
   write_metadata(**kwargs)
-  return [i for i in image_paths if clean_filename(i) in both]
+  return [images, metadata]
 
 
 def get_image_paths(**kwargs):
@@ -239,15 +173,17 @@ def get_image_paths(**kwargs):
     print('\nError: please provide an images argument, e.g.:')
     print('pixplot --images "cat_pictures/*.jpg"\n')
     sys.exit()
+  # handle list of IIIF image inputs
   if os.path.exists(kwargs['images']):
     with open(kwargs['images']) as f:
       f = [i.strip() for i in f.read().split('\n') if i.strip()]
       if [i.startswith('http') for i in f]:
         for i in f: Manifest(url=i).save_images(limit=1)
         image_paths = sorted(glob2.glob(os.path.join('iiif-downloads', 'images', '*')))
-  # handle case where --images points to a glob of images
+  # handle case where images flag points to a glob of images
   if not image_paths:
     image_paths = sorted(glob2.glob(kwargs['images']))
+  # handle case user provided no images
   if not image_paths:
     print('\nError: No input images were found. Please check your --images glob\n')
     sys.exit()
@@ -258,30 +194,171 @@ def get_image_paths(**kwargs):
   return image_paths
 
 
+def stream_images(**kwargs):
+  '''Read in all images from args[0], a list of image paths'''
+  for idx, i in enumerate(kwargs['image_paths']):
+    try:
+      metadata = None
+      if kwargs.get('metadata', False) and kwargs['metadata'][idx]:
+        metadata = kwargs['metadata'][idx]
+      yield Image(i, metadata=metadata)
+    except Exception as exc:
+      print(' * image', i, 'could not be processed', exc)
+
+
 def clean_filename(s):
   '''Given a string that points to a filename, return a clean filename'''
   return unquote(os.path.basename(s))
 
 
-def write_metadata(**kwargs):
-  if not kwargs.get('metadata', []): return
+##
+# Metadata
+##
+
+
+def get_metadata_list(**kwargs):
+  '''Return a list of objects with image metadata'''
+  if not kwargs['metadata']: return []
+  # handle csv metadata
+  l = []
+  if kwargs['metadata'].endswith('.csv'):
+    headers = ['filename', 'tags', 'description', 'permalink', 'date']
+    with open(kwargs['metadata']) as f:
+      rows = list(csv.reader(f))
+      while len(rows[0]) < len(headers):
+        headers = headers[:-1]
+      for i in rows:
+        l.append({headers[j]: i[j] if i[j] else '' for j,_ in enumerate(headers)})
+  # handle json metadata
+  else:
+    for i in glob2.glob(kwargs['metadata']):
+      with open(i) as f:
+        l.append(json.load(f))
+  return l
+
+
+def write_metadata(metadata, **kwargs):
+  if not metadata: return
   out_dir = join(kwargs['out_dir'], 'metadata')
   for i in ['filters', 'options', 'file']:
     out_path = join(out_dir, i)
     if not exists(out_path): os.makedirs(out_path)
-  # find images with each tag
+  # create the lists of images with each tag
   d = defaultdict(list)
-  for i in kwargs['metadata']:
+  for i in metadata:
     filename = clean_filename(i['filename'])
     tags = [j.strip() for j in i['tags'].split('|')]
     i['tags'] = tags
     for j in tags: d[ '__'.join(j.split()) ].append(filename)
     write_json(os.path.join(out_dir, 'file', filename + '.json'), i, **kwargs)
-  filters = [{'filter_name': 'select', 'filter_values': list(d.keys())}]
-  write_json(os.path.join(out_dir, 'filters', 'filters.json'), filters, **kwargs)
-  # create the options
+  write_json(os.path.join(out_dir, 'filters', 'filters.json'), [{
+    'filter_name': 'select',
+    'filter_values': list(d.keys()),
+  }], **kwargs)
+  # create the options for the tag dropdown
   for i in d:
     write_json(os.path.join(out_dir, 'options', i + '.json'), d[i], **kwargs)
+  # create the map from date to images with that date (if dates present)
+  date_d = defaultdict(list)
+  for i in metadata:
+    date = i.get('date', '')
+    if not date: continue
+    image = clean_filename(i['filename'])
+    date_d[date].append(image)
+  # find the min and max dates to show on the date slider
+  dates = []
+  for i in date_d:
+    try:
+      dates.append(int(i))
+    except:
+      pass
+  dates = np.array(dates)
+  domain = {'min': float('inf'), 'max': -float('inf')}
+  mean = np.mean(dates)
+  std = np.std(dates)
+  for i in dates:
+    if abs(mean-i) < (std*4):
+      domain['min'] = int(min(i, domain['min']))
+      domain['max'] = int(max(i, domain['max']))
+  # write the dates json
+  if len(date_d) > 1:
+    write_json(os.path.join(out_dir, 'dates.json'), {
+      'domain': domain,
+      'dates': date_d,
+    }, **kwargs)
+
+
+##
+# Main
+##
+
+
+def get_manifest(**kwargs):
+  '''Create and return the base object for the manifest output file'''
+  # load the atlas data
+  atlas_data = json.load(open(join(kwargs['atlas_dir'], 'atlas_positions.json')))
+  # store each cell's size and atlas position
+  atlas_ids = set([i['idx'] for i in atlas_data])
+  sizes = [[] for _ in atlas_ids]
+  pos = [[] for _ in atlas_ids]
+  for idx, i in enumerate(atlas_data):
+    sizes[ i['idx'] ].append([ i['w'], i['h'] ])
+    pos[ i['idx'] ].append([ i['x'], i['y'] ])
+  # obtain the paths to each layout's JSON positions
+  layouts = get_layouts(**kwargs)
+  # create a heightmap for the umap layout
+  if 'umap' in layouts and layouts['umap']:
+    get_heightmap(layouts['umap']['layout'], 'umap', **kwargs)
+  # specify point size scalars
+  point_sizes = {}
+  point_sizes['min'] = 0
+  point_sizes['grid'] = 1 / math.ceil(len(kwargs['image_paths'])**(1/2))
+  point_sizes['max'] = point_sizes['grid'] * 1.2
+  point_sizes['scatter'] = point_sizes['grid'] * .2
+  point_sizes['initial'] = point_sizes['scatter']
+  # fetch the date distribution data for point sizing
+  if 'date' in layouts and layouts['date']:
+    date_layout = read_json(layouts['date']['labels'], **kwargs)
+    point_sizes['date'] = 1 / ((date_layout['cols']+1) * len(date_layout['labels']))
+  # create manifest json
+  manifest = {
+    'version': get_version(),
+    'plot_id': kwargs['plot_id'],
+    'layouts': layouts,
+    'initial_layout': 'umap',
+    'point_sizes': point_sizes,
+    'imagelist': get_path('imagelists', 'imagelist', **kwargs),
+    'atlas_dir': kwargs['atlas_dir'],
+    'metadata': True if kwargs['metadata'] else False,
+    'centroids': get_centroids(vecs=read_json(layouts['umap']['layout'], **kwargs), **kwargs),
+    'config': {
+      'sizes': {
+        'atlas': kwargs['atlas_size'],
+        'cell': kwargs['cell_size'],
+        'lod': kwargs['lod_cell_height'],
+      },
+    },
+    'creation_date': datetime.datetime.today().strftime('%d-%B-%Y-%H:%M:%S'),
+  }
+  path = get_path('manifests', 'manifest', **kwargs)
+  write_json(path, manifest, **kwargs)
+  path = get_path(None, 'manifest', add_hash=False, **kwargs)
+  write_json(path, manifest, **kwargs)
+  # create images json
+  imagelist = {
+    'cell_sizes': sizes,
+    'images': [clean_filename(i) for i in kwargs['image_paths']],
+    'atlas': {
+      'count': len(atlas_ids),
+      'positions': pos,
+    },
+  }
+  write_json(manifest['imagelist'], imagelist)
+
+
+##
+# Atlases
+##
 
 
 def get_atlas_data(**kwargs):
@@ -346,15 +423,20 @@ def save_atlas(atlas, out_dir, n):
   out_path = join(out_dir, 'atlas-{}.jpg'.format(n))
   save_img(out_path, atlas)
 
+##
+# Layouts
+##
 
-def get_layouts(*args, **kwargs):
+
+def get_layouts(**kwargs):
   '''Get the image positions in each projection'''
   vecs = vectorize_images(**kwargs)
-  umap = get_umap_projection(vecs=vecs, **kwargs)
-  raster = get_rasterfairy_projection(umap=umap, **kwargs)
-  grid = get_grid_projection(**kwargs)
-  umap_grid = get_pointgrid_projection(umap, 'umap', **kwargs)
-  return {
+  umap = get_umap_layout(vecs=vecs, **kwargs)
+  raster = get_rasterfairy_layout(umap=umap, **kwargs)
+  grid = get_grid_layout(**kwargs)
+  umap_grid = get_pointgrid_layout(umap, 'umap', **kwargs)
+  date = get_date_layout(**kwargs)
+  layouts = {
     'umap': {
       'layout': umap,
       'jittered': umap_grid,
@@ -365,7 +447,9 @@ def get_layouts(*args, **kwargs):
     'rasterfairy': {
       'layout': raster,
     },
+    'date': date,
   }
+  return layouts
 
 
 def vectorize_images(**kwargs):
@@ -390,7 +474,7 @@ def vectorize_images(**kwargs):
   return np.array(vecs)
 
 
-def get_umap_projection(**kwargs):
+def get_umap_layout(**kwargs):
   '''Get the x,y positions of images passed through a umap projection'''
   print(' * creating UMAP layout')
   out_path = get_path('layouts', 'umap', **kwargs)
@@ -402,7 +486,7 @@ def get_umap_projection(**kwargs):
   return write_layout(out_path, z, **kwargs)
 
 
-def get_tsne_projection(**kwargs):
+def get_tsne_layout(**kwargs):
   '''Get the x,y positions of images passed through a TSNE projection'''
   print(' * creating TSNE layout with ' + str(multiprocessing.cpu_count()) + ' cores...')
   out_path = get_path('layouts', 'tsne', **kwargs)
@@ -412,7 +496,7 @@ def get_tsne_projection(**kwargs):
   return write_layout(out_path, z, **kwargs)
 
 
-def get_rasterfairy_projection(**kwargs):
+def get_rasterfairy_layout(**kwargs):
   '''Get the x, y position of images passed through a rasterfairy projection'''
   print(' * creating rasterfairy layout')
   out_path = get_path('layouts', 'rasterfairy', **kwargs)
@@ -430,7 +514,7 @@ def get_rasterfairy_projection(**kwargs):
   return write_layout(out_path, pos, **kwargs)
 
 
-def get_grid_projection(**kwargs):
+def get_grid_layout(**kwargs):
   '''Get the x,y positions of images in a grid projection'''
   print(' * creating grid layout')
   out_path = get_path('layouts', 'grid', **kwargs)
@@ -446,7 +530,7 @@ def get_grid_projection(**kwargs):
   return write_layout(out_path, z, **kwargs)
 
 
-def get_pointgrid_projection(path, label, **kwargs):
+def get_pointgrid_layout(path, label, **kwargs):
   '''Gridify the positions in `path` and return the path to this new layout'''
   print(' * creating {} pointgrid'.format(label))
   out_path = get_path('layouts', label + '-jittered', **kwargs)
@@ -456,13 +540,117 @@ def get_pointgrid_projection(path, label, **kwargs):
   return write_layout(out_path, z, **kwargs)
 
 
-def add_z_dim(X, val=0.001):
-  '''Given X with shape (n,2) return (n,3) with val as X[:,2]'''
-  if X.shape[1] == 2:
-    z = np.zeros((X.shape[0], 3)) + val
-    for idx, i in enumerate(X): z[idx] += np.array((i[0], i[1], 0))
-    return z.tolist()
-  return X.tolist()
+def get_date_layout(cols=3, bin_units='years', **kwargs):
+  '''
+  Get the x,y positions of input images based on their dates
+  @param int cols: the number of columns to plot for each bar
+  @param str bin_units: the temporal units to use when creating bins
+  '''
+  if not kwargs['metadata'] or not kwargs['metadata'][0].get('date', False): return False
+  # if the data layouts have been cached, return them
+  positions_out_path = get_path('layouts', 'timeline', **kwargs)
+  labels_out_path = get_path('layouts', 'timeline-labels', **kwargs)
+  if os.path.exists(positions_out_path) and \
+     os.path.exists(labels_out_path) and \
+     kwargs['use_cache']:
+    return {
+      'layout': positions_out_path,
+      'labels': labels_out_path,
+    }
+  # date layout is not cached, so fetch dates and process
+  print(' * creating date layout with {} columns'.format(cols))
+  datestrings = [i.metadata.get('date', 'no_date') for i in stream_images(**kwargs)]
+  dates = [datestring_to_date(i) for i in datestrings]
+  rounded_dates = [round_date(i, bin_units) for i in dates]
+  # create d[formatted_date] = [indices into datestrings of dates that round to formatted_date]
+  d = defaultdict(list)
+  for idx, i in enumerate(rounded_dates):
+    d[i].append(idx)
+  # determine the number of distinct grid positions in the x and y axes
+  n_coords_x = (cols+1)*len(d)
+  n_coords_y = 1 + max([len(d[i]) for i in d]) // cols
+  if n_coords_y > n_coords_x: return get_date_layout(cols=int(cols*2), **kwargs)
+  # create a mesh of grid positions in clip space -1:1 given the time distribution
+  grid_x = (np.arange(0,n_coords_x)/(n_coords_x-1))*2
+  grid_y = (np.arange(0,n_coords_y)/(n_coords_x-1))*2
+  # divide each grid axis by half its max length to center at the origin 0,0
+  grid_x = grid_x - np.max(grid_x)/2.0
+  grid_y = grid_y - np.max(grid_y)/2.0
+  # make dates increase from left to right by sorting keys of d
+  d_keys = np.array(list(d.keys()))
+  seconds = np.array([date_to_seconds(dates[ d[i][0] ]) for i in d_keys])
+  d_keys = d_keys[np.argsort(seconds)]
+  # determine which images will fill which units of the grid established above
+  coords = np.zeros((len(datestrings), 2)) # 2D array with x, y clip-space coords of each date
+  for jdx, j in enumerate(d_keys):
+    for kdx, k in enumerate(d[j]):
+      x = jdx*(cols+1) + (kdx%cols)
+      y = kdx // cols
+      coords[k] = [grid_x[x], grid_y[y]]
+  # find the positions of labels
+  label_positions = np.array([ [ grid_x[i*(cols+1)], grid_y[0] ] for i in range(len(d)) ])
+  # move the labels down in the y dimension by a grid units
+  dx = (grid_x[1]-grid_x[0]) # size of a single cell
+  label_positions[:,1] = label_positions[:,1] - dx
+  # quantize the label positions and label positions
+  image_positions = round_floats(coords)
+  label_positions = round_floats(label_positions.tolist())
+  # write and return the paths to the date based layout
+  return {
+    'layout': write_json(positions_out_path, image_positions, **kwargs),
+    'labels': write_json(labels_out_path, {
+      'positions': label_positions,
+      'labels': d_keys.tolist(),
+      'cols': cols,
+    }, **kwargs),
+  }
+
+
+def datestring_to_date(datestring):
+  '''
+  Given a string representing a date return a datetime object
+  '''
+  try:
+    return parse_date(str(datestring), fuzzy=True, default=datetime.datetime(9999, 1, 1))
+  except Exception as exc:
+    print(' * could not parse datestring {}'.format(datestring))
+    return datestring
+
+
+def date_to_seconds(date):
+  '''
+  Given a datetime object return an integer representation for that datetime
+  '''
+  if isinstance(date, datetime.datetime):
+    return (date - datetime.datetime.today()).total_seconds()
+  else:
+    return - float('inf')
+
+
+def round_date(date, unit):
+  '''
+  Return `date` truncated to the temporal unit specified in `units`
+  '''
+  if not isinstance(date, datetime.datetime): return 'no_date'
+  formatted = date.strftime('%d %B %Y -- %X')
+  if unit in set(['seconds', 'minutes', 'hours']):
+    date = formatted.split('--')[1].strip()
+    if unit == 'seconds': date = date
+    elif unit == 'minutes': date = ':'.join(d.split(':')[:-1]) + ':00'
+    elif unit == 'hours': date = date.split(':')[0] + ':00:00'
+  elif unit in set(['days', 'months', 'years', 'decades', 'centuries']):
+    date = formatted.split('--')[0].strip()
+    if unit == 'days': date = date
+    elif unit == 'months': date = ' '.join(date.split()[1:])
+    elif unit == 'years': date = date.split()[-1]
+    elif unit == 'decades': date = str(int(date.split()[-1])//10) + '0'
+    elif unit == 'centuries': date = str(int(date.split()[-1])//100) + '00'
+  return date
+
+
+##
+# Helpers
+##
 
 
 def get_path(*args, **kwargs):
@@ -478,8 +666,13 @@ def get_path(*args, **kwargs):
 def write_layout(path, obj, **kwargs):
   '''Write layout json `obj` to disk and return the path to the saved file'''
   obj = (minmax_scale(obj)-0.5)*2 # scale -1:1
-  obj = [[round(float(j), 5) for j in i] for i in obj]
+  obj = round_floats(obj, 5)
   return write_json(path, obj, **kwargs)
+
+
+def round_floats(obj, digits=5):
+  '''Return 2D array obj with rounded float precision'''
+  return [[round(float(j), digits) for j in i] for i in obj]
 
 
 def write_json(path, obj, **kwargs):
@@ -535,29 +728,11 @@ def get_centroids(**kwargs):
   return write_json(get_path('centroids', 'centroid', **kwargs), data, **kwargs)
 
 
-def copy_web_assets(**kwargs):
-  '''Copy the /web directory from the pixplot source to the users cwd'''
-  src = join(dirname(realpath(__file__)), 'web')
-  dest = join(os.getcwd(), kwargs['out_dir'])
-  copy_tree(src, dest)
-  # write version numbers into output
-  for i in ['index.html', os.path.join('assets', 'js', 'tsne.js')]:
-    path = os.path.join(dest, i)
-    with open(path, 'r') as f:
-      f = f.read().replace('VERSION_NUMBER', get_version())
-      with open(path, 'w') as out:
-        out.write(f)
-  if kwargs['copy_web_only']: sys.exit()
-
-
-def get_version():
-  '''Return the version of pixplot installed'''
-  return pkg_resources.get_distribution('pixplot').version
-
-
 def get_heightmap(path, label, **kwargs):
   '''Create a heightmap using the distribution of points stored at `path`'''
-  X = np.array(read_json(path, **kwargs))
+  X = read_json(path, **kwargs)
+  if 'positions' in X: X = X['positions']
+  X = np.array(X)
   # create kernel density estimate of distribution X
   nbins = 200
   x, y = X.T
@@ -575,10 +750,33 @@ def get_heightmap(path, label, **kwargs):
   plt.savefig(out_path, pad_inches=0)
 
 
+def write_images(**kwargs):
+  '''Write all originals and thumbs to the output dir'''
+  for i in stream_images(**kwargs):
+    filename = clean_filename(i.path)
+    # copy original for lightbox
+    out_dir = join(kwargs['out_dir'], 'originals')
+    if not exists(out_dir): os.makedirs(out_dir)
+    out_path = join(out_dir, filename)
+    shutil.copy(i.path, out_path)
+    # copy thumb for lod texture
+    out_dir = join(kwargs['out_dir'], 'thumbs')
+    if not exists(out_dir): os.makedirs(out_dir)
+    out_path = join(out_dir, filename)
+    img = array_to_img(i.resize_to_max(kwargs['lod_cell_height']))
+    save_img(out_path, img)
+
+
+def get_version():
+  '''Return the version of pixplot installed'''
+  return pkg_resources.get_distribution('pixplot').version
+
+
 class Image:
   def __init__(self, *args, **kwargs):
     self.path = args[0]
     self.original = load_img(self.path)
+    self.metadata = kwargs['metadata']
 
   def resize_to_max(self, n):
     '''
