@@ -182,7 +182,7 @@ select:disabled {
   display: inline-block;
   position: absolute;
   right: 20px;
-  top: 15px;
+  top: 20px;
   min-width: 280px;
   opacity: 0;
   transition: opacity 0.5s;
@@ -190,6 +190,7 @@ select:disabled {
 }
 
 #filters {
+  vertical-align: top;
   position: relative;
   top: 0;
   display: inline-block;
@@ -231,15 +232,13 @@ input[type=range]::-ms-thumb {
 #range-slider label {
   color: #c3c3c3;
   font-size: 9px;
-  position: absolute;
-  top: 1px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+  display: block;
 }
 
 #pointsize-range-input {
-  position: relative;
-  top: 4px;
+  margin-top: 6px;
 }
 
 /**
@@ -252,7 +251,7 @@ input[type=range]::-ms-thumb {
   display: inline-block;
   vertical-align: top;
   position: relative;
-  top: 19px;
+  top: 16px;
   margin-left: 10px;
 }
 
@@ -290,8 +289,6 @@ input[type=range]::-ms-thumb {
 
 #icons {
   display: inline-block;
-  position: relative;
-  top: 5px;
   vertical-align: top;
 }
 
