@@ -11,6 +11,7 @@ from sklearn.preprocessing import minmax_scale
 from keras_preprocessing.image import load_img
 from pointgrid import align_points_to_grid
 from distutils.dir_util import copy_tree
+from sklearn.decomposition import PCA
 from iiif_downloader import Manifest
 from collections import defaultdict
 from rasterfairy import coonswarp
@@ -26,6 +27,7 @@ import pkg_resources
 import rasterfairy
 import numpy as np
 import datetime
+import operator
 import argparse
 import random
 import shutil
@@ -89,9 +91,7 @@ def process_images(**kwargs):
   '''Main method for processing user images and metadata'''
   copy_web_assets(**kwargs)
   kwargs['out_dir'] = join(kwargs['out_dir'], 'data')
-  image_paths, metadata = filter_images(**kwargs)
-  kwargs['image_paths'] = image_paths
-  kwargs['metadata'] = metadata
+  kwargs['image_paths'], kwargs['metadata'] = filter_images(**kwargs)
   kwargs['atlas_dir'] = get_atlas_data(**kwargs)
   get_manifest(**kwargs)
   write_images(**kwargs)
@@ -154,12 +154,12 @@ def filter_images(**kwargs):
     with open('missing-metadata.txt', 'w') as out: out.write('\n'.join(no_meta))
   # get the sorted lists of images and metadata
   d = {clean_filename(i['filename']): i for i in l}
-  metadata = []
   images = []
+  metadata = []
   for i in image_paths:
     if clean_filename(i) in both:
-      metadata.append(d[clean_filename(i)])
       images.append(i)
+      metadata.append(d[clean_filename(i)])
   kwargs['metadata'] = metadata
   write_metadata(**kwargs)
   return [images, metadata]
@@ -434,18 +434,22 @@ def get_layouts(**kwargs):
   umap = get_umap_layout(vecs=vecs, **kwargs)
   raster = get_rasterfairy_layout(umap=umap, **kwargs)
   grid = get_grid_layout(**kwargs)
-  umap_grid = get_pointgrid_layout(umap, 'umap', **kwargs)
+  umap_jittered = get_pointgrid_layout(umap, 'umap', **kwargs)
+  categorical = get_categorical_layout(**kwargs)
   date = get_date_layout(**kwargs)
   layouts = {
     'umap': {
       'layout': umap,
-      'jittered': umap_grid,
+      'jittered': umap_jittered,
     },
     'grid': {
       'layout': grid,
     },
     'rasterfairy': {
       'layout': raster,
+    },
+    'categorical': {
+      'layout': categorical,
     },
     'date': date,
   }
@@ -479,10 +483,10 @@ def get_umap_layout(**kwargs):
   print(' * creating UMAP layout')
   out_path = get_path('layouts', 'umap', **kwargs)
   if os.path.exists(out_path) and kwargs['use_cache']: return out_path
-  model = UMAP(n_neighbors=kwargs['n_neighbors'],
+  w = PCA(n_components=100).fit_transform(kwargs['vecs'])
+  z = UMAP(n_neighbors=kwargs['n_neighbors'],
     min_dist=kwargs['min_dist'],
-    metric=kwargs['metric'])
-  z = model.fit_transform(kwargs['vecs'])
+    metric=kwargs['metric']).fit_transform(w)
   return write_layout(out_path, z, **kwargs)
 
 
@@ -536,8 +540,13 @@ def get_pointgrid_layout(path, label, **kwargs):
   out_path = get_path('layouts', label + '-jittered', **kwargs)
   if os.path.exists(out_path) and kwargs['use_cache']: return out_path
   arr = np.array(read_json(path, **kwargs))
-  z = align_points_to_grid(arr)
+  z = align_points_to_grid(arr, fill=0.025)
   return write_layout(out_path, z, **kwargs)
+
+
+##
+# Date layout
+##
 
 
 def get_date_layout(cols=3, bin_units='years', **kwargs):
@@ -589,7 +598,7 @@ def get_date_layout(cols=3, bin_units='years', **kwargs):
       coords[k] = [grid_x[x], grid_y[y]]
   # find the positions of labels
   label_positions = np.array([ [ grid_x[i*(cols+1)], grid_y[0] ] for i in range(len(d)) ])
-  # move the labels down in the y dimension by a grid units
+  # move the labels down in the y dimension by a grid unit
   dx = (grid_x[1]-grid_x[0]) # size of a single cell
   label_positions[:,1] = label_positions[:,1] - dx
   # quantize the label positions and label positions
@@ -649,6 +658,118 @@ def round_date(date, unit):
 
 
 ##
+# Metadata layout
+##
+
+
+def get_categorical_layout(null_tag='NO_TAG', **kwargs):
+  '''
+  Return a numpy array with shape (n_points, 2) with the point
+  positions of observations in box regions determined by
+  each point's tags metadata attribute (if applicable)
+  '''
+  if not kwargs['metadata']: return False
+  # determine the out path and return from cache if possible
+  out_path = get_path('layouts', 'categorical', **kwargs)
+  if os.path.exists(out_path): return out_path
+  # accumulate d[tag] = [indices of points with tag]
+  d = defaultdict(list)
+  for idx, i in enumerate(stream_images(**kwargs)):
+    tag = i.metadata['tags'][0] if i.metadata['tags'] else null_tag
+    d[tag].append(idx)
+  # store the number of observations in each group
+  keys_and_counts = [{'key': i, 'count': len(d[i])} for i in d]
+  keys_and_counts.sort(key=operator.itemgetter('count'), reverse=True)
+  # get the box layout then subdivide into discrete points
+  boxes = get_categorical_boxes([i['count'] for i in keys_and_counts])
+  points = get_categorical_points(boxes)
+  # sort the points into the order of the observations in the metadata
+  counts = {i['key']: 0 for i in keys_and_counts}
+  offsets = {i['key']: 0 for i in keys_and_counts}
+  for idx, i in enumerate(keys_and_counts):
+    offsets[i['key']] += sum([j['count'] for j in keys_and_counts[:idx]])
+  sorted_points = []
+  for idx, i in enumerate(stream_images(**kwargs)):
+    tag = i.metadata['tags'][0] if i.metadata['tags'] else null_tag
+    sorted_points.append(points[ offsets[tag] + counts[tag] ])
+    counts[tag] += 1
+  sorted_points = np.array(sorted_points)
+  # scale -1:1 using the largest axis as the scaling metric
+  _max = np.max(sorted_points)
+  for i in range(2):
+    _min = np.min(sorted_points[:,i])
+    sorted_points[:,i] -= _min
+    sorted_points[:,i] /= (_max-_min)
+    sorted_points[:,i] -= np.max(sorted_points[:,i])/2
+    sorted_points[:,i] *= 2
+  z = round_floats(sorted_points.tolist())
+  return write_json(out_path, z, **kwargs)
+
+
+def get_categorical_boxes(group_counts, margin=2):
+  '''
+  @arg [int] group_counts: counts of the number of images in each
+    distinct level within the metadata's tags
+  @kwarg int margin: space between boxes in the 2D layout
+  @returns [Box] an array of Box() objects; one per level in `group_counts`
+  '''
+  boxes = []
+  for i in group_counts:
+    x = y = math.ceil(i**(1/2))
+    boxes.append(Box(i, x, y, None, None))
+  # find the position along x axis where we want to create a break
+  wrap = sum([i.cells for i in boxes])**(1/2)
+  # find the valid positions on the y axis
+  y = 0
+  y_spots = []
+  for idx, i in enumerate(boxes):
+    if (y + i.h) < wrap:
+      y_spots.append(y)
+      y += i.h+margin
+  y_spot_index = 0
+  for idx, i in enumerate(boxes):
+    # find the y position
+    y = y_spots[y_spot_index]
+    # find members with this y position
+    row_members = [j.x + j.w for j in boxes if j.y == y]
+    # assign the y position
+    i.y = y
+    y_spot_index = (y_spot_index + 1) % len(y_spots)
+    # assign the x position
+    i.x = max(row_members) + margin if row_members else 0
+  return boxes
+
+
+def get_categorical_points(arr, unit_size=None):
+  '''Given an array of Box() objects, return a 2D distribution with shape (n_cells, 2)'''
+  points_arr = []
+  for i in arr:
+    area = i.w*i.h
+    per_unit = (area / i.cells)**(1/2)
+    x_units = math.ceil(i.w / per_unit)
+    y_units = math.ceil(i.h / per_unit)
+    if not unit_size: unit_size = min(i.w/x_units, i.h/y_units)
+    for j in range(i.cells):
+      x = j%x_units
+      y = j//x_units
+      points_arr.append([
+        i.x+x*unit_size,
+        i.y+y*unit_size,
+      ])
+  return np.array(points_arr)
+
+
+class Box:
+  '''Store the width, height, and x, y coords of a box'''
+  def __init__(self, *args):
+    self.cells = args[0]
+    self.w = args[1]
+    self.h = args[2]
+    self.x = None if len(args) < 4 else args[3]
+    self.y = None if len(args) < 5 else args[4]
+
+
+##
 # Helpers
 ##
 
@@ -666,7 +787,7 @@ def get_path(*args, **kwargs):
 def write_layout(path, obj, **kwargs):
   '''Write layout json `obj` to disk and return the path to the saved file'''
   obj = (minmax_scale(obj)-0.5)*2 # scale -1:1
-  obj = round_floats(obj, 5)
+  obj = round_floats(obj)
   return write_json(path, obj, **kwargs)
 
 
@@ -723,7 +844,7 @@ def get_centroids(**kwargs):
   data = [{
     'img': clean_filename(paths[idx]),
     'label': 'Cluster {}'.format(idx+1),
-  } for idx,i in enumerate(closest)]
+  } for idx, i in enumerate(closest)]
   # save the centroids to disk and return the path to the saved json
   return write_json(get_path('centroids', 'centroid', **kwargs), data, **kwargs)
 
