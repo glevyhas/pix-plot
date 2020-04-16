@@ -634,7 +634,7 @@ Layout.prototype.showHideJitter = function() {
 
 // adjust any uniforms on meshes that must change given the selected layout
 Layout.prototype.setUniforms = function() {
-  text.mesh.material.uniforms.render.value = this.selected == 'date' ? 1.0 : 0.0;
+  if (text.mesh) text.mesh.material.uniforms.render.value = this.selected == 'date' ? 1.0 : 0.0;
 }
 
 // reset cell state, mesh buffers, and transition uniforms
@@ -1993,6 +1993,7 @@ Dates.prototype.addFilter = function() {
 function Text() {}
 
 Text.prototype.init = function() {
+  if (!data.json.layouts.date) return;
   this.count = 1000; // max number of characters to represent
   this.point = 128.0; // px of each letter in atlas texture
   this.scale = 0; // 8 so 'no date' fits in one grid space
@@ -2312,7 +2313,7 @@ LOD.prototype.updateGridPosition = function() {
   // if the user is in a new grid position unload old images and load new
   if (this.state.camPos.x !== camPos.x || this.state.camPos.y !== camPos.y) {
     if (this.state.radius > 1) {
-      this.state.radius = Math.ceil(this.state.radius*0.8);
+      this.state.radius = Math.ceil(this.state.radius*0.6);
     }
     this.state.camPos = camPos;
     this.state.neighborsRequested = 0;
@@ -2688,8 +2689,8 @@ Welcome.prototype.startWorld = function() {
     picker.init();
     text.init();
     dates.init();
-    setTimeout(() => {
-      requestAnimationFrame(() => {
+    setTimeout(function() {
+      requestAnimationFrame(function() {
         document.querySelector('#loader-scene').classList += 'hidden';
         document.querySelector('#header-controls').style.opacity = 1;
       })
