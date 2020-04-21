@@ -88,7 +88,7 @@
       float percent = clamp(transitionPercent - d, 0.0, 1.0);
 
       // set point position as a mixture between the position + target
-      vec3 pos = mix(pos0, pos1, percent);
+      vec3 pos = mix(pos0, pos1, smoothstep(0., 1., percent));
       vec4 world = modelViewMatrix * vec4(pos, 1.0);
       gl_Position = projectionMatrix * world;
 
@@ -458,7 +458,7 @@
     </div>
     <div id='selection-icons' class='no-highlight'>
       <img id='pan' src='assets/images/icons/pan.svg' class='active' />
-      <img id='select' src='assets/images/icons/select.svg' class='' />
+      <img id='select' src='assets/images/icons/lasso.png' class='' />
     </div>
     <div id='view-selected'>View Selected</div>
     <div id='selected-images-modal'>
