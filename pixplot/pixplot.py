@@ -448,9 +448,7 @@ def get_layouts(**kwargs):
     'rasterfairy': {
       'layout': raster,
     },
-    'categorical': {
-      'layout': categorical,
-    },
+    'categorical': categorical,
     'date': date,
   }
   return layouts
@@ -662,7 +660,7 @@ def round_date(date, unit):
 ##
 
 
-def get_categorical_layout(null_tag='NO_TAG', **kwargs):
+def get_categorical_layout(null_tag='Other', margin=2, **kwargs):
   '''
   Return a numpy array with shape (n_points, 2) with the point
   positions of observations in box regions determined by
@@ -671,6 +669,7 @@ def get_categorical_layout(null_tag='NO_TAG', **kwargs):
   if not kwargs['metadata']: return False
   # determine the out path and return from cache if possible
   out_path = get_path('layouts', 'categorical', **kwargs)
+  labels_out_path = get_path('layouts', 'categorical-labels', **kwargs)
   if os.path.exists(out_path): return out_path
   # accumulate d[tag] = [indices of points with tag]
   d = defaultdict(list)
@@ -681,7 +680,7 @@ def get_categorical_layout(null_tag='NO_TAG', **kwargs):
   keys_and_counts = [{'key': i, 'count': len(d[i])} for i in d]
   keys_and_counts.sort(key=operator.itemgetter('count'), reverse=True)
   # get the box layout then subdivide into discrete points
-  boxes = get_categorical_boxes([i['count'] for i in keys_and_counts])
+  boxes = get_categorical_boxes([i['count'] for i in keys_and_counts], margin=margin)
   points = get_categorical_points(boxes)
   # sort the points into the order of the observations in the metadata
   counts = {i['key']: 0 for i in keys_and_counts}
@@ -694,6 +693,10 @@ def get_categorical_layout(null_tag='NO_TAG', **kwargs):
     sorted_points.append(points[ offsets[tag] + counts[tag] ])
     counts[tag] += 1
   sorted_points = np.array(sorted_points)
+  # add to the sorted points the anchors for the text labels for each group
+  text_anchors = np.array([[i.x, i.y-margin/2] for i in boxes])
+  # add the anchors to the points - these will be removed after the points are projected
+  sorted_points = np.vstack([sorted_points, text_anchors])
   # scale -1:1 using the largest axis as the scaling metric
   _max = np.max(sorted_points)
   for i in range(2):
@@ -702,8 +705,17 @@ def get_categorical_layout(null_tag='NO_TAG', **kwargs):
     sorted_points[:,i] /= (_max-_min)
     sorted_points[:,i] -= np.max(sorted_points[:,i])/2
     sorted_points[:,i] *= 2
+  # separate out the sorted points and text positions
+  text_anchors = sorted_points[-len(text_anchors):]
+  sorted_points = sorted_points[:-len(text_anchors)]
   z = round_floats(sorted_points.tolist())
-  return write_json(out_path, z, **kwargs)
+  return {
+    'layout': write_json(out_path, z, **kwargs),
+    'labels': write_json(labels_out_path, {
+      'positions': round_floats(text_anchors.tolist()),
+      'labels': [i['key'] for i in keys_and_counts],
+    }, **kwargs)
+  }
 
 
 def get_categorical_boxes(group_counts, margin=2):
@@ -720,7 +732,7 @@ def get_categorical_boxes(group_counts, margin=2):
   # find the position along x axis where we want to create a break
   wrap = sum([i.cells for i in boxes])**(1/2)
   # find the valid positions on the y axis
-  y = 0
+  y = margin
   y_spots = []
   for idx, i in enumerate(boxes):
     if (y + i.h) < wrap:
@@ -736,7 +748,7 @@ def get_categorical_boxes(group_counts, margin=2):
     i.y = y
     y_spot_index = (y_spot_index + 1) % len(y_spots)
     # assign the x position
-    i.x = max(row_members) + margin if row_members else 0
+    i.x = max(row_members) + margin if row_members else margin
   return boxes
 
 
