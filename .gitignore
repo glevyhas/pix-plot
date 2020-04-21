@@ -2,8 +2,9 @@
 *.pyc
 *.swp
 *.pem
-*.egg-info
 *.ipynb
+*.egg-info
+*.ruby-version
 manifest.txt
 missing-metadata.txt
 dist

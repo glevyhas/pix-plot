@@ -62,8 +62,8 @@ function Config() {
     },
   }
   this.transitions = {
-    duration: 2,
-    delay: 0.4,
+    duration: 3.0,
+    delay: 1.0,
   }
   this.transitions.ease = {
     value: 1.0 + this.transitions.delay,
@@ -566,8 +566,8 @@ Layout.prototype.set = function(layout, enableDelay) {
   this.selectActiveIcon();
   // set the point size given the selected layout
   this.setPointScalar();
-  // set any uniforms that need adjusting given the selected layout
-  this.setUniforms();
+  // add any labels to the plot
+  this.setText();
   // zoom the user out if they're zoomed in
   var delay = this.recenterCamera(enableDelay);
   // enable the jitter button if this layout has a jittered option
@@ -632,9 +632,16 @@ Layout.prototype.showHideJitter = function() {
   return jitterable && this.elems.input.checked;
 }
 
-// adjust any uniforms on meshes that must change given the selected layout
-Layout.prototype.setUniforms = function() {
-  text.mesh.material.uniforms.render.value = this.selected == 'date' ? 1.0 : 0.0;
+// add any required text to the scene
+Layout.prototype.setText = function() {
+  if (!text.mesh) return;
+  var path = data.json.layouts[this.selected].labels;
+  if (path && text.mesh) {
+    get(getPath(path), text.formatText.bind(text));
+    text.mesh.material.uniforms.render.value = 1.0;
+  } else {
+    text.mesh.material.uniforms.render.value = 0.0;
+  }
 }
 
 // reset cell state, mesh buffers, and transition uniforms
@@ -1318,7 +1325,7 @@ World.prototype.getInitialLocation = function() {
   return {
     x: 0, //this.center.x,
     y: 0, //this.center.y,
-    z: 1.2,
+    z: 2.0,
   }
 }
 
@@ -1915,13 +1922,12 @@ Dates.prototype.init = function() {
   this.selectImage = function(image) { return true };
   // init
   this.load();
-  this.addWords();
   // display the layout icon
   document.querySelector('#layout-date').style.display = 'inline-block';
 }
 
 Dates.prototype.load = function() {
-  get(getPath('output/data/metadata/dates.json'), function(json) {
+  get(getPath(config.data.dir + '/metadata/dates.json'), function(json) {
     // set range slider domain
     this.state.min = json.domain.min;
     this.state.max = json.domain.max;
@@ -1948,20 +1954,6 @@ Dates.prototype.load = function() {
     // add the filter now that the dates have loaded
     this.addFilter();
   }.bind(this))
-}
-
-Dates.prototype.addWords = function() {
-  get(getPath(data.json.layouts.date.labels), function(json) {
-    var l = [];
-    json.labels.forEach(function(word, idx) {
-      l.push({
-        word: word,
-        x: json.positions[idx][0],
-        y: json.positions[idx][1],
-      })
-    })
-    text.setWords(l);
-  })
 }
 
 Dates.prototype.addFilter = function() {
@@ -1993,6 +1985,7 @@ Dates.prototype.addFilter = function() {
 function Text() {}
 
 Text.prototype.init = function() {
+  if (!data.json.layouts.date) return;
   this.count = 1000; // max number of characters to represent
   this.point = 128.0; // px of each letter in atlas texture
   this.scale = 0; // 8 so 'no date' fits in one grid space
@@ -2127,6 +2120,19 @@ Text.prototype.setWords = function(arr) {
 
 Text.prototype.getPointScale = function() {
   return window.devicePixelRatio * window.innerHeight * this.scale;
+}
+
+// use JSON data with labels and positions attributes to set current text
+Text.prototype.formatText = function(json) {
+  var l = [];
+  json.labels.forEach(function(word, idx) {
+    l.push({
+      word: word,
+      x: json.positions[idx][0],
+      y: json.positions[idx][1],
+    })
+  })
+  this.setWords(l);
 }
 
 /**
@@ -2312,7 +2318,7 @@ LOD.prototype.updateGridPosition = function() {
   // if the user is in a new grid position unload old images and load new
   if (this.state.camPos.x !== camPos.x || this.state.camPos.y !== camPos.y) {
     if (this.state.radius > 1) {
-      this.state.radius = Math.ceil(this.state.radius*0.8);
+      this.state.radius = Math.ceil(this.state.radius*0.6);
     }
     this.state.camPos = camPos;
     this.state.neighborsRequested = 0;
@@ -2688,8 +2694,8 @@ Welcome.prototype.startWorld = function() {
     picker.init();
     text.init();
     dates.init();
-    setTimeout(() => {
-      requestAnimationFrame(() => {
+    setTimeout(function() {
+      requestAnimationFrame(function() {
         document.querySelector('#loader-scene').classList += 'hidden';
         document.querySelector('#header-controls').style.opacity = 1;
       })

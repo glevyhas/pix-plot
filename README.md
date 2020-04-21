@@ -4,7 +4,6 @@ This repository contains code that can be used to visualize tens of thousands of
 
 ![App preview](./pixplot/web/assets/images/preview.png?raw=true)
 
-
 ## Dependencies
 
 To install the Python dependencies, you can run (ideally in a virtual environment):
@@ -14,7 +13,6 @@ pip install pixplot
 ```
 
 The HTML viewer requires a WebGL-enabled browser.
-
 
 ## Quickstart
 
@@ -35,7 +33,6 @@ python -m SimpleHTTPServer 5000
 ```
 
 The visualization will then be available at `http://localhost:5000/output`.
-
 
 ## Sample Data
 
@@ -82,7 +79,7 @@ The [UMAP algorithm](https://github.com/lmcinnes/umap) is particularly sensitive
 
 UMAP's creator, Leland McInnes, has written up a [helpful overview of these hyperparameters](https://umap-learn.readthedocs.io/en/latest/parameters.html). To specify the value for one or more of these hyperparameters when building a plot, one may use the flags above, e.g.:
 
-```
+```bash
 pixplot --images "path/to/images/*.jpg" --n_neighbors 2
 ```
 
@@ -106,11 +103,16 @@ Your metadata should be in a comma-separated value file (CSV), should contain on
 | -------- | ------------- | ----------- | ---------------- |
 | bees.jpg | honey&#124;yellow  | bees' knees | https://... |
 
-The CSV should contain no headers.
-
-If desired, you can add a fifth column "year" that will be used to create a data-based layout of your images:
+If desired, you can add a fifth column "year" that will be used to create a date-based layout of your images:
 
 ![App preview](./pixplot/web/assets/images/date-layout.png?raw=true)
+
+Year-column values should contain a year integer for each image, e.g.:
+
+| Filename | Metadata Tags | Description | Permalink        | Year |
+| -------- | ------------- | ----------- | ---------------- | ---- |
+| bees.jpg | honey&#124;yellow  | bees' knees | https://... | 1972 |
+
 
 ## IIIF Images
 

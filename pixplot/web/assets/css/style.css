@@ -48,6 +48,7 @@ select {
   background-repeat: no-repeat;
   background-position: 95%;
   min-width: 120px;
+  max-width: 200px;
   transition: opacity 0.3s;
 }
 
@@ -701,12 +702,20 @@ noscript {
 }
 
 #selected-image-target .modal-top-content {
-  background: #333;
-  max-height: 100%;
-  max-width: 100%;
+  background: transparent;
+  height: 100%;
   position: relative;
+  padding: 0;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+#selected-image {
   padding: 25px;
-  max-height: 100%;
+  background-color: #333;
 }
 
 .image-caret {
