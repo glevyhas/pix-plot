@@ -203,7 +203,7 @@ def stream_images(**kwargs):
         metadata = kwargs['metadata'][idx]
       yield Image(i, metadata=metadata)
     except Exception as exc:
-      print(' * image', i, 'could not be processed', exc)
+      print(' * image', i, 'could not be processed --', exc)
 
 
 def clean_filename(s):
@@ -553,7 +553,8 @@ def get_date_layout(cols=3, bin_units='years', **kwargs):
   @param int cols: the number of columns to plot for each bar
   @param str bin_units: the temporal units to use when creating bins
   '''
-  if not kwargs['metadata'] or not kwargs['metadata'][0].get('date', False): return False
+  date_vals = [kwargs['metadata'][i].get('date', False) for i in range(len(kwargs['metadata']))]
+  if not kwargs['metadata'] or not any(date_vals): return False
   # if the data layouts have been cached, return them
   positions_out_path = get_path('layouts', 'timeline', **kwargs)
   labels_out_path = get_path('layouts', 'timeline-labels', **kwargs)
