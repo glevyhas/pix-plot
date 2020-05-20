@@ -1437,6 +1437,7 @@ Selection.prototype.init = function() {
     filetypeButtons: document.querySelectorAll('.filetype'),
     downloadLink: document.querySelector('#download-link'),
     downloadInput: document.querySelector('#download-filename'),
+    xIcon: document.querySelector('#selected-images-x'),
   }
   // initialize mesh, add listeners, and start render cycle
   this.initializeMesh();
@@ -1520,10 +1521,9 @@ Selection.prototype.addMouseEventListeners = function() {
       if (!this.insideBox(this.getEventWorldCoords(e))) this.clear();
     }
   }.bind(this));
-}
-
-Selection.prototype.toggleSelection = function(idx) {
-  this.selected[idx] = !this.selected[idx];
+  this.elems.xIcon.addEventListener('click', function() {
+    this.clear()
+  }.bind(this))
 }
 
 Selection.prototype.addModalEventListeners = function() {
@@ -1577,6 +1577,10 @@ Selection.prototype.addModalEventListeners = function() {
   this.elems.downloadLink.addEventListener('click', function(e) {
     this.downloadSelected();
   }.bind(this))
+}
+
+Selection.prototype.toggleSelection = function(idx) {
+  this.selected[idx] = !this.selected[idx];
 }
 
 // find the world coordinates of the last mouse position

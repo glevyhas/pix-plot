@@ -938,6 +938,14 @@ noscript {
   overflow: auto;
 }
 
+#selected-images-x {
+  position: absolute;
+  top: 5px;
+  right: 8px;
+  color: #ccc;
+  cursor: pointer;
+}
+
 .selected-image {
   width: 90px;
   height: 90px;
