@@ -622,6 +622,17 @@ noscript {
   width: 100%;
   display: flex;
   flex-direction: column;
+  position: relative;
+}
+
+.modal-x {
+  color: #ccc;
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  font-size: 22px;
+  cursor: pointer;
+  padding: 0;
 }
 
 .modal-top {

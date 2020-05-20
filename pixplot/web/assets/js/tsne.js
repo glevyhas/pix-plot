@@ -1836,7 +1836,8 @@ Picker.prototype.getClickOffsets = function(e) {
 // on canvas click, show detailed modal with clicked image
 Picker.prototype.onMouseUp = function(e) {
   // if click hit background, close the modal
-  if (e.target.className == 'modal-top') {
+  if (e.target.className == 'modal-top' ||
+      e.target.className == 'modal-x') {
     return modal.close();
   }
   // find the offset of the click event within the canvas
