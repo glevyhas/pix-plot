@@ -2551,6 +2551,7 @@ function Filter(obj) {
 function Hotspots() {
   this.template = document.querySelector('#hotspot-template');
   this.target = document.querySelector('#hotspots');
+  this.mesh = null;
   this.init();
 }
 
@@ -2564,7 +2565,25 @@ Hotspots.prototype.init = function() {
     for (var i=0; i<hotspots.length; i++) {
       hotspots[i].addEventListener('click', function(idx) {
         world.flyToCellImage(data.hotspots.json[idx].img);
+      }.bind(this, i));
+      // show the convex hull of a cluster on mouse enter
+      hotspots[i].addEventListener('mouseenter', function(idx) {
+        var h = data.hotspots.json[idx].convex_hull;
+        var shape = new THREE.Shape();
+        shape.moveTo(h[0][0], h[0][1]);
+        for (var i=1; i<h.length; i++) shape.lineTo(h[i][0], h[i][1]);
+        var geometry = new THREE.ShapeBufferGeometry(shape);
+        var material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        material.transparent = true;
+        material.opacity = 0.4;
+        var mesh = new THREE.Mesh(geometry, material);
+        mesh.position.z = -0.0000001;
+        world.scene.add(mesh);
+        this.mesh = mesh;
       }.bind(this, i))
+      hotspots[i].addEventListener('mouseleave', function(e) {
+        world.scene.remove(this.mesh);
+      }.bind(this))
     }
   }.bind(this))
 }
