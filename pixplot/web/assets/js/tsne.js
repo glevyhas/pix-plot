@@ -1095,7 +1095,7 @@ World.prototype.getPointScale = function() {
 **/
 
 World.prototype.getShaderMaterial = function(obj) {
-  var vertex = find('#vertex-shader').textContent;
+  var vertex = document.querySelector('#vertex-shader').textContent;
   var fragment = this.getFragmentShader(obj);
   // set the uniforms and the shaders to use
   return new THREE.RawShaderMaterial({
@@ -1193,7 +1193,7 @@ World.prototype.getFragmentShader = function(obj) {
   var useColor = obj.useColor,
       firstTex = obj.firstTex,
       textures = obj.textures,
-      fragShader = find('#fragment-shader').textContent;
+      fragShader = document.querySelector('#fragment-shader').textContent;
   // the calling agent requested the color shader, used for selecting
   if (useColor) {
     fragShader = fragShader.replace('uniform sampler2D textures[N_TEXTURES];', '');
@@ -2536,7 +2536,7 @@ function Filter(obj) {
     }
   }
   // add the select to the DOM
-  find('#filters').appendChild(select);
+  document.querySelector('#filters').appendChild(select);
 }
 
 /**
@@ -2544,8 +2544,8 @@ function Filter(obj) {
 **/
 
 function Hotspots() {
-  this.template = find('#hotspot-template');
-  this.target = find('#hotspots');
+  this.template = document.querySelector('#hotspot-template');
+  this.target = document.querySelector('#hotspots');
   this.init();
 }
 
@@ -2555,7 +2555,7 @@ Hotspots.prototype.init = function() {
     this.target.innerHTML = _.template(this.template.innerHTML)({
       hotspots: this.json,
     });
-    var hotspots = findAll('.hotspot');
+    var hotspots = document.querySelectorAll('.hotspot');
     for (var i=0; i<hotspots.length; i++) {
       hotspots[i].addEventListener('click', function(idx) {
         world.flyToCellImage(data.hotspots.json[idx].img);
@@ -2584,7 +2584,7 @@ function Webgl() {
 
 Webgl.prototype.getGl = function() {
   var gl = getElem('canvas').getContext('webgl');
-  if (!gl) find('#webgl-not-available').style.display = 'block';
+  if (!gl) document.querySelector('#webgl-not-available').style.display = 'block';
   return gl;
 }
 
@@ -2638,14 +2638,56 @@ Keyboard.prototype.commandPressed = function() {
 }
 
 /**
+* Show/hide tooltips for user-facing controls
+**/
+
+function Tooltip() {
+  this.elem = document.querySelector('#tooltip');
+  this.targets = [
+    {
+      elem: document.querySelector('#layout-date'),
+      text: 'Order images by date',
+    },
+    {
+      elem: document.querySelector('#layout-grid'),
+      text: 'Order images alphabetically by filename',
+    },
+    {
+      elem: document.querySelector('#layout-umap'),
+      text: 'Cluster images via UMAP dimensionality reduction',
+    },
+    {
+      elem: document.querySelector('#layout-rasterfairy'),
+      text: 'Represent UMAP clusters on a grid',
+    },
+    {
+      elem: document.querySelector('#filters'),
+      text: 'Highlight images with selected metadata attribute',
+    },
+  ];
+  this.targets.forEach(function(i) {
+    i.elem.addEventListener('mouseenter', function(e) {
+      var offsets = i.elem.getBoundingClientRect();
+      this.elem.textContent = i.text;
+      this.elem.style.position = 'absolute';
+      this.elem.style.left = (offsets.left + (i.elem.clientWidth/2) - (this.elem.clientWidth/2)) + 'px';
+      this.elem.style.top = (offsets.top + i.elem.clientHeight + 16) + 'px';
+    }.bind(this));
+    i.elem.addEventListener('mouseout', function(e) {
+      this.elem.style.top = '-10000px';
+    }.bind(this))
+  }.bind(this))
+}
+
+/**
 * Handle load progress and welcome scene events
 **/
 
 function Welcome() {
-  this.progressElem = find('#progress');
-  this.loaderTextElem = find('#loader-text');
-  this.loaderSceneElem = find('#loader-scene');
-  this.buttonElem = find('#enter-button');
+  this.progressElem = document.querySelector('#progress');
+  this.loaderTextElem = document.querySelector('#loader-text');
+  this.loaderSceneElem = document.querySelector('#loader-scene');
+  this.buttonElem = document.querySelector('#enter-button');
   this.buttonElem.addEventListener('click', this.onButtonClick.bind(this));
 }
 
@@ -2784,18 +2826,6 @@ function getElem(tag, obj) {
 }
 
 /**
-* Create a general element selector
-**/
-
-function find(selector) {
-  return document.querySelector(selector);
-}
-
-function findAll(selector) {
-  return document.querySelectorAll(selector);
-}
-
-/**
 * Find the sum of values in an object
 **/
 
@@ -2891,4 +2921,5 @@ var world = new World();
 var text = new Text();
 var dates = new Dates();
 var lod = new LOD();
+var tooltip = new Tooltip();
 var data = new Data();
