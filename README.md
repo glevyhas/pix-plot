@@ -9,7 +9,7 @@ This repository contains code that can be used to visualize tens of thousands of
 To install the Python dependencies, you can run (ideally in a virtual environment):
 
 ```bash
-pip install pixplot
+pip install pixplot -U
 ```
 
 The HTML viewer requires a WebGL-enabled browser.
