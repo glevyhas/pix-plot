@@ -2569,6 +2569,7 @@ Hotspots.prototype.init = function() {
       // show the convex hull of a cluster on mouse enter
       hotspots[i].addEventListener('mouseenter', function(idx) {
         var h = data.hotspots.json[idx].convex_hull;
+        if (!h) return;
         var shape = new THREE.Shape();
         shape.moveTo(h[0][0], h[0][1]);
         for (var i=1; i<h.length; i++) shape.lineTo(h[i][0], h[i][1]);
