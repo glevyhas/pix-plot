@@ -860,16 +860,29 @@ def get_centroids(**kwargs):
   for i in d:
     x, y = np.array(d[i]).T
     centroids.append(np.array([np.mean(x), np.mean(y)]))
+  # identify the number of points in each cluster
+  lens = [len(d[i]) for i in d]
+  # combine data into cluster objects
   closest, _ = pairwise_distances_argmin_min(centroids, v)
-  print(' * found', len(closest), 'clusters')
   paths = [kwargs['image_paths'][i] for i in closest]
-  data = [{
+  clusters = [{
     'img': clean_filename(paths[idx]),
     'label': 'Cluster {}'.format(idx+1),
     'convex_hull': convex_hulls[idx].tolist(),
+    'n_images': lens[idx],
   } for idx, i in enumerate(closest)]
+  # remove massive clusters
+  retained = []
+  for idx, i in enumerate(clusters):
+    x, y = np.array(i['convex_hull']).T
+    area = 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
+    if area < 0.2:
+      retained.append(i)
+  # sort the clusers by size
+  clusters = sorted(retained, key=lambda i: i['n_images'], reverse=True)
   # save the centroids to disk and return the path to the saved json
-  return write_json(get_path('centroids', 'centroid', **kwargs), data, **kwargs)
+  print(' * found', len(clusters), 'clusters')
+  return write_json(get_path('centroids', 'centroid', **kwargs), clusters, **kwargs)
 
 
 def get_heightmap(path, label, **kwargs):
