@@ -140,7 +140,6 @@ select:disabled {
   width: 100%;
   position: fixed;
   top: 0px;
-  z-index: 100;
   overflow: hidden;
   box-shadow: 2px 1px 2px rgba(39, 39, 39, 0.2);
   font-size: 0;
@@ -150,7 +149,7 @@ select:disabled {
 #logo {
   background: #333;
   position: relative;
-  z-index: 2;
+  z-index: 4;
 }
 
 #logo {
@@ -172,6 +171,18 @@ select:disabled {
   letter-spacing: 0.1em;
   position: relative;
   z-index: 1;
+}
+
+.tagline {
+  color: #999;
+  font-size: 16px;
+  padding: 20px 25px;
+  font-weight: 400;
+  letter-spacing: .025em;
+  display: inline-block;
+  vertical-align: top;
+  height: 100%;
+  box-sizing: border-box;
 }
 
 @media(max-width: 335px) {
@@ -224,8 +235,26 @@ input[type=range] {
   outline: none;
 }
 
-input[type=range]::-webkit-slider-thumb,
-input[type=range]::-moz-range-thumb,
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  background: #eee;
+  cursor: pointer;
+  border-radius: 18px;
+}
+
+input[type=range]::-moz-range-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  background: #eee;
+  cursor: pointer;
+  border-radius: 18px;
+}
+
 input[type=range]::-ms-thumb {
   -webkit-appearance: none;
   appearance: none;
