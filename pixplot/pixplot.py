@@ -867,7 +867,6 @@ def get_centroids(**kwargs):
   paths = [kwargs['image_paths'][i] for i in closest]
   clusters = [{
     'img': clean_filename(paths[idx]),
-    'label': 'Cluster {}'.format(idx+1),
     'convex_hull': convex_hulls[idx].tolist(),
     'n_images': lens[idx],
   } for idx, i in enumerate(closest)]
@@ -880,6 +879,8 @@ def get_centroids(**kwargs):
       retained.append(i)
   # sort the clusers by size
   clusters = sorted(retained, key=lambda i: i['n_images'], reverse=True)
+  for idx, i in enumerate(clusters):
+    i['label'] = 'Cluster {}'.format(idx+1)
   # save the centroids to disk and return the path to the saved json
   print(' * found', len(clusters), 'clusters')
   return write_json(get_path('centroids', 'centroid', **kwargs), clusters, **kwargs)
