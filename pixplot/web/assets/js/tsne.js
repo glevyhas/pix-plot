@@ -1170,8 +1170,8 @@ World.prototype.setUniform = function(key, val) {
 World.prototype.setBuffer = function(key, arr) {
   var drawCallToCells = world.getDrawCallToCells();
   for (var i in drawCallToCells) {
-    var cells = drawCallToCells[i];
     var attr = world.group.children[i].geometry.attributes[key];
+    var cells = drawCallToCells[i];
     attr.array = arr.slice(cells[0].idx, cells[cells.length-1].idx+1);
     attr.needsUpdate = true;
   }
@@ -1343,8 +1343,8 @@ World.prototype.render = function() {
   if (this.stats) this.stats.update();
   // update the level of detail mechanism
   lod.update();
-  // update the dragged selection
-  selection.update();
+  // update the dragged lasso
+  lasso.update();
 }
 
 /**
@@ -1357,8 +1357,6 @@ World.prototype.init = function() {
   var loc = this.getInitialLocation();
   this.camera.position.set(loc.x, loc.y, loc.z);
   this.camera.lookAt(loc.x, loc.y, loc.z);
-  // render the selection
-  selection.init();
   // draw the points and start the render loop
   this.plot();
   //resize the canvas and scale rendered assets
@@ -1397,136 +1395,85 @@ World.prototype.setMode = function(mode) {
     this.controls.noPan = false;
     this.canvas.classList.remove('select');
     this.canvas.classList.add('pan');
+    lasso.removeMesh();
+    lasso.setFrozen(true);
+    lasso.setEnabled(false);
   } else if (this.mode == 'select') {
     this.controls.noPan = true;
     this.canvas.classList.remove('pan');
     this.canvas.classList.add('select');
-    selection.start();
+    lasso.setEnabled(true);
   }
 }
 
 /**
-* Selection: handle drag to select highlighting
+* Lasso: polyline user-selections
 **/
 
-function Selection() {
-  this.clock = new THREE.Clock();
-  this.time = 0;
-  this.mesh = {}; // store the mesh for updates
-  this.mouseDown = {}; // x, y attributes denoting mousedown position
-  this.pos0 = null; // user's first position in world coords
-  this.pos1 = null; // user's second position in world coords
-  this.frozen = false; // are we tracking mousemove events
-  this.renderBox = true; // are we rendering the box
-  this.selected = {}; // d[cellIdx] = bool indicating selected
-  this.elems = {}; // collection of DOM elements
+function Lasso() {
+  this.clock = new THREE.Clock(); // clock for animating polyline
+  this.time = 0; // time counter for animating polyline
+  this.points = []; // array of {x: y: } point objects tracing user polyline
+  this.enabled = false; // boolean indicating if any actions on the lasso are permitted
+  this.capturing = false; // boolean indicating if we're recording mousemoves
+  this.frozen = false; // boolean indicating whether to listen to mouse events
+  this.mesh = null; // the rendered polyline outlining user selection
   this.downloadFiletype = 'csv'; // filetype to use when downloading selection
-  this.displayed = false;
-  this.run = true; // if false, will disallow selection actions
-}
-
-Selection.prototype.init = function() {
-  // add the elements the selection mechanism needs to interact with
+  this.selected = {}; // d[cell idx] = bool indicating if selected
+  this.displayed = false; // bool indicating whether the modal is displayed
+  this.mousedownCoords = {}; // obj storing x, y, z coords of mousedown
   this.elems = {
+    viewSelectedContainer: document.querySelector('#view-selected-container'),
     modalButton: document.querySelector('#view-selected'),
+    selectedImagesCount: document.querySelector('#selected-images-count'),
+    countTarget: document.querySelector('#count-target'),
+    xIcon: document.querySelector('#selected-images-x'),
+
     modalTarget: document.querySelector('#selected-images-target'),
     modalContainer: document.querySelector('#selected-images-modal'),
     modalTemplate: document.querySelector('#selected-images-template'),
-    selectedImagesCount: document.querySelector('#selected-images-count'),
-    countTarget: document.querySelector('#count-target'),
+
     filetypeButtons: document.querySelectorAll('.filetype'),
     downloadLink: document.querySelector('#download-link'),
     downloadInput: document.querySelector('#download-filename'),
-    xIcon: document.querySelector('#selected-images-x'),
   }
-  // initialize mesh, add listeners, and start render cycle
-  this.initializeMesh();
   this.addMouseEventListeners();
   this.addModalEventListeners();
-  this.start();
 }
 
-Selection.prototype.initializeMesh = function() {
-  var points = [
-    new THREE.Vector3(0, 0, 0), // bottom left
-    new THREE.Vector3(0, 0, 0), // bottom right
-    new THREE.Vector3(0, 0, 0), // top right
-    new THREE.Vector3(0, 0, 0), // top left
-    new THREE.Vector3(0, 0, 0), // bottom left
-  ];
-  var lengths = this.getLineLengths(points);
-  var geometry = new THREE.BufferGeometry().setFromPoints(points);
-  var lengthAttr = new THREE.BufferAttribute(new Float32Array(lengths), 1);
-  geometry.setAttribute('length', lengthAttr);
-  var material = new THREE.RawShaderMaterial({
-    uniforms: {
-      time: {
-        type: 'float',
-        value: 0,
-      },
-      render: {
-        type: 'bool',
-        value: false,
-      },
-    },
-    vertexShader: document.querySelector('#dashed-vertex-shader').textContent,
-    fragmentShader: document.querySelector('#dashed-fragment-shader').textContent,
-  });
-  this.mesh = new THREE.Line(geometry, material);
-  this.mesh.frustumCulled = false;
-  world.scene.add(this.mesh);
-}
-
-// find the cumulative length of the line up to each point
-Selection.prototype.getLineLengths = function(points) {
-  var lengths = [];
-  var sum = 0;
-  for (var i=0; i<points.length; i++) {
-    if (i>0) sum += points[i].distanceTo(points[i - 1]);
-    lengths[i] = sum;
-  };
-  return lengths;
-}
-
-// bind event listeners
-Selection.prototype.addMouseEventListeners = function() {
-  // listen to mouse position
-  world.canvas.addEventListener('mousedown', function(e) {
-    if (world.mode != 'select') return;
-    // prevent box rendering until the mouse moves from mousedown position
-    this.renderBox = false;
-    // clear the last position
-    this.pos1 = null;
-    // set the first position
-    this.pos0 = this.getEventWorldCoords(e);
-    // store the mousedown location
-    this.mouseDown = {x: e.clientX, y: e.clientY};
-    // unfreeze the mousemove listener
-    this.frozen = false;
-  }.bind(this));
-  world.canvas.addEventListener('mousemove', function(e) {
-    if (world.mode != 'select' || this.frozen || !this.pos0) return;
-    this.pos1 = this.getEventWorldCoords(e);
-    this.updateSelected();
-    this.renderBox = true;
-  }.bind(this))
-  world.canvas.addEventListener('mouseup', function(e) {
-    this.frozen = true;
-    this.renderBox = false;
-    if (keyboard.shiftPressed() || keyboard.commandPressed()) return;
-    if (!this.hasSelection()) this.clear();
-    // user made a proper 'click' event -- mousedown and up in same location
-    if ((e.clientX == this.mouseDown.x) && (e.clientY == this.mouseDown.y)) {
-      // clear the selection if the click was outside the selection
-      if (!this.insideBox(this.getEventWorldCoords(e))) this.clear();
+Lasso.prototype.addMouseEventListeners = function() {
+  window.addEventListener('mousedown', function(e) {
+    if (!this.enabled) return;
+    if (!e.target.id || e.target.id != 'pixplot-canvas') return;
+    if (!keyboard.shiftPressed() && !keyboard.commandPressed()) {
+      this.points = [];
     }
+    this.mousedownCoords = {x: e.clientX, y: e.clientY};
+    this.setCapturing(true);
+    this.setFrozen(false);
   }.bind(this));
-  this.elems.xIcon.addEventListener('click', function() {
-    this.clear()
-  }.bind(this))
+
+  window.addEventListener('mousemove', function(e) {
+    if (!this.capturing || this.frozen) return;
+    if (!e.target.id || e.target.id != 'pixplot-canvas') return;
+    this.points.push(getEventWorldCoords(e));
+    this.draw();
+  }.bind(this));
+
+  window.addEventListener('mouseup', function(e) {
+    if (!this.enabled) return;
+    this.setFrozen(true);
+    if (e.clientX == this.mousedownCoords.x &&
+        e.clientY == this.mousedownCoords.y &&
+        !keyboard.shiftPressed() &&
+        !keyboard.commandPressed()) this.clear();
+    if (!e.target.id || e.target.id == 'select') return;
+    this.setCapturing(false);
+  }.bind(this));
 }
 
-Selection.prototype.addModalEventListeners = function() {
+Lasso.prototype.addModalEventListeners = function() {
+
   // close the modal on click of wrapper
   this.elems.modalContainer.addEventListener('click', function(e) {
     if (e.target.className == 'modal-top') {
@@ -1535,17 +1482,25 @@ Selection.prototype.addModalEventListeners = function() {
     }
     if (e.target.className == 'background-image') {
       var index = e.target.getAttribute('data-index');
-      modal.showCells(this.getSelectedImageIndices(), index);
+      var indices = [];
+      Object.keys(this.selected).forEach(function(i, idx) {
+        if (this.selected[i]) indices.push(idx);
+      }.bind(this))
+      modal.showCells(indices, index);
     }
   }.bind(this))
+
   // show the list of images the user selected
   this.elems.modalButton.addEventListener('click', function(e) {
-    this.elems.modalTarget.innerHTML = _.template(this.elems.modalTemplate.textContent)({
-      images: this.getSelectedImages(),
-    });
+    var images = Object.keys(this.selected).filter(function(k) {
+      return this.selected[k];
+    }.bind(this))
+    var template = _.template(this.elems.modalTemplate.textContent)
+    this.elems.modalTarget.innerHTML = template({ images: images });
     this.elems.modalContainer.style.display = 'block';
     this.displayed = true;
   }.bind(this))
+
   // toggle the inclusion of a cell in the selection
   this.elems.modalContainer.addEventListener('click', function(e) {
     if (e.target.className.includes('toggle-selection')) {
@@ -1563,6 +1518,7 @@ Selection.prototype.addModalEventListeners = function() {
       }
     }
   }.bind(this))
+
   // let users set the download filetype
   for (var i=0; i<this.elems.filetypeButtons.length; i++) {
     this.elems.filetypeButtons[i].addEventListener('click', function(e) {
@@ -1573,187 +1529,121 @@ Selection.prototype.addModalEventListeners = function() {
       this.downloadFiletype = e.target.id;
     }.bind(this))
   }
+
   // let users trigger the download
   this.elems.downloadLink.addEventListener('click', function(e) {
     this.downloadSelected();
   }.bind(this))
+
+  // allow users to clear the selected images
+  this.elems.xIcon.addEventListener('click', this.clear.bind(this))
 }
 
-Selection.prototype.toggleSelection = function(idx) {
-  this.selected[idx] = !this.selected[idx];
-}
-
-// find the world coordinates of the last mouse position
-Selection.prototype.getEventWorldCoords = function(e) {
-  var vector = new THREE.Vector3(),
-      camera = world.camera,
-      mouse = new THREE.Vector2(),
-      canvasSize = getCanvasSize(),
-      // get the event offsets
-      rect = e.target.getBoundingClientRect(),
-      dx = e.clientX - rect.left,
-      dy = e.clientY - rect.top,
-      // convert from event to clip space
-      x = (dx / canvasSize.w) * 2 - 1,
-      y = -(dy / canvasSize.h) * 2 + 1;
-  // project the event location into screen coords
-  vector.set(x, y, 0.5);
-  vector.unproject(camera);
-  var direction = vector.sub(camera.position).normalize(),
-      distance = - camera.position.z / direction.z,
-      scaled = direction.multiplyScalar(distance),
-      coords = camera.position.clone().add(scaled); // coords = selector's location
-  return coords;
-}
-
-// update the set of points currently selected
-Selection.prototype.updateSelected = function() {
-  for (var i=0; i<data.cells.length; i++) {
-    if (keyboard.shiftPressed() || keyboard.commandPressed()) {
-      if (this.insideBox(data.cells[i])) this.selected[i] = true;
-    } else {
-      this.selected[i] = this.insideBox(data.cells[i]);
-    }
+Lasso.prototype.update = function() {
+  if (!this.enabled) return;
+  if (this.mesh) {
+    this.time += this.clock.getDelta() / 10;
+    this.mesh.material.uniforms.time.value = this.time;
   }
 }
 
-// get a list of the images the user has selected
-Selection.prototype.getSelectedImages = function() {
-  return data.json.images.filter(function(i, idx) {
-    return this.selected[idx];
-  }.bind(this))
+Lasso.prototype.setEnabled = function(bool) {
+  this.enabled = bool;
 }
 
-// get a list of the image indices the user has selected
-Selection.prototype.getSelectedImageIndices = function() {
-  var l = [];
-  for (var i=0; i<data.json.images.length; i++) {
-    if (this.selected[i]) l.push(i);
-  }
-  return l;
+Lasso.prototype.setCapturing = function(bool) {
+  this.capturing = bool;
 }
 
-// return a boolean indicating whether the user has selected any cells
-Selection.prototype.hasSelection = function() {
-  return this.getSelectedImages().length > 0;
+Lasso.prototype.setFrozen = function(bool) {
+  this.frozen = bool;
 }
 
-// return a boolean indicating if a point is inside the selection box
-Selection.prototype.insideBox = function(i) {
-  var box = this.getBoxDomain();
-  if (!box) return false;
-  return i.x >= box.x.min &&
-         i.x <= box.x.max &&
-         i.y >= box.y.min &&
-         i.y <= box.y.max;
+Lasso.prototype.clear = function() {
+  this.setBorderedImages([]);
+  this.removeMesh();
+  this.elems.viewSelectedContainer.style.display = 'none';
+  this.setCapturing(false);
+  this.points = [];
 }
 
-// get the domain of the selection box
-Selection.prototype.getBoxDomain = function() {
-  var pos0 = this.pos0 || {};
-  var pos1 = this.pos1 || {};
-  return {
-    x: {
-      min: Math.min(pos0.x, pos1.x),
-      max: Math.max(pos0.x, pos1.x),
-    },
-    y: {
-      min: Math.min(pos0.y, pos1.y),
-      max: Math.max(pos0.y, pos1.y),
-    },
-  }
+Lasso.prototype.removeMesh = function() {
+  if (this.mesh) world.scene.remove(this.mesh);
 }
 
-Selection.prototype.update = function() {
-  // if the selection is disabled, exit
-  if (!this.run) {
-    return;
-  }
-  // if there's no mesh rendered, exit
-  if (!this.mesh) {
-    return;
-  }
-  // if there are no selected cells, exit
-  var selected = this.getSelectedImageIndices();
-  var elem = document.querySelector('#n-images-selected');
-  if (elem) elem.textContent = selected.length;
-  if (!selected.length) {
-    return;
-  }
-  // make the button that displays the modal clickable
-  this.elems.modalButton.style.display = 'block';
-  // make non-selected cells less opaque
-  this.setSelected(selected);
-  // indicate how many images the user has selected
-  this.elems.countTarget.textContent = selected.length;
-  this.elems.selectedImagesCount.style.display = 'block';
-  // if we're not rendering the box, hide the box and exit
-  if (!this.renderBox) {
-    this.mesh.material.uniforms.render.value = false;
-    return;
-  }
-  // if either vertex that positions the selection box is missing exit
-  if (!this.pos0 || !this.pos1) {
-    return;
-  }
-  // update the uniforms used to create the marching ants
-  this.time += this.clock.getDelta() / 10;
-  this.mesh.material.uniforms.time.value = this.time;
-  // set the geometry attributes that define the selection box position
-  var box = this.getBoxDomain(),
-      z = 0.001,
-      points = [
-        new THREE.Vector3(box.x.min, box.y.min, z),
-        new THREE.Vector3(box.x.max, box.y.min, z),
-        new THREE.Vector3(box.x.max, box.y.max, z),
-        new THREE.Vector3(box.x.min, box.y.max, z),
-        new THREE.Vector3(box.x.min, box.y.min, z),
-      ];
-  // find the cumulative length of the line up to each point
-  var geometry = new THREE.BufferGeometry().setFromPoints(points);
-  var lengths = new THREE.BufferAttribute(new Float32Array(this.getLineLengths(points)), 1);
-  this.mesh.geometry.attributes.position.array = geometry.attributes.position.array;
-  this.mesh.geometry.attributes.position.needsUpdate = true;
-  this.mesh.geometry.attributes.length.array = lengths.array;
-  this.mesh.geometry.attributes.length.needsUpdate = true;
-  this.mesh.material.uniforms.render.value = true;
-}
-
-// Set the selected attribute of cells to 1.0 if they're selected else 0.0
-Selection.prototype.setSelected = function(arr) {
-  // set the selection buffer
+Lasso.prototype.setBorderedImages = function(indices) {
   var vals = new Uint8Array(data.cells.length);
-  for (var i=0; i<arr.length; i++) vals[arr[i]] = 1.0;
-  // update the buffers of each draw call
+  for (var i=0; i<indices.length; i++) vals[indices[i]] = 1;
   world.setBuffer('selected', vals);
 }
 
-Selection.prototype.start = function() {
-  this.pos0 = null;
-  this.pos1 = null;
-  this.frozen = false;
+Lasso.prototype.draw = function() {
+  if (this.points.length <4) return;
+  this.points = this.getHull();
+  // remove the old mesh
+  this.removeMesh();
+  // get the indices of images that are inside the polygon
+  this.selected = this.getSelected();
+  var indices = [],
+      keys = Object.keys(this.selected);
+  for (var i=0; i<keys.length; i++) {
+    if (this.selected[keys[i]]) indices.push(i)
+  }
+  // allow the user to see the selected images if desired
+  if (indices.length) {
+    this.elems.viewSelectedContainer.style.display = 'block';
+    this.elems.countTarget.textContent = indices.length;
+  }
+  // indicate the number of cells that are selected
+  this.setNSelected(indices.length);
+  // illuminate the points that are inside the polyline
+  this.setBorderedImages(indices);
+  // obtain and store a mesh, then add the mesh to the scene
+  this.mesh = this.getMesh();
+  world.scene.add( this.mesh );
 }
 
-Selection.prototype.clear = function() {
-  // remove the stored mouse positions
-  this.pos0 = null;
-  this.pos1 = null;
-  // update boolean in material controlling rendering
-  this.mesh.material.uniforms.render.value = false;
-  // unfreeze the mousemove listener
-  this.frozen = false;
-  // restore opacities in cells
-  this.setSelected([]);
-  // update the list of selected cells
-  this.updateSelected();
-  // remove the button that triggers the modal display
-  this.elems.modalButton.style.display = 'none';
-  // indicate there are no images selected
-  this.elems.selectedImagesCount.style.display = 'none';
+// get a mesh that shows the polyline of selected points
+Lasso.prototype.getMesh = function() {
+  // create a list of 3d points to draw - the last point closes the loop
+  var points = [];
+  for (var i=0; i<this.points.length; i++) {
+    var p = this.points[i];
+    points.push(new THREE.Vector3(p.x, p.y, 0));
+  }
+  points.push(points[0]);
+  // transform those points to a polyline
+  var lengths = getCumulativeLengths(points);
+  var geometry = new THREE.BufferGeometry().setFromPoints(points);
+  var lengthAttr = new THREE.BufferAttribute(new Float32Array(lengths), 1);
+  geometry.setAttribute('length', lengthAttr);
+  var material = new THREE.RawShaderMaterial({
+    uniforms: {
+      time: { type: 'float', value: 0 },
+      render: { type: 'bool', value: true },
+    },
+    vertexShader: document.querySelector('#dashed-vertex-shader').textContent,
+    fragmentShader: document.querySelector('#dashed-fragment-shader').textContent,
+  });
+  var mesh = new THREE.Line(geometry, material);
+  mesh.frustumCulled = false;
+  return mesh;
 }
 
-Selection.prototype.downloadSelected = function() {
-  var images = this.getSelectedImages();
+// get the convex hull of this.points
+Lasso.prototype.getHull = function() {
+  var graham = new ConvexHullGrahamScan();
+  for (var i=0; i<this.points.length; i++) {
+    graham.addPoint(this.points[i].x, this.points[i].y);
+  }
+  var hull = graham.getHull();
+  return hull;
+}
+
+Lasso.prototype.downloadSelected = function() {
+  var images = Object.keys(this.selected).filter(function(k) {
+    return this.selected[k]
+  }.bind(this));
   // conditionally fetch the metadata for each selected image
   var rows = [];
   if (data.json.metadata) {
@@ -1783,17 +1673,13 @@ Selection.prototype.downloadSelected = function() {
   }
 }
 
-Selection.prototype.downloadRows = function(rows) {
-  var input = this.elems.downloadInput;
-  var link = this.elems.downloadLink;
+Lasso.prototype.downloadRows = function(rows) {
   var filetype = this.downloadFiletype;
-  var filename = input.value || Date.now().toString();
-  filename = filename.endsWith('.' + filetype) ? filename : filename + '.' + filetype;
-  if (filetype == 'json') {
-    var blob = new Blob([JSON.stringify(rows)], {type: 'octet/stream'});
-  } else if (filetype == 'csv') {
-    var blob = new Blob([Papa.unparse(rows)], {type: 'text/plain'});
-  }
+  var filename = this.elems.downloadInput.value || Date.now().toString();
+  if (!filename.endsWith('.' + filetype)) filename += '.' + filetype;
+  var blob = filetype == 'json'
+    ? new Blob([JSON.stringify(rows)], {type: 'octet/stream'})
+    : new Blob([Papa.unparse(rows)], {type: 'text/plain'});
   var a = document.createElement('a');
   document.body.appendChild(a);
   a.download = filename;
@@ -1801,6 +1687,161 @@ Selection.prototype.downloadRows = function(rows) {
   a.click();
   a.parentNode.removeChild(a);
 }
+
+// return d[filename] = bool indicating selected
+Lasso.prototype.getSelected = function() {
+  var polygon = this.points.map(function(i) {
+    return [i.x, i.y]
+  });
+  var selected = {};
+  for (var i=0; i<data.json.images.length; i++) {
+    var p = [data.cells[i].x, data.cells[i].y];
+    selected[data.json.images[i]] = pointInPolygon(p, polygon);
+  }
+  return selected;
+}
+
+Lasso.prototype.toggleSelection = function(idx) {
+  var image = data.json.images[idx];
+  this.selected[image] = !this.selected[image];
+  this.setNSelected();
+}
+
+Lasso.prototype.setNSelected = function(n) {
+  var elem = document.querySelector('#n-images-selected');
+  if (!elem) return;
+  if (!Number.isInteger(n)) {
+    var n = 0;
+    var keys = Object.keys(this.selected);
+    for (var i=0; i<keys.length; i++) {
+      if (this.selected[keys[i]]) n++;
+    }
+  }
+  elem.textContent = n;
+}
+
+/**
+* 2D convex hull via https://github.com/brian3kb/graham_scan_js
+**/
+
+function ConvexHullGrahamScan() {
+  this.anchorPoint = undefined;
+  this.reverse = false;
+  this.points = [];
+}
+
+ConvexHullGrahamScan.prototype = {
+  constructor: ConvexHullGrahamScan,
+  Point: function (x, y) {
+    this.x = x;
+    this.y = y;
+  },
+  _findPolarAngle: function (a, b) {
+    var ONE_RADIAN = 57.295779513082;
+    var deltaX, deltaY;
+    // if the points are undefined, return a zero difference angle.
+    if (!a || !b) return 0;
+    deltaX = (b.x - a.x);
+    deltaY = (b.y - a.y);
+    if (deltaX == 0 && deltaY == 0) return 0;
+    var angle = Math.atan2(deltaY, deltaX) * ONE_RADIAN;
+    if (this.reverse) {
+      if (angle <= 0) angle += 360;
+    } else {
+      if (angle >= 0) angle += 360;
+    }
+    return angle;
+  },
+  addPoint: function (x, y) {
+    // check for a new anchor
+    var newAnchor =
+      ( this.anchorPoint === undefined ) ||
+      ( this.anchorPoint.y > y ) ||
+      ( this.anchorPoint.y === y && this.anchorPoint.x > x );
+    if ( newAnchor ) {
+      if ( this.anchorPoint !== undefined ) {
+        this.points.push(new this.Point(this.anchorPoint.x, this.anchorPoint.y));
+      }
+      this.anchorPoint = new this.Point(x, y);
+    } else {
+      this.points.push(new this.Point(x, y));
+    }
+  },
+
+  _sortPoints: function () {
+    var self = this;
+    return this.points.sort(function (a, b) {
+      var polarA = self._findPolarAngle(self.anchorPoint, a);
+      var polarB = self._findPolarAngle(self.anchorPoint, b);
+      if (polarA < polarB) return -1;
+      if (polarA > polarB) return 1;
+      return 0;
+    });
+  },
+
+  _checkPoints: function (p0, p1, p2) {
+    var difAngle;
+    var cwAngle = this._findPolarAngle(p0, p1);
+    var ccwAngle = this._findPolarAngle(p0, p2);
+    if (cwAngle > ccwAngle) {
+      difAngle = cwAngle - ccwAngle;
+      return !(difAngle > 180);
+    } else if (cwAngle < ccwAngle) {
+      difAngle = ccwAngle - cwAngle;
+      return (difAngle > 180);
+    }
+    return true;
+  },
+
+  getHull: function () {
+    var hullPoints = [],
+        points,
+        pointsLength;
+    this.reverse = this.points.every(function(point) {
+      return (point.x < 0 && point.y < 0);
+    });
+    points = this._sortPoints();
+    pointsLength = points.length;
+    // if there are less than 3 points, joining these points creates a correct hull.
+    if (pointsLength < 3) {
+      points.unshift(this.anchorPoint);
+      return points;
+    }
+    // move first two points to output array
+    hullPoints.push(points.shift(), points.shift());
+    // scan is repeated until no concave points are present.
+    while (true) {
+      var p0,
+          p1,
+          p2;
+      hullPoints.push(points.shift());
+      p0 = hullPoints[hullPoints.length - 3];
+      p1 = hullPoints[hullPoints.length - 2];
+      p2 = hullPoints[hullPoints.length - 1];
+      if (this._checkPoints(p0, p1, p2)) {
+        hullPoints.splice(hullPoints.length - 2, 1);
+      }
+      if (points.length == 0) {
+        if (pointsLength == hullPoints.length) {
+          // check for duplicate anchorPoint edge-case, if not found, add the anchorpoint as the first item.
+          var ap = this.anchorPoint;
+          // remove any udefined elements in the hullPoints array.
+          hullPoints = hullPoints.filter(function(p) { return !!p; });
+          if (!hullPoints.some(function(p) {
+              return (p.x == ap.x && p.y == ap.y);
+            })) {
+            hullPoints.unshift(this.anchorPoint);
+          }
+          return hullPoints;
+        }
+        points = hullPoints;
+        pointsLength = points.length;
+        hullPoints = [];
+        hullPoints.push(points.shift(), points.shift());
+      }
+    }
+  }
+};
 
 /**
 * Picker: Mouse event handler that uses gpu picking
@@ -1858,7 +1899,7 @@ Picker.prototype.onMouseUp = function(e) {
   // if we're in select mode, conditionally un/select the clicked cell
   if (world.mode == 'select') {
     if (keyboard.shiftPressed() || keyboard.commandPressed()) {
-      return selection.toggleSelection(cellIdx);
+      return lasso.toggleSelection(cellIdx);
     }
   }
   // else we're in pan mode; zoom in if the camera is far away, else show the modal
@@ -1909,10 +1950,14 @@ Picker.prototype.select = function(obj) {
 function Dates() {}
 
 Dates.prototype.init = function() {
-  if (!data.json.layouts.date) return;
   // set elems used below
   this.elems = {
     slider: document.querySelector('#date-slider'),
+  }
+  // remove the dom element if there is no date data
+  if (!data.json.layouts.date) {
+    this.elems.slider.style.display = 'none';
+    return;
   }
   // dates domain, selected range, and filename to date map
   this.state = {
@@ -2338,7 +2383,7 @@ LOD.prototype.updateGridPosition = function() {
 // nb: don't mutate fetchQueue, as that deletes items from this.grid
 LOD.prototype.fetchNextImage = function() {
   // if the selection modal is displayed don't fetch additional images
-  if (selection.displayed) return;
+  if (lasso.displayed) return;
   // identfiy the next image to be loaded
   var cellIdx = this.state.fetchQueue[0];
   this.state.fetchQueue = this.state.fetchQueue.slice(1);
@@ -2695,7 +2740,7 @@ function Tooltip() {
       var offsets = i.elem.getBoundingClientRect();
       this.elem.textContent = i.text;
       this.elem.style.position = 'absolute';
-      this.elem.style.left = (offsets.left + (i.elem.clientWidth/2) - (this.elem.clientWidth/2)) + 'px';
+      this.elem.style.left = (offsets.left + i.elem.clientWidth - this.elem.clientWidth + 9) + 'px';
       this.elem.style.top = (offsets.top + i.elem.clientHeight + 16) + 'px';
     }.bind(this));
     i.elem.addEventListener('mouseout', function(e) {
@@ -2928,6 +2973,126 @@ function scale(arr) {
 }
 
 /**
+* Geometry helpers
+**/
+
+// convert a flat object to a 1D array
+function arrayify(obj) {
+  var keys = Object.keys(obj);
+  var l = [];
+  for (var i=0; i<keys.length; i++) {
+    l.push(obj[keys[i]]);
+  }
+  return l;
+}
+
+// compute the magnitude of a vector
+function magnitude(vec) {
+  var v = 0;
+  if (Array.isArray(vec)) {
+    for (var i=0; i<vec.length; i++) {
+      v += vec[i]**2;
+    }
+    return v**(1/2);
+  } else if (typeof vec == 'object') {
+    return magnitude(arrayify(vec));
+  } else {
+    throw Error('magnitude requires an array or object')
+  }
+}
+
+// compute the dot product of two vectors
+function dotProduct(a, b) {
+  if (typeof a == 'object' && !Array.isArray(a)) a = arrayify(a);
+  if (typeof b == 'object' && !Array.isArray(b)) b = arrayify(b);
+  if (a.length !== b.length) throw Error('dotProduct requires vecs of same length');
+  var s = 0;
+  for (var i=0; i<a.length; i++) s += a[i] * b[i];
+  return s;
+}
+
+function rad2deg(radians) {
+  return radians * (180/Math.PI);
+}
+
+// compute the theta between two points
+function theta(a, b) {
+  var num = dotProduct(a, b);
+  var denom = magnitude(a) * magnitude(b);
+  var radians = denom == 0
+    ? 0
+    : Math.acos(num/denom);
+  return radians
+    ? rad2deg(radians)
+    : 0;
+}
+
+// get the geometric mean of `points`
+function getCentroid(points) {
+  if (!points) points = this.getHull();
+  var center = {x: 0, y: 0};
+  for (var i=0; i<points.length; i++) {
+    center.x += points[i].x;
+    center.y += points[i].y;
+  }
+  return {
+    x: center.x / points.length,
+    y: center.y / points.length,
+  }
+}
+
+// find the cumulative length of the line up to each point
+function getCumulativeLengths(points) {
+  var lengths = [];
+  var sum = 0;
+  for (var i=0; i<points.length; i++) {
+    if (i>0) sum += points[i].distanceTo(points[i - 1]);
+    lengths[i] = sum;
+  };
+  return lengths;
+}
+
+// via https://github.com/substack/point-in-polygon
+function pointInPolygon(point, polygon) {
+  var x = point[0], y = point[1];
+  var inside = false;
+  for (var i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    var xi = polygon[i][0], yi = polygon[i][1];
+    var xj = polygon[j][0], yj = polygon[j][1];
+    var intersect = ((yi > y) != (yj > y))
+        && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+/**
+* Conversion utils
+**/
+
+function getEventWorldCoords(e) {
+  var vector = new THREE.Vector3(),
+      camera = world.camera,
+      mouse = new THREE.Vector2(),
+      canvasSize = getCanvasSize(),
+      // get the event offsets
+      rect = e.target.getBoundingClientRect(),
+      dx = e.clientX - rect.left,
+      dy = e.clientY - rect.top,
+      // convert from event to clip space
+      x = (dx / canvasSize.w) * 2 - 1,
+      y = -(dy / canvasSize.h) * 2 + 1;
+  // project the event location into screen coords
+  vector.set(x, y, 0.5);
+  vector.unproject(camera);
+  var direction = vector.sub(camera.position).normalize(),
+      distance = - camera.position.z / direction.z,
+      scaled = direction.multiplyScalar(distance),
+      coords = camera.position.clone().add(scaled); // coords = selector's location
+  return coords;
+}
+
+/**
 * Main
 **/
 
@@ -2940,7 +3105,7 @@ var filters = new Filters();
 var picker = new Picker();
 var modal = new Modal();
 var keyboard = new Keyboard();
-var selection = new Selection();
+var lasso = new Lasso();
 var layout = new Layout();
 var world = new World();
 var text = new Text();
