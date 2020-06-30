@@ -241,31 +241,31 @@ input[type=range] {
 input[type=range]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
   background: #eee;
   cursor: pointer;
-  border-radius: 18px;
+  border-radius: 14px;
 }
 
 input[type=range]::-moz-range-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
   background: #eee;
   cursor: pointer;
-  border-radius: 18px;
+  border-radius: 14px;
 }
 
 input[type=range]::-ms-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
   background: #eee;
   cursor: pointer;
-  border-radius: 18px;
+  border-radius: 14px;
 }
 
 #range-slider {
