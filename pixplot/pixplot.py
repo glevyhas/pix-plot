@@ -12,6 +12,7 @@ from keras_preprocessing.image import load_img
 from pointgrid import align_points_to_grid
 from distutils.dir_util import copy_tree
 from sklearn.decomposition import PCA
+from scipy.spatial import ConvexHull
 from iiif_downloader import Manifest
 from collections import defaultdict
 from rasterfairy import coonswarp
@@ -73,7 +74,7 @@ config = {
   'cell_size': 32,
   'lod_cell_height': 128,
   'n_neighbors': 6,
-  'min_dist': 0.001,
+  'min_distance': 0.001,
   'metric': 'correlation',
   'pointgrid_fill': 0.05,
   'square_cells': False,
@@ -203,7 +204,7 @@ def stream_images(**kwargs):
         metadata = kwargs['metadata'][idx]
       yield Image(i, metadata=metadata)
     except Exception as exc:
-      print(' * image', i, 'could not be processed', exc)
+      print(' * image', i, 'could not be processed --', exc)
 
 
 def clean_filename(s):
@@ -483,7 +484,7 @@ def get_umap_layout(**kwargs):
   if os.path.exists(out_path) and kwargs['use_cache']: return out_path
   w = PCA(n_components=100).fit_transform(kwargs['vecs'])
   z = UMAP(n_neighbors=kwargs['n_neighbors'],
-    min_dist=kwargs['min_dist'],
+    min_dist=kwargs['min_distance'],
     metric=kwargs['metric']).fit_transform(w)
   return write_layout(out_path, z, **kwargs)
 
@@ -553,7 +554,8 @@ def get_date_layout(cols=3, bin_units='years', **kwargs):
   @param int cols: the number of columns to plot for each bar
   @param str bin_units: the temporal units to use when creating bins
   '''
-  if not kwargs['metadata'] or not kwargs['metadata'][0].get('date', False): return False
+  date_vals = [kwargs['metadata'][i].get('date', False) for i in range(len(kwargs['metadata']))]
+  if not kwargs['metadata'] or not any(date_vals): return False
   # if the data layouts have been cached, return them
   positions_out_path = get_path('layouts', 'timeline', **kwargs)
   labels_out_path = get_path('layouts', 'timeline-labels', **kwargs)
@@ -835,30 +837,53 @@ def get_centroids(**kwargs):
   '''Return the stable clusters from the condensed tree of connected components from the density graph'''
   print(' * HDBSCAN clustering data with ' + str(multiprocessing.cpu_count()) + ' cores...')
   config = {
+    'core_dist_n_jobs': multiprocessing.cpu_count(),
     'min_cluster_size': kwargs['min_cluster_size'],
     'cluster_selection_epsilon': 0.01,
     'min_samples': 1,
-    'core_dist_n_jobs': multiprocessing.cpu_count(),
   }
-  z = HDBSCAN(**config).fit(kwargs['vecs'])
-  # find the centroids for each cluster
+  v = kwargs['vecs']
+  z = HDBSCAN(**config).fit(v)
+  # find the points in each cluster
   d = defaultdict(list)
   for idx, i in enumerate(z.labels_):
-    d[i].append(kwargs['vecs'][idx])
+    d[i].append(v[idx])
+  # find the convex hull for each cluster's points
+  convex_hulls = []
+  for i in d:
+    hull = ConvexHull(d[i])
+    points = [hull.points[j] for j in hull.vertices]
+    # the last convex hull simplex needs to connect back to the first point
+    convex_hulls.append(np.vstack([points, points[0]]))
+  # find the centroids for each cluster
   centroids = []
   for i in d:
     x, y = np.array(d[i]).T
-    centroids.append(np.array([np.sum(x)/len(x), np.sum(y)/len(y)]))
-  closest, _ = pairwise_distances_argmin_min(centroids, kwargs['vecs'])
-  closest = set(closest)
-  print(' * found', len(closest), 'clusters')
+    centroids.append(np.array([np.mean(x), np.mean(y)]))
+  # identify the number of points in each cluster
+  lens = [len(d[i]) for i in d]
+  # combine data into cluster objects
+  closest, _ = pairwise_distances_argmin_min(centroids, v)
   paths = [kwargs['image_paths'][i] for i in closest]
-  data = [{
+  clusters = [{
     'img': clean_filename(paths[idx]),
-    'label': 'Cluster {}'.format(idx+1),
+    'convex_hull': convex_hulls[idx].tolist(),
+    'n_images': lens[idx],
   } for idx, i in enumerate(closest)]
+  # remove massive clusters
+  retained = []
+  for idx, i in enumerate(clusters):
+    x, y = np.array(i['convex_hull']).T
+    area = 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
+    if area < 0.2:
+      retained.append(i)
+  # sort the clusers by size
+  clusters = sorted(retained, key=lambda i: i['n_images'], reverse=True)
+  for idx, i in enumerate(clusters):
+    i['label'] = 'Cluster {}'.format(idx+1)
   # save the centroids to disk and return the path to the saved json
-  return write_json(get_path('centroids', 'centroid', **kwargs), data, **kwargs)
+  print(' * found', len(clusters), 'clusters')
+  return write_json(get_path('centroids', 'centroid', **kwargs), clusters, **kwargs)
 
 
 def get_heightmap(path, label, **kwargs):
@@ -963,7 +988,7 @@ def parse():
   parser.add_argument('--out_dir', type=str, default=config['out_dir'], help='the directory to which outputs will be saved', required=False)
   parser.add_argument('--cell_size', type=int, default=config['cell_size'], help='the size of atlas cells in px', required=False)
   parser.add_argument('--n_neighbors', type=int, default=config['n_neighbors'], help='the n_neighbors argument for UMAP')
-  parser.add_argument('--min_dist', type=float, default=config['min_dist'], help='the min_dist argument for umap')
+  parser.add_argument('--min_distance', type=float, default=config['min_distance'], help='the min_distance argument for umap')
   parser.add_argument('--metric', type=str, default=config['metric'], help='the metric argument for umap')
   parser.add_argument('--pointgrid_fill', type=float, default=config['pointgrid_fill'], help='float 0:1 that determines sparsity of jittered distributions (lower means more sparse)')
   parser.add_argument('--copy_web_only', action='store_true', help='update ./output/web without reprocessing data')
