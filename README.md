@@ -69,11 +69,7 @@ The [UMAP algorithm](https://github.com/lmcinnes/umap) is particularly sensitive
 
 ```
 --min_distance: determines the minimum distance between points in the embedding
-```
-```
 --n_neighbors: determines the tradeoff between local and global clusters
-```
-```
 --metric: determines the distance metric to use when positioning points
 ```
 
@@ -97,22 +93,23 @@ To specify the metadata for your image collection, you can add ` --metadata=path
 pixplot --images "path/to/images/*.jpg" --metadata "path/to/metadata.csv"
 ```
 
-Your metadata should be in a comma-separated value file (CSV), should contain one row for each of your input images, and should contain exactly the following columns in the following order.
+Metadata should be in a comma-separated value file, should contain one row for each input image, and should contain headers specifying the column order. Here is a sample metadata file:
 
-| Filename | Metadata Tags | Description | Permalink        |
-| -------- | ------------- | ----------- | ---------------- |
-| bees.jpg | honey&#124;yellow  | bees' knees | https://... |
+| Filename | Tags                    | Description   | Permalink   | Year     |
+| -------- | ----------------------- | ------------- | ----------- | -------- |
+| bees.jpg | honey &#124; yellow     | bees' knees   | https://... | 1776     |
+| cats.jpg | clawed &#124; dangerous | cats' pajamas | https://... | 1972     |
 
-If desired, you can add a fifth column "year" that will be used to create a date-based layout of your images:
+The following column labels are accepted:
 
-![App preview](./pixplot/web/assets/images/date-layout.png?raw=true)
-
-Year-column values should contain a year integer for each image, e.g.:
-
-| Filename | Metadata Tags | Description | Permalink        | Year |
-| -------- | ------------- | ----------- | ---------------- | ---- |
-| bees.jpg | honey&#124;yellow  | bees' knees | https://... | 1972 |
-
+| *Column*         | *Description*                                           |
+| ---------------- | ------------------------------------------------------- |
+| **Filename**     | the filename of the image                               |
+| **Tags**         | a pipe-delimited list of categorical tags for the image |
+| **Description**  | a plaintext description of the image's contents         |
+| **Permalink**    | a link to the image hosted on another domain            |
+| **Year**         | a year timestamp for the image (should be an integer)   |
+| **Label**        | a categorical label used for supervised UMAP projection |
 
 ## IIIF Images
 

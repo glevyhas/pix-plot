@@ -145,20 +145,22 @@ def filter_images(**kwargs):
     return [image_paths, []]
   # handle user metadata: retain only records with image and metadata
   l = get_metadata_list(**kwargs)
-  img_bn = set([clean_filename(i) for i in image_paths])
   meta_bn = set([clean_filename(i.get('filename', '')) for i in l])
-  both = img_bn.intersection(meta_bn)
-  no_meta = list(img_bn - meta_bn)
-  if no_meta:
-    print(' ! Some images are missing metadata:\n  -', '\n  - '.join(no_meta[:10]))
-    if len(no_meta) > 10: print(' ...', len(no_meta)-10, 'more')
-    with open('missing-metadata.txt', 'w') as out: out.write('\n'.join(no_meta))
+  img_bn = set([clean_filename(i) for i in image_paths])
+  # identify images with metadata and those without metadata
+  meta_present = img_bn.intersection(meta_bn)
+  meta_missing = list(img_bn - meta_bn)
+  # notify the user of images that are missing metadata
+  if meta_missing:
+    print(' ! Some images are missing metadata:\n  -', '\n  - '.join(meta_missing[:10]))
+    if len(meta_missing) > 10: print(' ...', len(meta_missing)-10, 'more')
+    with open('missing-metadata.txt', 'w') as out: out.write('\n'.join(meta_missing))
   # get the sorted lists of images and metadata
   d = {clean_filename(i['filename']): i for i in l}
   images = []
   metadata = []
   for i in image_paths:
-    if clean_filename(i) in both:
+    if clean_filename(i) in meta_present:
       images.append(i)
       metadata.append(d[clean_filename(i)])
   kwargs['metadata'] = metadata
@@ -223,13 +225,11 @@ def get_metadata_list(**kwargs):
   # handle csv metadata
   l = []
   if kwargs['metadata'].endswith('.csv'):
-    headers = ['filename', 'tags', 'description', 'permalink', 'date']
     with open(kwargs['metadata']) as f:
-      rows = list(csv.reader(f))
-      while len(rows[0]) < len(headers):
-        headers = headers[:-1]
-      for i in rows:
-        l.append({headers[j]: i[j] if i[j] else '' for j,_ in enumerate(headers)})
+      reader = csv.reader(f)
+      headers = next(reader)
+      for i in reader:
+        l.append({headers[j]: i[j] if i[j] else '' for j, _ in enumerate(headers)})
   # handle json metadata
   else:
     for i in glob2.glob(kwargs['metadata']):
@@ -239,6 +239,7 @@ def get_metadata_list(**kwargs):
 
 
 def write_metadata(metadata, **kwargs):
+  '''Write list `metadata` of objects to disk'''
   if not metadata: return
   out_dir = join(kwargs['out_dir'], 'metadata')
   for i in ['filters', 'options', 'file']:
@@ -248,9 +249,8 @@ def write_metadata(metadata, **kwargs):
   d = defaultdict(list)
   for i in metadata:
     filename = clean_filename(i['filename'])
-    tags = [j.strip() for j in i['tags'].split('|')]
-    i['tags'] = tags
-    for j in tags: d[ '__'.join(j.split()) ].append(filename)
+    i['tags'] = [j.strip() for j in i.get('tags', '').split('|')]
+    for j in i['tags']: d[ '__'.join(j.split()) ].append(filename)
     write_json(os.path.join(out_dir, 'file', filename + '.json'), i, **kwargs)
   write_json(os.path.join(out_dir, 'filters', 'filters.json'), [{
     'filter_name': 'select',
@@ -262,22 +262,16 @@ def write_metadata(metadata, **kwargs):
   # create the map from date to images with that date (if dates present)
   date_d = defaultdict(list)
   for i in metadata:
-    date = i.get('date', '')
-    if not date: continue
-    image = clean_filename(i['filename'])
-    date_d[date].append(image)
+    date = i.get('year', '')
+    if date:
+      date_d[date].append(clean_filename(i['filename']))
   # find the min and max dates to show on the date slider
-  dates = []
-  for i in date_d:
-    try:
-      dates.append(int(i))
-    except:
-      pass
-  dates = np.array(dates)
+  dates = np.array([int(i.strip()) for i in date_d if is_number(i)])
   domain = {'min': float('inf'), 'max': -float('inf')}
   mean = np.mean(dates)
   std = np.std(dates)
   for i in dates:
+    # update the date domain with all non-outlier dates
     if abs(mean-i) < (std*4):
       domain['min'] = int(min(i, domain['min']))
       domain['max'] = int(max(i, domain['max']))
@@ -287,6 +281,15 @@ def write_metadata(metadata, **kwargs):
       'domain': domain,
       'dates': date_d,
     }, **kwargs)
+
+
+def is_number(s):
+  '''Return a boolean indicating if a string is a number'''
+  try:
+    int(s)
+    return True
+  except:
+    return False
 
 
 ##
@@ -482,10 +485,24 @@ def get_umap_layout(**kwargs):
   print(' * creating UMAP layout')
   out_path = get_path('layouts', 'umap', **kwargs)
   if os.path.exists(out_path) and kwargs['use_cache']: return out_path
-  w = PCA(n_components=100).fit_transform(kwargs['vecs'])
-  z = UMAP(n_neighbors=kwargs['n_neighbors'],
+  model = UMAP(n_neighbors=kwargs['n_neighbors'],
     min_dist=kwargs['min_distance'],
-    metric=kwargs['metric']).fit_transform(w)
+    metric=kwargs['metric'])
+  # run PCA to reduce dimensionality of image vectors
+  w = PCA(n_components=100).fit_transform(kwargs['vecs'])
+  # fetch categorical labels for images (if provided)
+  y = []
+  if kwargs.get('metadata', False):
+    labels = [i.get('label', None) for i in kwargs['metadata']]
+    # if the user provided labels, integerize them
+    if any([i for i in labels]):
+      d = defaultdict(lambda: len(d))
+      for i in labels:
+        if i == None: y.append(-1)
+        else: y.append(d[i])
+      y = np.array(y)
+  # project the PCA space down to 2d for visualization
+  z = model.fit(w, y=y if np.any(y) else None).embedding_
   return write_layout(out_path, z, **kwargs)
 
 
@@ -554,7 +571,7 @@ def get_date_layout(cols=3, bin_units='years', **kwargs):
   @param int cols: the number of columns to plot for each bar
   @param str bin_units: the temporal units to use when creating bins
   '''
-  date_vals = [kwargs['metadata'][i].get('date', False) for i in range(len(kwargs['metadata']))]
+  date_vals = [kwargs['metadata'][i].get('year', False) for i in range(len(kwargs['metadata']))]
   if not kwargs['metadata'] or not any(date_vals): return False
   # if the data layouts have been cached, return them
   positions_out_path = get_path('layouts', 'timeline', **kwargs)
@@ -568,7 +585,7 @@ def get_date_layout(cols=3, bin_units='years', **kwargs):
     }
   # date layout is not cached, so fetch dates and process
   print(' * creating date layout with {} columns'.format(cols))
-  datestrings = [i.metadata.get('date', 'no_date') for i in stream_images(**kwargs)]
+  datestrings = [i.metadata.get('year', 'no_date') for i in stream_images(**kwargs)]
   dates = [datestring_to_date(i) for i in datestrings]
   rounded_dates = [round_date(i, bin_units) for i in dates]
   # create d[formatted_date] = [indices into datestrings of dates that round to formatted_date]
@@ -668,16 +685,16 @@ def get_categorical_layout(null_tag='Other', margin=2, **kwargs):
   positions of observations in box regions determined by
   each point's tags metadata attribute (if applicable)
   '''
-  if not kwargs['metadata']: return False
+  if not kwargs.get('metadata', False): return False
   # determine the out path and return from cache if possible
   out_path = get_path('layouts', 'categorical', **kwargs)
   labels_out_path = get_path('layouts', 'categorical-labels', **kwargs)
   if os.path.exists(out_path): return out_path
   # accumulate d[tag] = [indices of points with tag]
+  tags = [i['tags'][0] if i.get('tags', False) else None for i in kwargs['metadata']]
+  if not any(tags): return False
   d = defaultdict(list)
-  for idx, i in enumerate(stream_images(**kwargs)):
-    tag = i.metadata['tags'][0] if i.metadata['tags'] else null_tag
-    d[tag].append(idx)
+  for idx, i in enumerate(tags): d[i].append(idx)
   # store the number of observations in each group
   keys_and_counts = [{'key': i, 'count': len(d[i])} for i in d]
   keys_and_counts.sort(key=operator.itemgetter('count'), reverse=True)
@@ -691,7 +708,7 @@ def get_categorical_layout(null_tag='Other', margin=2, **kwargs):
     offsets[i['key']] += sum([j['count'] for j in keys_and_counts[:idx]])
   sorted_points = []
   for idx, i in enumerate(stream_images(**kwargs)):
-    tag = i.metadata['tags'][0] if i.metadata['tags'] else null_tag
+    tag = i.metadata['tags'][0] if i.metadata.get('tags', False) else null_tag
     sorted_points.append(points[ offsets[tag] + counts[tag] ])
     counts[tag] += 1
   sorted_points = np.array(sorted_points)
