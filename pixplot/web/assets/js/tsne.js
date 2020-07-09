@@ -71,6 +71,8 @@ function Config() {
   }
   this.pickerMaxZ = 0.4; // max z value of camera to trigger picker modal
   this.atlasesPerTex = (this.size.texture/this.size.atlas)**2;
+  this.isLocalhost = window.location.hostname.includes('localhost') ||
+    window.location.hostname.includes('127.0.0.1');
 }
 
 /**
@@ -2594,6 +2596,7 @@ function Filter(obj) {
 **/
 
 function Hotspots() {
+  this.json = {};
   this.template = document.querySelector('#hotspot-template');
   this.target = document.querySelector('#hotspots');
   this.mesh = null;
@@ -2605,15 +2608,16 @@ Hotspots.prototype.init = function() {
     this.json = json;
     this.target.innerHTML = _.template(this.template.innerHTML)({
       hotspots: this.json,
+      isLocalhost: config.isLocalhost,
     });
     var hotspots = document.querySelectorAll('.hotspot');
     for (var i=0; i<hotspots.length; i++) {
       hotspots[i].addEventListener('click', function(idx) {
-        world.flyToCellImage(data.hotspots.json[idx].img);
+        world.flyToCellImage(this.json[idx].img);
       }.bind(this, i));
       // show the convex hull of a cluster on mouse enter
       hotspots[i].addEventListener('mouseenter', function(idx) {
-        var h = data.hotspots.json[idx].convex_hull;
+        var h = this.json[idx].convex_hull;
         if (!h) return;
         var shape = new THREE.Shape();
         shape.moveTo(h[0][0], h[0][1]);
@@ -3067,29 +3071,49 @@ function pointInPolygon(point, polygon) {
 }
 
 /**
-* Conversion utils
+* Coordinate conversions
 **/
 
 function getEventWorldCoords(e) {
+  var rect = e.target.getBoundingClientRect(),
+      dx = e.clientX - rect.left,
+      dy = e.clientY - rect.top;
+  return screenToWorldCoords({x: dx, y: dy});
+}
+
+function screenToWorldCoords(pos) {
   var vector = new THREE.Vector3(),
       camera = world.camera,
       mouse = new THREE.Vector2(),
       canvasSize = getCanvasSize(),
-      // get the event offsets
-      rect = e.target.getBoundingClientRect(),
-      dx = e.clientX - rect.left,
-      dy = e.clientY - rect.top,
-      // convert from event to clip space
-      x = (dx / canvasSize.w) * 2 - 1,
-      y = -(dy / canvasSize.h) * 2 + 1;
-  // project the event location into screen coords
+      // convert from screen to clip space
+      x = (pos.x / canvasSize.w) * 2 - 1,
+      y = -(pos.y / canvasSize.h) * 2 + 1;
+  // project the screen location into world coords
   vector.set(x, y, 0.5);
   vector.unproject(camera);
   var direction = vector.sub(camera.position).normalize(),
       distance = - camera.position.z / direction.z,
       scaled = direction.multiplyScalar(distance),
-      coords = camera.position.clone().add(scaled); // coords = selector's location
+      coords = camera.position.clone().add(scaled);
   return coords;
+}
+
+function worldToScreenCoords(pos) {
+  var s = getCanvasSize(),
+      w = s.w / 2,
+      h = s.h / 2,
+      vec = new THREE.Vector3(pos.x, pos.y, pos.z || 0),
+      canvas =
+  vec.project(world.camera);
+  vec.x =  (vec.x * w) + w;
+  vec.y = -(vec.y * h) + h;
+  // add offsets that account for the negative margins in the canvas position
+  var rect = world.canvas.getBoundingClientRect();
+  return {
+    x: vec.x + rect.left,
+    y: vec.y + rect.top
+  };
 }
 
 /**

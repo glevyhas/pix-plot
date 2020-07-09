@@ -432,10 +432,6 @@ nav.disabled .nav-inner {
   pointer-events: none;
 }
 
-.nav-inner::-webkit-scrollbar {
-  -webkit-appearance: none;
-}
-
 nav h2 {
   font-size: 0.9em;
   line-height: 1.05em;
@@ -447,7 +443,7 @@ nav h2 {
 
 #hotspots {
   width: 75px;
-  padding-bottom: 25px;
+  padding-bottom: 30px;
 }
 
 .hotspot {
@@ -457,10 +453,46 @@ nav h2 {
   text-align: center;
   width: 75px;
   font-size: 13px;
+  position: relative;
 }
 
 .hotspot img {
   width: 100%;
+}
+
+.hotspot .remove-hotspot-x {
+  position: absolute;
+  top: 1px;
+  right: -7px;
+  padding: 1px;
+  background: #333;
+  color: #eee;
+  width: 12px;
+  height: 12px;
+  vertical-align: top;
+  font-size: 9px;
+  line-height: 13px;
+  border-radius: 100%;
+  box-shadow: 0px 0px 3px #555;
+}
+
+#new-hotspot {
+  height: 90px;
+  outline-style: dotted;
+  outline-width: 2px;
+  text-align: center;
+  font-size: 45px;
+  line-height: 90px;
+  cursor: pointer;
+  margin-top: 7px;
+  font-weight: 100;
+  outline-color: #999;
+  color: #dcdcdc;
+}
+
+#new-hotspot:hover {
+  outline-color: #eab755;
+  color: #fff;
 }
 
 /**

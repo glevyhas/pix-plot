@@ -408,10 +408,18 @@
         <script type='text/html' id='hotspot-template'>
           <% _.forEach(hotspots, function(hotspot) { %>
             <div class='hotspot'>
+              <% if (isLocalhost) { %>
+                <div class='remove-hotspot-x'>✕</div>
+              <% } %>
               <img src='data/thumbs/<%= hotspot.img %>'>
               <div><%= hotspot.label %></div>
             </div>
           <% }); %>
+          <% if (isLocalhost) { %>
+            <div id='new-hotspot'>
+              <div>+</div>
+            </div>
+          <% } %>
         </script>
       </div>
     </nav>
