@@ -1426,7 +1426,9 @@ function Lasso() {
   this.mousedownCoords = {}; // obj storing x, y, z coords of mousedown
   this.elems = {
     viewSelectedContainer: document.querySelector('#view-selected-container'),
-    modalButton: document.querySelector('#view-selected'),
+    viewSelected: document.querySelector('#view-selected'),
+    createHotspot: document.querySelector('#create-hotspot'),
+
     selectedImagesCount: document.querySelector('#selected-images-count'),
     countTarget: document.querySelector('#count-target'),
     xIcon: document.querySelector('#selected-images-x'),
@@ -1464,14 +1466,50 @@ Lasso.prototype.addMouseEventListeners = function() {
 
   window.addEventListener('mouseup', function(e) {
     if (!this.enabled) return;
+    // prevent the lasso points from changing
     this.setFrozen(true);
+    // if the user registered a click, clear the lasso
     if (e.clientX == this.mousedownCoords.x &&
         e.clientY == this.mousedownCoords.y &&
         !keyboard.shiftPressed() &&
-        !keyboard.commandPressed()) this.clear();
+        !keyboard.commandPressed()) {
+      this.clear();
+    }
+    // do not turn off capturing if the user is clicking the lasso symbol
     if (!e.target.id || e.target.id == 'select') return;
+    // prevent the lasso from updating its points boundary
     this.setCapturing(false);
   }.bind(this));
+
+  this.elems.createHotspot.addEventListener('click', function() {
+    var img = null,
+        nImages = 0,
+        keys = Object.keys(this.selected);
+    for (var i=0; i<keys.length; i++) {
+      if (this.selected[keys[i]]) {
+        nImages++;
+        img = keys[i];
+      }
+    }
+    // flatten the user's selection to a 2D array
+    var hull = [];
+    for (var i=0; i<this.points.length; i++) {
+      hull.push([this.points[i].x, this.points[i].y])
+    }
+    // augment the hotspots data
+    data.hotspots.json.push({
+      convex_hull: hull,
+      label: 'Cluster ' + (data.hotspots.json.length+1),
+      img: img,
+      n_images: nImages,
+    })
+    // render the hotspots
+    data.hotspots.render();
+    // scroll to the bottom of the hotspots
+    setTimeout(function() {
+      data.hotspots.scrollToBottom()
+    }, 100);
+  }.bind(this))
 }
 
 Lasso.prototype.addModalEventListeners = function() {
@@ -1493,7 +1531,7 @@ Lasso.prototype.addModalEventListeners = function() {
   }.bind(this))
 
   // show the list of images the user selected
-  this.elems.modalButton.addEventListener('click', function(e) {
+  this.elems.viewSelected.addEventListener('click', function(e) {
     var images = Object.keys(this.selected).filter(function(k) {
       return this.selected[k];
     }.bind(this))
@@ -1591,7 +1629,7 @@ Lasso.prototype.draw = function() {
   for (var i=0; i<keys.length; i++) {
     if (this.selected[keys[i]]) indices.push(i)
   }
-  // allow the user to see the selected images if desired
+  // allow users to see the selected images if desired
   if (indices.length) {
     this.elems.viewSelectedContainer.style.display = 'block';
     this.elems.countTarget.textContent = indices.length;
@@ -2597,50 +2635,71 @@ function Filter(obj) {
 
 function Hotspots() {
   this.json = {};
-  this.template = document.querySelector('#hotspot-template');
-  this.target = document.querySelector('#hotspots');
   this.mesh = null;
-  this.init();
-}
-
-Hotspots.prototype.init = function() {
+  this.elems = {
+    navInner: document.querySelector('#nav-inner'),
+    template: document.querySelector('#hotspot-template'),
+    target: document.querySelector('#hotspots'),
+    nav: document.querySelector('nav'),
+  }
   get(getPath(data.json.centroids), function(json) {
     this.json = json;
-    this.target.innerHTML = _.template(this.template.innerHTML)({
-      hotspots: this.json,
-      isLocalhost: config.isLocalhost,
-    });
-    var hotspots = document.querySelectorAll('.hotspot');
-    for (var i=0; i<hotspots.length; i++) {
-      hotspots[i].addEventListener('click', function(idx) {
-        world.flyToCellImage(this.json[idx].img);
-      }.bind(this, i));
-      // show the convex hull of a cluster on mouse enter
-      hotspots[i].addEventListener('mouseenter', function(idx) {
-        var h = this.json[idx].convex_hull;
-        if (!h) return;
-        var shape = new THREE.Shape();
-        shape.moveTo(h[0][0], h[0][1]);
-        for (var i=1; i<h.length; i++) shape.lineTo(h[i][0], h[i][1]);
-        var geometry = new THREE.ShapeBufferGeometry(shape);
-        var material = new THREE.MeshBasicMaterial({ color: 0xffffff });
-        material.transparent = true;
-        material.opacity = 0.4;
-        var mesh = new THREE.Mesh(geometry, material);
-        mesh.position.z = -0.0000001;
-        world.scene.add(mesh);
-        this.mesh = mesh;
-      }.bind(this, i))
-      hotspots[i].addEventListener('mouseleave', function(e) {
-        world.scene.remove(this.mesh);
-      }.bind(this))
-    }
-  }.bind(this))
+    this.render();
+  }.bind(this));
+}
+
+Hotspots.prototype.render = function() {
+  this.elems.target.innerHTML = _.template(this.elems.template.innerHTML)({
+    hotspots: this.json,
+    isLocalhost: config.isLocalhost,
+  });
+  var hotspots = document.querySelectorAll('.hotspot');
+  for (var i=0; i<hotspots.length; i++) {
+    hotspots[i].addEventListener('click', function(idx) {
+      world.flyToCellImage(this.json[idx].img);
+    }.bind(this, i));
+    // show the convex hull of a cluster on mouse enter
+    hotspots[i].addEventListener('mouseenter', function(idx) {
+      var h = this.json[idx].convex_hull;
+      if (!h) return;
+      var shape = new THREE.Shape();
+      shape.moveTo(h[0][0], h[0][1]);
+      for (var i=1; i<h.length; i++) shape.lineTo(h[i][0], h[i][1]);
+      var geometry = new THREE.ShapeBufferGeometry(shape);
+      var material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+      material.transparent = true;
+      material.opacity = 0.25;
+      var mesh = new THREE.Mesh(geometry, material);
+      mesh.position.z = -0.01;
+      world.scene.add(mesh);
+      this.mesh = mesh;
+    }.bind(this, i))
+    // remove the convex hull shape on mouseout
+    hotspots[i].addEventListener('mouseleave', function(e) {
+      world.scene.remove(this.mesh);
+    }.bind(this))
+    // allow users on localhost to delete hotspots
+    hotspots[i].querySelector('.remove-hotspot-x').addEventListener('click', function(i, e) {
+      e.preventDefault();
+      e.stopPropagation();
+      data.hotspots.json.splice(i, 1);
+      data.hotspots.render();
+      if (this.mesh) world.scene.remove(this.mesh);
+    }.bind(this, i))
+  }
 }
 
 Hotspots.prototype.showHide = function() {
-  c = ['umap'].indexOf(layout.selected) > -1 ? '' : 'disabled';
-  document.querySelector('nav').className = c;
+  this.elems.nav.className = ['umap'].indexOf(layout.selected) > -1
+    ? ''
+    : 'disabled'
+}
+
+Hotspots.prototype.scrollToBottom = function() {
+  this.elems.navInner.scrollTo({
+    top: this.elems.navInner.scrollHeight,
+    behavior: 'smooth',
+  });
 }
 
 /**

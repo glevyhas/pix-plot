@@ -416,17 +416,17 @@ nav {
   cursor: default;
 }
 
-.nav-inner {
+#nav-inner {
   height: 100%;
   max-height: 100%;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 15px;
+  padding: 0 15px;
   background: #222;
   transition: opacity 0.5s;
 }
 
-nav.disabled .nav-inner {
+nav.disabled #nav-inner {
   opacity: 0.3;
   cursor: not-allowed;
   pointer-events: none;
@@ -436,14 +436,13 @@ nav h2 {
   font-size: 0.9em;
   line-height: 1.05em;
   text-align: center;
-  margin: 10px 0;
+  margin: 15px 0 7px;
   text-transform: uppercase;
   font-weight: 400;
 }
 
 #hotspots {
   width: 75px;
-  padding-bottom: 30px;
 }
 
 .hotspot {
@@ -476,23 +475,41 @@ nav h2 {
   box-shadow: 0px 0px 3px #555;
 }
 
-#new-hotspot {
-  height: 90px;
-  outline-style: dotted;
-  outline-width: 2px;
-  text-align: center;
-  font-size: 45px;
-  line-height: 90px;
-  cursor: pointer;
-  margin-top: 7px;
-  font-weight: 100;
-  outline-color: #999;
-  color: #dcdcdc;
+/**
+* Marching ants
+**/
+
+.marching-ants {
+  background-size: 6px 1px, 6px 1px, 1px 6px, 1px 6px;
+  background-position: 0 0, 0 100%, 0 0, 100% 0;
+  background-repeat: repeat-x, repeat-x, repeat-y, repeat-y;
+  -webkit-animation: marching-ants 3s;
+          animation: marching-ants 3s;
+  -webkit-animation-timing-function: linear;
+          animation-timing-function: linear;
+  -webkit-animation-iteration-count: infinite;
+          animation-iteration-count: infinite;
+  -webkit-animation-play-state: running;
+          animation-play-state: running;
+  background-image: -webkit-gradient(linear, left top, right top, color-stop(50%, #e5e5e5), color-stop(50%, #222)),
+                    -webkit-gradient(linear, left top, right top, color-stop(50%, #e5e5e5), color-stop(50%, #222)),
+                    -webkit-gradient(linear, left top, left bottom, color-stop(50%, #e5e5e5), color-stop(50%, #222)),
+                    -webkit-gradient(linear, left top, left bottom, color-stop(50%, #e5e5e5), color-stop(50%, #222));
+  background-image: linear-gradient(to right, #e5e5e5 50%, #222 50%),
+                    linear-gradient(to right, #e5e5e5 50%, #222 50%),
+                    linear-gradient(to bottom, #e5e5e5 50%, #222 50%),
+                    linear-gradient(to bottom, #e5e5e5 50%, #222 50%);
+  color: #fff;
 }
 
-#new-hotspot:hover {
-  outline-color: #eab755;
-  color: #fff;
+@-webkit-keyframes marching-ants {
+  0% { background-position: 0 0,  0 100%,  0 0,  100% 0; }
+  100% { background-position: 40px 0, -40px 100%, 0 -40px, 100% 40px; }
+}
+
+@keyframes marching-ants {
+  0% { background-position: 0 0,  0 100%,  0 0,  100% 0; }
+  100% { background-position: 40px 0, -40px 100%, 0 -40px, 100% 40px; }
 }
 
 /**
@@ -970,14 +987,19 @@ noscript {
   z-index: 1;
 }
 
-#view-selected {
+.selection-button {
   font-size: 12px;
   padding: 3px 10px;
   border-radius: 4px;
   font-weight: 600;
   letter-spacing: 0.02em;
+  text-align: center;
+  cursor: pointer;
   transition: opacity 0.5s;
   background: #222;
+}
+
+#view-selected {
   border: 2px solid #eab755;
   color: #eab755;
 }
@@ -985,19 +1007,27 @@ noscript {
 #view-selected:hover {
   background: #eab755;
   color: #222;
-  cursor: pointer;
+}
+
+#create-hotspot {
+  margin: 8px 0;
+  color: #ccc;
+  border: 2px solid #ccc;
+}
+
+#create-hotspot:hover {
+  background: #ccc;
+  color: #000;
 }
 
 #selected-images-count {
-  position: absolute;
-  bottom: 36px;
-  right: 7px;
-  z-index: 1;
   color: #fff;
   font-size: 10px;
   white-space: nowrap;
   padding: 10px;
   background: #222;
+  border-radius: 3px;
+  text-align: center;
 }
 
 #count-target {
@@ -1006,6 +1036,10 @@ noscript {
   text-align: center;
   font-size: 20px;
 }
+
+/**
+* Selected Image Modal
+**/
 
 #selected-images-modal {
   position: absolute;
