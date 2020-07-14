@@ -1499,10 +1499,11 @@ Lasso.prototype.addMouseEventListeners = function() {
     // augment the hotspots data
     data.hotspots.json.push({
       convex_hull: hull,
-      label: 'Cluster ' + (data.hotspots.json.length+1),
+      label: data.hotspots.getUserClusterName(),
       img: img,
       n_images: nImages,
     })
+    data.hotspots.edited = true;
     // render the hotspots
     data.hotspots.render();
     // scroll to the bottom of the hotspots
@@ -1717,15 +1718,7 @@ Lasso.prototype.downloadRows = function(rows) {
   var filetype = this.downloadFiletype;
   var filename = this.elems.downloadInput.value || Date.now().toString();
   if (!filename.endsWith('.' + filetype)) filename += '.' + filetype;
-  var blob = filetype == 'json'
-    ? new Blob([JSON.stringify(rows)], {type: 'octet/stream'})
-    : new Blob([Papa.unparse(rows)], {type: 'text/plain'});
-  var a = document.createElement('a');
-  document.body.appendChild(a);
-  a.download = filename;
-  a.href = window.URL.createObjectURL(blob);
-  a.click();
-  a.parentNode.removeChild(a);
+  downloadFile(rows, filename);
 }
 
 // return d[filename] = bool indicating selected
@@ -2636,13 +2629,15 @@ function Filter(obj) {
 function Hotspots() {
   this.json = {};
   this.mesh = null;
+  this.edited = false;
+  this.nUserClusters = 0;
   this.elems = {
     navInner: document.querySelector('#nav-inner'),
     template: document.querySelector('#hotspot-template'),
     target: document.querySelector('#hotspots'),
     nav: document.querySelector('nav'),
   }
-  get(getPath(data.json.centroids), function(json) {
+  get(getPath(data.json.hotspots), function(json) {
     this.json = json;
     this.render();
   }.bind(this));
@@ -2652,7 +2647,9 @@ Hotspots.prototype.render = function() {
   this.elems.target.innerHTML = _.template(this.elems.template.innerHTML)({
     hotspots: this.json,
     isLocalhost: config.isLocalhost,
+    edited: this.edited,
   });
+  // render the hotspots
   var hotspots = document.querySelectorAll('.hotspot');
   for (var i=0; i<hotspots.length; i++) {
     hotspots[i].addEventListener('click', function(idx) {
@@ -2683,9 +2680,19 @@ Hotspots.prototype.render = function() {
       e.preventDefault();
       e.stopPropagation();
       data.hotspots.json.splice(i, 1);
+      data.hotspots.edited = true;
       data.hotspots.render();
       if (this.mesh) world.scene.remove(this.mesh);
     }.bind(this, i))
+  }
+  // bind event listener to the save hotspots button if relevant
+  var button = document.querySelector('#save-hotspots');
+  if (button) {
+    button.addEventListener('click', function() {
+      downloadFile(this.json, 'user_hotspots.json');
+      this.edited = false;
+      this.render();
+    }.bind(this))
   }
 }
 
@@ -2700,6 +2707,15 @@ Hotspots.prototype.scrollToBottom = function() {
     top: this.elems.navInner.scrollHeight,
     behavior: 'smooth',
   });
+}
+
+Hotspots.prototype.getUserClusterName = function() {
+  var alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  var name = 'Cluster ' + alpha[this.nUserClusters++];
+  if (this.nUserClusters.length >= alpha.length) {
+    this.nUserClusters = 0;
+  }
+  return name;
 }
 
 /**
@@ -2927,6 +2943,24 @@ function gunzip(data) {
     asciistring += String.fromCharCode(plain[i]);
   }
   return asciistring;
+}
+
+/**
+* Download a file to user's downloads
+**/
+
+function downloadFile(data, filename) {
+  var filenameParts = filename.split('.');
+  var filetype = filenameParts[filenameParts.length-1]; // 'csv' || 'json'
+  var blob = filetype == 'json'
+    ? new Blob([JSON.stringify(data)], {type: 'octet/stream'})
+    : new Blob([Papa.unparse(data)], {type: 'text/plain'});
+  var a = document.createElement('a');
+  document.body.appendChild(a);
+  a.download = filename;
+  a.href = window.URL.createObjectURL(blob);
+  a.click();
+  a.parentNode.removeChild(a);
 }
 
 /**

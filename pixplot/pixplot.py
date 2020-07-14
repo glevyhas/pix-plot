@@ -334,7 +334,7 @@ def get_manifest(**kwargs):
     'imagelist': get_path('imagelists', 'imagelist', **kwargs),
     'atlas_dir': kwargs['atlas_dir'],
     'metadata': True if kwargs['metadata'] else False,
-    'centroids': get_centroids(vecs=read_json(layouts['umap']['layout'], **kwargs), **kwargs),
+    'hotspots': get_hotspots(vecs=read_json(layouts['umap']['layout'], **kwargs), **kwargs),
     'config': {
       'sizes': {
         'atlas': kwargs['atlas_size'],
@@ -850,7 +850,7 @@ def read_json(path, **kwargs):
     return json.load(f)
 
 
-def get_centroids(**kwargs):
+def get_hotspots(**kwargs):
   '''Return the stable clusters from the condensed tree of connected components from the density graph'''
   print(' * HDBSCAN clustering data with ' + str(multiprocessing.cpu_count()) + ' cores...')
   config = {
@@ -898,9 +898,9 @@ def get_centroids(**kwargs):
   clusters = sorted(retained, key=lambda i: i['n_images'], reverse=True)
   for idx, i in enumerate(clusters):
     i['label'] = 'Cluster {}'.format(idx+1)
-  # save the centroids to disk and return the path to the saved json
-  print(' * found', len(clusters), 'clusters')
-  return write_json(get_path('centroids', 'centroid', **kwargs), clusters, **kwargs)
+  # save the hotspots to disk and return the path to the saved json
+  print(' * found', len(clusters), 'hotspots')
+  return write_json(get_path('hotspots', 'hotspot', **kwargs), clusters, **kwargs)
 
 
 def get_heightmap(path, label, **kwargs):

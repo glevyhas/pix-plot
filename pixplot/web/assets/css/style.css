@@ -475,9 +475,52 @@ nav h2 {
   box-shadow: 0px 0px 3px #555;
 }
 
+#save-hotspots {
+  position: absolute;
+  left: 120px;
+  bottom: 16px;
+  white-space: nowrap;
+  background: #eab755;
+  color: #000;
+  border: 2px solid #eab755;
+}
+
 /**
-* Marching ants
+* New hotspot button in hotspot column
 **/
+
+#new-hotspot {
+  height: 90px;
+  text-align: center;
+  font-size: 45px;
+  line-height: 90px;
+  cursor: pointer;
+  margin-top: 7px;
+  font-weight: 100;
+  color: #dcdcdc;
+  position: relative;
+}
+
+#new-hotspot::after {
+  content: '+';
+}
+
+#new-hotspot div {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: #ababab;
+  z-index: 0;
+  margin: 1px;
+  opacity: 0.2;
+}
+
+#new-hotspot:hover {
+  outline-color: #eab755;
+  color: #fff;
+}
 
 .marching-ants {
   background-size: 6px 1px, 6px 1px, 1px 6px, 1px 6px;
@@ -510,6 +553,25 @@ nav h2 {
 @keyframes marching-ants {
   0% { background-position: 0 0,  0 100%,  0 0,  100% 0; }
   100% { background-position: 40px 0, -40px 100%, 0 -40px, 100% 40px; }
+}
+
+/**
+* New hotspot button in the plot
+**/
+
+#new-hotspot-icon {
+  position: absolute;
+  top: 0;
+  left: 0;
+  font-size: 10px;
+  color: #fff;
+  background: #333;
+  padding: 4px 8px;
+  text-align: center;
+  border: 1px solid #444;
+  transition: transform 0.3s;
+  border-radius: 3px;
+  cursor: pointer;
 }
 
 /**
@@ -987,7 +1049,7 @@ noscript {
   z-index: 1;
 }
 
-.selection-button {
+.button {
   font-size: 12px;
   padding: 3px 10px;
   border-radius: 4px;
@@ -996,10 +1058,11 @@ noscript {
   text-align: center;
   cursor: pointer;
   transition: opacity 0.5s;
-  background: #222;
+  white-space: nowrap;
 }
 
 #view-selected {
+  background: #222;
   border: 2px solid #eab755;
   color: #eab755;
 }
