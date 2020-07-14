@@ -833,11 +833,11 @@ def write_json(path, obj, **kwargs):
   if not os.path.exists(out_dir): os.makedirs(out_dir)
   if kwargs.get('gzip', False):
     with gzip.GzipFile(path, 'w') as out:
-      out.write(json.dumps(obj).encode(kwargs['encoding']))
+      out.write(json.dumps(obj, indent=4).encode(kwargs['encoding']))
     return path
   else:
     with open(path, 'w') as out:
-      json.dump(obj, out)
+      json.dump(obj, out, indent=4)
     return path
 
 
