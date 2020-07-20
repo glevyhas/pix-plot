@@ -67,6 +67,7 @@ config = {
   'images': None,
   'metadata': None,
   'out_dir': 'output',
+  'max_images': None,
   'use_cache': True,
   'encoding': 'utf8',
   'min_cluster_size': 20,
@@ -142,7 +143,10 @@ def filter_images(**kwargs):
     image_paths.append(i.path)
   # handle the case user provided no metadata
   if not kwargs.get('metadata', False):
-    return [image_paths, []]
+    return [
+      limit_image_count(image_paths, **kwargs),
+      [],
+    ]
   # handle user metadata: retain only records with image and metadata
   l = get_metadata_list(**kwargs)
   meta_bn = set([clean_filename(i.get('filename', '')) for i in l])
@@ -165,7 +169,17 @@ def filter_images(**kwargs):
       metadata.append(d[clean_filename(i)])
   kwargs['metadata'] = metadata
   write_metadata(**kwargs)
-  return [images, metadata]
+  return [
+    limit_image_count(images, **kwargs),
+    limit_image_count(metadata, **kwargs),
+  ]
+
+
+def limit_image_count(arr, **kwargs):
+  '''If the user passed a max_images value, return [:max_images] from arr'''
+  if kwargs.get('max_images', False):
+    return arr[:kwargs['max_images']]
+  return arr
 
 
 def get_image_paths(**kwargs):
@@ -999,6 +1013,7 @@ def parse():
   parser = argparse.ArgumentParser(description=description, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   parser.add_argument('--images', type=str, default=config['images'], help='path to a glob of images to process', required=False)
   parser.add_argument('--metadata', type=str, default=config['metadata'], help='path to a csv or glob of JSON files with image metadata (see readme for format)', required=False)
+  parser.add_argument('--max_images', type=int, default=config['max_images'], help='maximum number of images to process from the input glob', required=False)
   parser.add_argument('--use_cache', type=bool, default=config['use_cache'], help='given inputs identical to prior inputs, load outputs from cache', required=False)
   parser.add_argument('--encoding', type=str, default=config['encoding'], help='the encoding of input metadata', required=False)
   parser.add_argument('--min_cluster_size', type=int, default=config['min_cluster_size'], help='the minimum number of images in a cluster', required=False)
