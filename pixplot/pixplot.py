@@ -372,7 +372,7 @@ def get_atlas_data(**kwargs):
   '''
   # if the atlas files already exist, load from cache
   out_dir = os.path.join(kwargs['out_dir'], 'atlases', kwargs['plot_id'])
-  if os.path.exists(out_dir) and kwargs['use_cache']:
+  if os.path.exists(out_dir) and kwargs['use_cache'] and not kwargs.get('shuffle', False):
     print(' * loading saved atlas data')
     return out_dir
   if not os.path.exists(out_dir):
