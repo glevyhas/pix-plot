@@ -475,14 +475,34 @@ nav h2 {
   box-shadow: 0px 0px 3px #555;
 }
 
-#save-hotspots {
+/**
+* Hotspot actions
+**/
+
+#hotspot-actions {
   position: absolute;
-  left: 120px;
-  bottom: 16px;
+  left: 115px;
+  bottom: 10px;
+}
+
+#create-hotspot {
+  color: #ccc;
+  border: 2px solid #ccc;
+  display: none;
+  margin-top: 8px;
+}
+
+#create-hotspot:hover {
+  background: #ccc;
+  color: #000;
+}
+
+#save-hotspots {
   white-space: nowrap;
   background: #eab755;
   color: #000;
   border: 2px solid #eab755;
+  display: none;
 }
 
 /**
@@ -1044,7 +1064,7 @@ noscript {
 #view-selected-container {
   display: none;
   position: absolute;
-  bottom: 16px;
+  bottom: 10px;
   right: 60px;
   z-index: 1;
 }
@@ -1061,6 +1081,11 @@ noscript {
   white-space: nowrap;
 }
 
+.hotspot-button {
+  width: 106px;
+  text-align: center;
+}
+
 #view-selected {
   background: #222;
   border: 2px solid #eab755;
@@ -1072,17 +1097,6 @@ noscript {
   color: #222;
 }
 
-#create-hotspot {
-  margin: 8px 0;
-  color: #ccc;
-  border: 2px solid #ccc;
-}
-
-#create-hotspot:hover {
-  background: #ccc;
-  color: #000;
-}
-
 #selected-images-count {
   color: #fff;
   font-size: 10px;
@@ -1091,6 +1105,7 @@ noscript {
   background: #222;
   border-radius: 3px;
   text-align: center;
+  margin-bottom: 5px;
 }
 
 #count-target {

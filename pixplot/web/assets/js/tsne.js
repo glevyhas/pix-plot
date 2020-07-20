@@ -1427,7 +1427,6 @@ function Lasso() {
   this.elems = {
     viewSelectedContainer: document.querySelector('#view-selected-container'),
     viewSelected: document.querySelector('#view-selected'),
-    createHotspot: document.querySelector('#create-hotspot'),
 
     selectedImagesCount: document.querySelector('#selected-images-count'),
     countTarget: document.querySelector('#count-target'),
@@ -1480,37 +1479,6 @@ Lasso.prototype.addMouseEventListeners = function() {
     // prevent the lasso from updating its points boundary
     this.setCapturing(false);
   }.bind(this));
-
-  this.elems.createHotspot.addEventListener('click', function() {
-    var img = null,
-        nImages = 0,
-        keys = Object.keys(this.selected);
-    for (var i=0; i<keys.length; i++) {
-      if (this.selected[keys[i]]) {
-        nImages++;
-        img = keys[i];
-      }
-    }
-    // flatten the user's selection to a 2D array
-    var hull = [];
-    for (var i=0; i<this.points.length; i++) {
-      hull.push([this.points[i].x, this.points[i].y])
-    }
-    // augment the hotspots data
-    data.hotspots.json.push({
-      convex_hull: hull,
-      label: data.hotspots.getUserClusterName(),
-      img: img,
-      n_images: nImages,
-    })
-    data.hotspots.edited = true;
-    // render the hotspots
-    data.hotspots.render();
-    // scroll to the bottom of the hotspots
-    setTimeout(function() {
-      data.hotspots.scrollToBottom()
-    }, 100);
-  }.bind(this))
 }
 
 Lasso.prototype.addModalEventListeners = function() {
@@ -1604,6 +1572,7 @@ Lasso.prototype.clear = function() {
   this.setBorderedImages([]);
   this.removeMesh();
   this.elems.viewSelectedContainer.style.display = 'none';
+  data.hotspots.setCreateHotspotVisibility(false);
   this.setCapturing(false);
   this.points = [];
 }
@@ -1633,6 +1602,7 @@ Lasso.prototype.draw = function() {
   // allow users to see the selected images if desired
   if (indices.length) {
     this.elems.viewSelectedContainer.style.display = 'block';
+    data.hotspots.setCreateHotspotVisibility(true);
     this.elems.countTarget.textContent = indices.length;
   }
   // indicate the number of cells that are selected
@@ -2632,6 +2602,8 @@ function Hotspots() {
   this.edited = false;
   this.nUserClusters = 0;
   this.elems = {
+    createHotspot: document.querySelector('#create-hotspot'),
+    saveHotspots: document.querySelector('#save-hotspots'),
     navInner: document.querySelector('#nav-inner'),
     template: document.querySelector('#hotspot-template'),
     target: document.querySelector('#hotspots'),
@@ -2641,6 +2613,47 @@ function Hotspots() {
     this.json = json;
     this.render();
   }.bind(this));
+  this.addEventListeners();
+}
+
+Hotspots.prototype.addEventListeners = function() {
+  // add create hotspot event listener
+  this.elems.createHotspot.addEventListener('click', function() {
+    var img = null,
+        nImages = 0,
+        keys = Object.keys(lasso.selected);
+    for (var i=0; i<keys.length; i++) {
+      if (lasso.selected[keys[i]]) {
+        nImages++;
+        img = keys[i];
+      }
+    }
+    // flatten the user's selection to a 2D array
+    var hull = [];
+    for (var i=0; i<lasso.points.length; i++) {
+      hull.push([lasso.points[i].x, lasso.points[i].y])
+    }
+    // augment the hotspots data
+    data.hotspots.json.push({
+      convex_hull: hull,
+      label: data.hotspots.getUserClusterName(),
+      img: img,
+      n_images: nImages,
+    })
+    data.hotspots.setCreateHotspotVisibility(false);
+    data.hotspots.setEdited(true);
+    // render the hotspots
+    data.hotspots.render();
+    // scroll to the bottom of the hotspots
+    setTimeout(function() {
+      data.hotspots.scrollToBottom()
+    }, 100);
+  }.bind(this))
+  // add save hotspots event listener
+  this.elems.saveHotspots.addEventListener('click', function() {
+    downloadFile(this.json, 'user_hotspots.json');
+    this.setEdited(false);
+  }.bind(this))
 }
 
 Hotspots.prototype.render = function() {
@@ -2680,20 +2693,17 @@ Hotspots.prototype.render = function() {
       e.preventDefault();
       e.stopPropagation();
       data.hotspots.json.splice(i, 1);
-      data.hotspots.edited = true;
+      data.hotspots.setEdited(true);
       data.hotspots.render();
       if (this.mesh) world.scene.remove(this.mesh);
     }.bind(this, i))
   }
-  // bind event listener to the save hotspots button if relevant
-  var button = document.querySelector('#save-hotspots');
-  if (button) {
-    button.addEventListener('click', function() {
-      downloadFile(this.json, 'user_hotspots.json');
-      this.edited = false;
-      this.render();
-    }.bind(this))
-  }
+}
+
+Hotspots.prototype.setEdited = function(bool) {
+  this.edited = bool;
+  // show / hide the save hotspots button
+  this.elems.saveHotspots.style.display = bool ? 'inline-block' : 'none';
 }
 
 Hotspots.prototype.showHide = function() {
@@ -2716,6 +2726,14 @@ Hotspots.prototype.getUserClusterName = function() {
     this.nUserClusters = 0;
   }
   return name;
+}
+
+Hotspots.prototype.setCreateHotspotVisibility = function(bool) {
+  this.elems.createHotspot.style.display = bool ? 'inline-block' : 'none';
+}
+
+Hotspots.prototype.setSaveHotspotsVisibility = function(bool) {
+  this.elems.saveHotspots.style.display = bool ? 'inline-block' : 'none';
 }
 
 /**

@@ -415,10 +415,11 @@
               <div><%= hotspot.label %></div>
             </div>
           <% }); %>
-          <% if (edited) { %>
-            <div id='save-hotspots' class='button'>Save Hotspots</div>
-          <% } %>
         </script>
+      </div>
+      <div id='hotspot-actions'>
+        <div id='save-hotspots' class='button hotspot-button'>Save Hotspots</div>
+        <div id='create-hotspot' class='no-highlight button hotspot-button'>Create Hotspot</div>
       </div>
     </nav>
     <!-- Image Picker: single image selection -->
@@ -471,7 +472,6 @@
         <div id='count-target'>0</div>
         <div>images selected</div>
       </div>
-      <div id='create-hotspot' class='no-highlight button'>Create Hotspot</div>
       <div id='view-selected' class='no-highlight button'>View Selected</div>
     </div>
     <div id='selected-images-modal'>
