@@ -878,6 +878,7 @@ World.prototype.addLostContextListener = function() {
 World.prototype.addModeChangeListeners = function() {
   document.querySelector('#pan').addEventListener('click', this.handleModeIconClick.bind(this));
   document.querySelector('#select').addEventListener('click', this.handleModeIconClick.bind(this));
+  document.querySelector('#select').addEventListener('mouseenter', this.showSelectTooltip.bind(this));
 }
 
 /**
@@ -1377,6 +1378,24 @@ World.prototype.init = function() {
 
 World.prototype.handleModeIconClick = function(e) {
   this.setMode(e.target.id);
+}
+
+/**
+* Show the user the tooltip explaining the select mode
+**/
+
+World.prototype.showSelectTooltip = function() {
+  var elem = document.querySelector('#select-tooltip');
+  var button = document.querySelector('#select-tooltip-button');
+  if (!localStorage.getItem('select-tooltip-cleared') ||
+       localStorage.getItem('select-tooltip-cleared') == 'false') {
+    elem.style.display = 'inline-block';
+  }
+  button.addEventListener('click', function() {
+    localStorage.setItem('select-tooltip-cleared', true);
+    elem.style.display = 'none';
+    this.setMode('select');
+  }.bind(this))
 }
 
 /**

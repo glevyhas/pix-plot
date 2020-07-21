@@ -464,7 +464,7 @@ nav h2 {
   top: 1px;
   right: -7px;
   padding: 1px;
-  background: #841010;
+  background: #9c1717;
   color: #eee;
   width: 12px;
   height: 12px;
@@ -1032,7 +1032,7 @@ noscript {
   display: inline-block;
   width: 30px;
   padding: 0 5px;
-  background: #222;
+  background: #333;
   border-radius: 4px;
 }
 
@@ -1055,6 +1055,61 @@ noscript {
 #selection-icons img:hover {
   background: #eab755;
   opacity: 1.0;
+}
+
+#select-tooltip {
+  position: absolute;
+  left: -168px;
+  z-index: 1;
+  color: #fff;
+  bottom: 0px;
+  width: 126px;
+  font-size: 12px;
+  padding: 13px;
+  border: 1px solid #717171;
+  display: none;
+}
+
+#select-tooltip::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  transform: rotate(45deg);
+  position: absolute;
+  right: -6px;
+  bottom: 14px;
+  border-right: 1px solid #717171;
+  border-top: 1px solid #717171;
+}
+
+#select-tooltip,
+#select-tooltip::before {
+  background: #333;
+}
+
+#select-tooltip-heading {
+  font-weight: 800;
+}
+
+#select-tooltip p {
+  line-height: 1.4em;
+  margin: 5px 0;
+}
+
+#select-tooltip-button {
+  display: inline-block;
+  border: 1px solid #F2C54A;
+  padding: 3px 20px;
+  margin-top: 4px;
+  border-radius: 3px;
+  color: #F2C54A;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+#select-tooltip-button:hover {
+  background: #F2C54A;
+  color: #222;
 }
 
 /**
@@ -1259,7 +1314,7 @@ input[type=text] {
 **/
 
 #tooltip {
-  background: #ddd;
+  background: lightgray;
   z-index: 100;
   padding: 3px 8px;
   font-size: 12px;
