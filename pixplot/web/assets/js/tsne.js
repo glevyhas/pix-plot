@@ -2609,11 +2609,18 @@ function Hotspots() {
     target: document.querySelector('#hotspots'),
     nav: document.querySelector('nav'),
   }
-  get(getPath(data.json.hotspots), function(json) {
-    this.json = json;
-    this.render();
-  }.bind(this));
+
+  get(getPath(data.json.custom_hotspots), this.handleJson.bind(this),
+    function(err) {
+      get(getPath(data.json.default_hotspots), this.handleJson.bind(this))
+    }.bind(this)
+  );
   this.addEventListeners();
+}
+
+Hotspots.prototype.handleJson = function(json) {
+  this.json = json;
+  this.render();
 }
 
 Hotspots.prototype.addEventListeners = function() {
@@ -3215,7 +3222,7 @@ function worldToScreenCoords(pos) {
       w = s.w / 2,
       h = s.h / 2,
       vec = new THREE.Vector3(pos.x, pos.y, pos.z || 0),
-      canvas =
+      canvas = document.querySelector('#pixplot-canvas');
   vec.project(world.camera);
   vec.x =  (vec.x * w) + w;
   vec.y = -(vec.y * h) + h;

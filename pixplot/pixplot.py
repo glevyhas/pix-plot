@@ -348,7 +348,8 @@ def get_manifest(**kwargs):
     'imagelist': get_path('imagelists', 'imagelist', **kwargs),
     'atlas_dir': kwargs['atlas_dir'],
     'metadata': True if kwargs['metadata'] else False,
-    'hotspots': get_hotspots(vecs=read_json(layouts['umap']['layout'], **kwargs), **kwargs),
+    'default_hotspots': get_hotspots(vecs=read_json(layouts['umap']['layout'], **kwargs), **kwargs),
+    'custom_hotspots': get_path('hotspots', 'user_hotspots', add_hash=False, **kwargs),
     'config': {
       'sizes': {
         'atlas': kwargs['atlas_size'],
@@ -503,7 +504,7 @@ def get_umap_layout(**kwargs):
     min_dist=kwargs['min_distance'],
     metric=kwargs['metric'])
   # run PCA to reduce dimensionality of image vectors
-  w = PCA(n_components=100).fit_transform(kwargs['vecs'])
+  w = PCA(n_components=min(100, len(kwargs['vecs']))).fit_transform(kwargs['vecs'])
   # fetch categorical labels for images (if provided)
   y = []
   if kwargs.get('metadata', False):
