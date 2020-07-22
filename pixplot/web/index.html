@@ -412,7 +412,11 @@
                 <div class='remove-hotspot-x'>✕</div>
               <% } %>
               <img src='data/thumbs/<%= hotspot.img %>'>
-              <div><%= hotspot.label %></div>
+              <% if (isLocalhost) { %>
+                <div class='hotspot-label' contenteditable='true' ><%= hotspot.label %></div>
+              <% } else { %>
+                <div class='hotspot-label'><%= hotspot.label %></div>
+              <% } %>
             </div>
           <% }); %>
         </script>

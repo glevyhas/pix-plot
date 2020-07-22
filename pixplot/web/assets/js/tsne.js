@@ -2691,7 +2691,7 @@ Hotspots.prototype.render = function() {
   // render the hotspots
   var hotspots = document.querySelectorAll('.hotspot');
   for (var i=0; i<hotspots.length; i++) {
-    hotspots[i].addEventListener('click', function(idx) {
+    hotspots[i].querySelector('img').addEventListener('click', function(idx) {
       world.flyToCellImage(this.json[idx].img);
     }.bind(this, i));
     // show the convex hull of a cluster on mouse enter
@@ -2722,6 +2722,10 @@ Hotspots.prototype.render = function() {
       data.hotspots.setEdited(true);
       data.hotspots.render();
       if (this.mesh) world.scene.remove(this.mesh);
+    }.bind(this, i))
+    hotspots[i].querySelector('.hotspot-label').addEventListener('input', function(i, e) {
+      data.hotspots.setEdited(true);
+      data.hotspots.json[i].label = hotspots[i].querySelector('.hotspot-label').textContent;
     }.bind(this, i))
   }
 }

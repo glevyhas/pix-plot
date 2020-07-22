@@ -447,7 +447,6 @@ nav h2 {
 
 .hotspot {
   padding: 6px 0;
-  cursor: pointer;
   display: inline-block;
   text-align: center;
   width: 75px;
@@ -457,6 +456,11 @@ nav h2 {
 
 .hotspot img {
   width: 100%;
+  cursor: pointer;
+}
+
+.hotspot .hotspot-label {
+  cursor: text;
 }
 
 .hotspot .remove-hotspot-x {
@@ -473,6 +477,7 @@ nav h2 {
   line-height: 12px;
   border-radius: 100%;
   box-shadow: 0px 0px 3px #555;
+  cursor: pointer;
 }
 
 /**
