@@ -62,8 +62,8 @@ function Config() {
     },
   }
   this.transitions = {
-    duration: 3.0,
-    delay: 1.0,
+    duration: 2.0,
+    delay: 0.5,
   }
   this.transitions.ease = {
     value: 1.0 + this.transitions.delay,
@@ -72,7 +72,8 @@ function Config() {
   this.pickerMaxZ = 0.4; // max z value of camera to trigger picker modal
   this.atlasesPerTex = (this.size.texture/this.size.atlas)**2;
   this.isLocalhost = window.location.hostname.includes('localhost') ||
-    window.location.hostname.includes('127.0.0.1');
+    window.location.hostname.includes('127.0.0.1') ||
+    window.location.hostname.includes('0.0.0.0');
 }
 
 /**
@@ -512,11 +513,23 @@ Layout.prototype.init = function(options) {
     input: document.querySelector('#jitter-input'),
     container: document.querySelector('#jitter-container'),
     icons: document.querySelector('#icons'),
+    layoutCategorical: document.querySelector('#layout-categorical'),
+    layoutDate: document.querySelector('#layout-date'),
   }
+  this.showHideIcons();
   this.addEventListeners();
   this.selectActiveIcon();
   data.hotspots.showHide();
-  layout.showHideJitter();
+  this.showHideJitter();
+}
+
+Layout.prototype.showHideIcons = function() {
+  if (data.layouts.categorical) {
+    this.elems.layoutCategorical.style.display = 'inline-block';
+  }
+  if (data.layouts.date) {
+    this.elems.layoutDate.style.display = 'inline-block';
+  }
 }
 
 Layout.prototype.selectActiveIcon = function() {
@@ -1994,8 +2007,6 @@ Dates.prototype.init = function() {
   this.selectImage = function(image) { return true };
   // init
   this.load();
-  // display the layout icon
-  document.querySelector('#layout-date').style.display = 'inline-block';
 }
 
 Dates.prototype.load = function() {
@@ -2715,14 +2726,17 @@ Hotspots.prototype.render = function() {
       world.scene.remove(this.mesh);
     }.bind(this))
     // allow users on localhost to delete hotspots
-    hotspots[i].querySelector('.remove-hotspot-x').addEventListener('click', function(i, e) {
-      e.preventDefault();
-      e.stopPropagation();
-      data.hotspots.json.splice(i, 1);
-      data.hotspots.setEdited(true);
-      data.hotspots.render();
-      if (this.mesh) world.scene.remove(this.mesh);
-    }.bind(this, i))
+    var elem = hotspots[i].querySelector('.remove-hotspot-x');
+    if (elem) {
+      elem.addEventListener('click', function(i, e) {
+        e.preventDefault();
+        e.stopPropagation();
+        data.hotspots.json.splice(i, 1);
+        data.hotspots.setEdited(true);
+        data.hotspots.render();
+        if (this.mesh) world.scene.remove(this.mesh);
+      }.bind(this, i))
+    }
     hotspots[i].querySelector('.hotspot-label').addEventListener('input', function(i, e) {
       data.hotspots.setEdited(true);
       data.hotspots.json[i].label = hotspots[i].querySelector('.hotspot-label').textContent;
@@ -2759,6 +2773,7 @@ Hotspots.prototype.getUserClusterName = function() {
 }
 
 Hotspots.prototype.setCreateHotspotVisibility = function(bool) {
+  if (!config.isLocalhost) return;
   this.elems.createHotspot.style.display = bool ? 'inline-block' : 'none';
 }
 
@@ -2842,10 +2857,6 @@ function Tooltip() {
   this.elem = document.querySelector('#tooltip');
   this.targets = [
     {
-      elem: document.querySelector('#layout-date'),
-      text: 'Order images by date',
-    },
-    {
       elem: document.querySelector('#layout-grid'),
       text: 'Order images alphabetically by filename',
     },
@@ -2856,6 +2867,14 @@ function Tooltip() {
     {
       elem: document.querySelector('#layout-rasterfairy'),
       text: 'Represent UMAP clusters on a grid',
+    },
+    {
+      elem: document.querySelector('#layout-date'),
+      text: 'Order images by date',
+    },
+    {
+      elem: document.querySelector('#layout-categorical'),
+      text: 'Arrange images into metadata groups',
     },
     {
       elem: document.querySelector('#filters'),

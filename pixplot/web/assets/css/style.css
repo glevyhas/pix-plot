@@ -350,7 +350,8 @@ input[type=range]::-ms-thumb {
   opacity: 1;
 }
 
-#layout-date {
+#layout-date,
+#layout-categorical {
   display: none;
 }
 
