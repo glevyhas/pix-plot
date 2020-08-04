@@ -464,21 +464,38 @@ nav h2 {
   cursor: text;
 }
 
-.hotspot .remove-hotspot-x {
+.hotspot-action {
   position: absolute;
   top: 1px;
-  left: -7px;
-  padding: 1px;
-  background: #9c1717;
-  color: #eee;
   width: 12px;
   height: 12px;
   vertical-align: top;
-  font-size: 8px;
-  line-height: 12px;
-  border-radius: 3px;
   box-shadow: 0px 0px 3px #000;
   cursor: pointer;
+  padding: 1px;
+  font-size: 8px;
+  line-height: 12px;
+  border-radius: 2px;
+}
+
+.hotspot .remove-hotspot-x {
+  left: -7px;
+  background: #9c1717;
+  color: #eee;
+}
+
+.hotspot .drag-hotspot {
+  right: -7px;
+  background: #636363;
+  color: #fff;
+  font-size: 11px;
+  line-height: 12px;
+  cursor: grab;
+}
+
+.hotspot.dragging,
+.hotspot.dragging .drag-hotspot {
+  cursor: grabbing;
 }
 
 /**

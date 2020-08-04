@@ -410,7 +410,8 @@
           <% _.forEach(hotspots, function(hotspot, idx) { %>
             <div class='hotspot' id='hotspot-<%= idx %>' draggable='<%= isLocalhost %>'>
               <% if (isLocalhost) { %>
-                <div class='remove-hotspot-x'>✕</div>
+                <div class='hotspot-action remove-hotspot-x'>✕</div>
+                <div class='hotspot-action drag-hotspot'>⠿</div>
               <% } %>
               <img src='data/thumbs/<%= hotspot.img %>'>
               <% if (isLocalhost) { %>

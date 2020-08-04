@@ -2704,6 +2704,7 @@ Hotspots.prototype.addEventListeners = function() {
       var elem = hotspots[i];
       var rect = elem.getBoundingClientRect();
       if (!inserted && y <= rect.top + (rect.height/2)) {
+        nodeToInsert.classList.remove('dragging');
         elem.parentNode.insertBefore(nodeToInsert, elem);
         inserted = true;
         break;
@@ -2767,12 +2768,13 @@ Hotspots.prototype.render = function() {
     }.bind(this, i))
     // allow users to reorder hotspots
     hotspots[i].addEventListener('dragstart', function(e) {
-      var id = null,
-          elem = e.target;
+      var elem = elem = e.target;
+      var id = elem.id || null;
       while (!id) {
         elem = elem.parentNode;
         id = elem.id;
       }
+      elem.classList.add('dragging');
       e.dataTransfer.setData('text', id);
     })
   }
