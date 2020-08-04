@@ -467,7 +467,7 @@ nav h2 {
 .hotspot .remove-hotspot-x {
   position: absolute;
   top: 1px;
-  right: -7px;
+  left: -7px;
   padding: 1px;
   background: #9c1717;
   color: #eee;
@@ -476,8 +476,8 @@ nav h2 {
   vertical-align: top;
   font-size: 8px;
   line-height: 12px;
-  border-radius: 100%;
-  box-shadow: 0px 0px 3px #555;
+  border-radius: 3px;
+  box-shadow: 0px 0px 3px #000;
   cursor: pointer;
 }
 

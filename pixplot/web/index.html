@@ -407,8 +407,8 @@
         <h2>Hotspots</h2>
         <div id='hotspots'></div>
         <script type='text/html' id='hotspot-template'>
-          <% _.forEach(hotspots, function(hotspot) { %>
-            <div class='hotspot'>
+          <% _.forEach(hotspots, function(hotspot, idx) { %>
+            <div class='hotspot' id='hotspot-<%= idx %>' draggable='<%= isLocalhost %>'>
               <% if (isLocalhost) { %>
                 <div class='remove-hotspot-x'>✕</div>
               <% } %>

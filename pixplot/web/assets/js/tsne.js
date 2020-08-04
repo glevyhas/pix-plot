@@ -2682,14 +2682,36 @@ Hotspots.prototype.addEventListeners = function() {
     // render the hotspots
     data.hotspots.render();
     // scroll to the bottom of the hotspots
-    setTimeout(function() {
-      data.hotspots.scrollToBottom()
-    }, 100);
+    setTimeout(data.hotspots.scrollToBottom.bind(data.hotspots), 100);
   }.bind(this))
   // add save hotspots event listener
   this.elems.saveHotspots.addEventListener('click', function() {
     downloadFile(this.json, 'user_hotspots.json');
     this.setEdited(false);
+  }.bind(this))
+  // add drag to reorder event listeners
+  this.elems.navInner.addEventListener('dragover', function(e) {
+    e.preventDefault()
+  })
+  this.elems.navInner.addEventListener('drop', function(e) {
+    // get the vertical offset of the event
+    var y = e.pageY;
+    // determine where to place the dragged element
+    var hotspots = document.querySelectorAll('.hotspot');
+    var nodeToInsert = document.getElementById(e.dataTransfer.getData('text'));
+    var inserted = false;
+    for (var i=0; i<hotspots.length; i++) {
+      var elem = hotspots[i];
+      var rect = elem.getBoundingClientRect();
+      if (!inserted && y <= rect.top + (rect.height/2)) {
+        elem.parentNode.insertBefore(nodeToInsert, elem);
+        inserted = true;
+        break;
+      }
+    }
+    if (!inserted) {
+      this.elems.navInner.appendChild(nodeToInsert);
+    }
   }.bind(this))
 }
 
@@ -2702,6 +2724,7 @@ Hotspots.prototype.render = function() {
   // render the hotspots
   var hotspots = document.querySelectorAll('.hotspot');
   for (var i=0; i<hotspots.length; i++) {
+    // add hotspot event listeners each time they are re-rendered
     hotspots[i].querySelector('img').addEventListener('click', function(idx) {
       world.flyToCellImage(this.json[idx].img);
     }.bind(this, i));
@@ -2737,10 +2760,21 @@ Hotspots.prototype.render = function() {
         if (this.mesh) world.scene.remove(this.mesh);
       }.bind(this, i))
     }
+    // allow users to retitle hotspots
     hotspots[i].querySelector('.hotspot-label').addEventListener('input', function(i, e) {
       data.hotspots.setEdited(true);
       data.hotspots.json[i].label = hotspots[i].querySelector('.hotspot-label').textContent;
     }.bind(this, i))
+    // allow users to reorder hotspots
+    hotspots[i].addEventListener('dragstart', function(e) {
+      var id = null,
+          elem = e.target;
+      while (!id) {
+        elem = elem.parentNode;
+        id = elem.id;
+      }
+      e.dataTransfer.setData('text', id);
+    })
   }
 }
 
