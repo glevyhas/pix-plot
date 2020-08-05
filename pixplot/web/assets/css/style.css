@@ -415,6 +415,7 @@ nav {
   color: #ddd;
   opacity: 1;
   cursor: default;
+  overflow: hidden;
 }
 
 #nav-inner {
@@ -422,9 +423,11 @@ nav {
   max-height: 100%;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 0 15px;
+  padding-right: 30px;
   background: #222;
   transition: opacity 0.5s;
+  box-sizing: content-box;
+  width: 100%;
 }
 
 nav.disabled #nav-inner {
@@ -444,6 +447,7 @@ nav h2 {
 
 #hotspots {
   width: 75px;
+  padding: 0 15px;
 }
 
 .hotspot {
@@ -458,6 +462,20 @@ nav h2 {
 .hotspot img {
   width: 100%;
   cursor: pointer;
+  display: block;
+}
+
+.hotspot-bar-container {
+  height: 5px;
+  background: #444;
+  margin: 4px 0;
+}
+
+.hotspot-bar-inner {
+  transition: width 1s;
+  background: #eab755;
+  height: 100%;
+  width: 0;
 }
 
 .hotspot .hotspot-label {
@@ -486,7 +504,7 @@ nav h2 {
 
 .hotspot .drag-hotspot {
   right: -7px;
-  background: #636363;
+  background: #4c4c4c;
   color: #fff;
   font-size: 11px;
   line-height: 12px;

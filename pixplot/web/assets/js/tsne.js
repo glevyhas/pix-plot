@@ -2636,7 +2636,7 @@ function Hotspots() {
     saveHotspots: document.querySelector('#save-hotspots'),
     navInner: document.querySelector('#nav-inner'),
     template: document.querySelector('#hotspot-template'),
-    target: document.querySelector('#hotspots'),
+    hotspots: document.querySelector('#hotspots'),
     nav: document.querySelector('nav'),
   }
 
@@ -2698,7 +2698,8 @@ Hotspots.prototype.addEventListeners = function() {
     var y = e.pageY;
     // determine where to place the dragged element
     var hotspots = document.querySelectorAll('.hotspot');
-    var nodeToInsert = document.getElementById(e.dataTransfer.getData('text'));
+    var nodeToInsertId = e.dataTransfer.getData('text');
+    var nodeToInsert = document.getElementById(nodeToInsertId);
     var inserted = false;
     for (var i=0; i<hotspots.length; i++) {
       var elem = hotspots[i];
@@ -2711,13 +2712,19 @@ Hotspots.prototype.addEventListeners = function() {
       }
     }
     if (!inserted) {
-      this.elems.navInner.appendChild(nodeToInsert);
+      this.elems.hotspots.appendChild(nodeToInsert);
     }
+    // rearrange the data in this.json
+    var idxA = parseInt(nodeToInsertId.split('-')[1]);
+    var idxB = i;
+    this.json.splice(idxB, 0, this.json.splice(idxA, 1)[0]);
+    // if the dragged item changed positions, allow user to save data
+    if (idxA != idxB) this.setEdited(true);
   }.bind(this))
 }
 
 Hotspots.prototype.render = function() {
-  this.elems.target.innerHTML = _.template(this.elems.template.innerHTML)({
+  this.elems.hotspots.innerHTML = _.template(this.elems.template.innerHTML)({
     hotspots: this.json,
     isLocalhost: config.isLocalhost,
     edited: this.edited,
@@ -2725,6 +2732,14 @@ Hotspots.prototype.render = function() {
   // render the hotspots
   var hotspots = document.querySelectorAll('.hotspot');
   for (var i=0; i<hotspots.length; i++) {
+    // show the number of cells in this hotspot's convex hull
+    var polygon = this.json[i].convex_hull;
+    var n = 0;
+    for (var j=0; j<data.json.images.length; j++) {
+      var p = [data.cells[j].x, data.cells[j].y];
+      if (pointInPolygon(p, polygon)) n++;
+    }
+    hotspots[i].querySelector('.hotspot-bar-inner').style.width = (n*100 / data.cells.length) + '%';
     // add hotspot event listeners each time they are re-rendered
     hotspots[i].querySelector('img').addEventListener('click', function(idx) {
       world.flyToCellImage(this.json[idx].img);
