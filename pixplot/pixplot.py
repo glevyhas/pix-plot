@@ -81,6 +81,7 @@ config = {
   'square_cells': False,
   'gzip': False,
   'plot_id': str(uuid.uuid1()),
+  'seed': 24,
 }
 
 
@@ -91,6 +92,8 @@ config = {
 
 def process_images(**kwargs):
   '''Main method for processing user images and metadata'''
+  np.random.seed(kwargs['seed'])
+  tf.compat.v1.set_random_seed(kwargs['seed'])
   copy_web_assets(**kwargs)
   kwargs['out_dir'] = join(kwargs['out_dir'], 'data')
   kwargs['image_paths'], kwargs['metadata'] = filter_images(**kwargs)
@@ -241,7 +244,7 @@ def get_metadata_list(**kwargs):
   if kwargs['metadata'].endswith('.csv'):
     with open(kwargs['metadata']) as f:
       reader = csv.reader(f)
-      headers = next(reader)
+      headers = [i.lowercase() for i in next(reader)]
       for i in reader:
         l.append({headers[j]: i[j] if i[j] else '' for j, _ in enumerate(headers)})
   # handle json metadata
@@ -873,6 +876,7 @@ def get_hotspots(**kwargs):
     'min_cluster_size': kwargs['min_cluster_size'],
     'cluster_selection_epsilon': 0.01,
     'min_samples': 1,
+    'approx_min_span_tree': False,
   }
   v = kwargs['vecs']
   z = HDBSCAN(**config).fit(v)
@@ -1028,6 +1032,7 @@ def parse():
   parser.add_argument('--gzip', action='store_true', help='save outputs with gzip compression')
   parser.add_argument('--shuffle', action='store_true', help='shuffle the input images before data processing begins')
   parser.add_argument('--plot_id', type=str, default=config['plot_id'], help='unique id for a plot; useful for resuming processing on a started plot')
+  parser.add_argument('--seed', type=int, default=config['seed'], help='seed for random processes')
   config.update(vars(parser.parse_args()))
   process_images(**config)
 
