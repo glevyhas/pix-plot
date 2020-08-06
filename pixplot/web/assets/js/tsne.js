@@ -589,6 +589,8 @@ Layout.prototype.set = function(layout, enableDelay) {
   var jitter = this.showHideJitter();
   // determine the path to the json to display
   var layoutType = jitter ? 'jittered' : 'layout'
+  // hide the create hotspot button
+  data.hotspots.setCreateHotspotVisibility(false);
   // begin the new layout transition
   setTimeout(function() {
     get(getPath(data.layouts[layout][layoutType]), function(pos) {
@@ -1391,6 +1393,8 @@ World.prototype.init = function() {
 
 World.prototype.handleModeIconClick = function(e) {
   this.setMode(e.target.id);
+  // hide the create hotspot button
+  data.hotspots.setCreateHotspotVisibility(false);
 }
 
 /**
@@ -1634,8 +1638,11 @@ Lasso.prototype.draw = function() {
   // allow users to see the selected images if desired
   if (indices.length) {
     this.elems.viewSelectedContainer.style.display = 'block';
-    data.hotspots.setCreateHotspotVisibility(true);
     this.elems.countTarget.textContent = indices.length;
+    // if we're in the umap layout, allow cluster persistence
+    if (layout.selected == 'umap') {
+      data.hotspots.setCreateHotspotVisibility(true);
+    }
   }
   // indicate the number of cells that are selected
   this.setNSelected(indices.length);
@@ -2623,6 +2630,14 @@ function Filter(obj) {
 }
 
 /**
+* Search
+**/
+
+function Search() {
+
+}
+
+/**
 * Hotspots
 **/
 
@@ -2724,6 +2739,9 @@ Hotspots.prototype.addEventListeners = function() {
 }
 
 Hotspots.prototype.render = function() {
+  // remove any polygon meshes
+  if (this.mesh) world.scene.remove(this.mesh);
+  // render the new data
   this.elems.hotspots.innerHTML = _.template(this.elems.template.innerHTML)({
     hotspots: this.json,
     isLocalhost: config.isLocalhost,
@@ -2741,7 +2759,7 @@ Hotspots.prototype.render = function() {
     }
     hotspots[i].querySelector('.hotspot-bar-inner').style.width = (n*100 / data.cells.length) + '%';
     // add hotspot event listeners each time they are re-rendered
-    hotspots[i].querySelector('img').addEventListener('click', function(idx) {
+    hotspots[i].querySelector('.hotspot-image').addEventListener('click', function(idx) {
       world.flyToCellImage(this.json[idx].img);
     }.bind(this, i));
     // show the convex hull of a cluster on mouse enter
@@ -2768,12 +2786,35 @@ Hotspots.prototype.render = function() {
     var elem = hotspots[i].querySelector('.remove-hotspot-x');
     if (elem) {
       elem.addEventListener('click', function(i, e) {
+        // prevent the zoom to image event
         e.preventDefault();
         e.stopPropagation();
+        // remove this point from the list of points
         data.hotspots.json.splice(i, 1);
         data.hotspots.setEdited(true);
         data.hotspots.render();
-        if (this.mesh) world.scene.remove(this.mesh);
+      }.bind(this, i))
+    }
+    // allow users to select new "diplomat" images for the cluster
+    var elem = hotspots[i].querySelector('.refresh-hotspot');
+    if (elem) {
+      elem.addEventListener('click', function(i, e) {
+        // prevent the zoom to image event
+        e.preventDefault();
+        e.stopPropagation();
+        // find the points inside this cluster's convex hull
+        var polygon = this.json[i].convex_hull;
+        var inside = [];
+        for (var j=0; j<data.json.images.length; j++) {
+          var p = [data.cells[j].x, data.cells[j].y];
+          if (pointInPolygon(p, polygon)) {
+            inside.push(j);
+          }
+        }
+        // select a random image from those in this cluster
+        var selected = Math.floor(Math.random() * inside.length);
+        this.json[i].img = data.json.images[inside[selected]];
+        this.render();
       }.bind(this, i))
     }
     // allow users to retitle hotspots
@@ -2815,10 +2856,18 @@ Hotspots.prototype.scrollToBottom = function() {
 }
 
 Hotspots.prototype.getUserClusterName = function() {
+  // find the names already used
+  var usedNames = [];
+  for (var i=0; i<data.hotspots.json.length; i++) {
+    usedNames.push(data.hotspots.json[i].label);
+  }
+  // find the next unused name
   var alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   var name = 'Cluster ' + alpha[this.nUserClusters++];
-  if (this.nUserClusters.length >= alpha.length) {
-    this.nUserClusters = 0;
+  if (this.nUserClusters.length >= alpha.length) this.nUserClusters = 0;
+  while (usedNames.indexOf(name) > -1) {
+    var name = 'Cluster ' + alpha[this.nUserClusters++];
+    if (this.nUserClusters.length >= alpha.length) this.nUserClusters = 0;
   }
   return name;
 }
@@ -3337,6 +3386,7 @@ var welcome = new Welcome();
 var webgl = new Webgl();
 var config = new Config();
 var filters = new Filters();
+var search = new Search();
 var picker = new Picker();
 var modal = new Modal();
 var keyboard = new Keyboard();

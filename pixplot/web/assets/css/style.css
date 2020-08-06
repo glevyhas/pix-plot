@@ -208,13 +208,47 @@ select:disabled {
   display: inline-block;
   position: absolute;
   right: 20px;
-  top: 20px;
+  top: 0;
+  left: 515px;
+  padding: 15px 0;
   min-width: 280px;
   opacity: 0;
   transition: opacity 0.5s;
   text-align: right;
   white-space: nowrap;
 }
+
+#header-controls * {
+  display: inline-block;
+}
+
+/**
+* Image search
+**/
+
+#image-search-container {
+  margin-right: 20px;
+  position: relative;
+  top: -1px;
+  display: none;
+}
+
+#image-search {
+  padding-right: 30px;
+  font-size: 13px;
+}
+
+#image-search-icon {
+  width: 14px;
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  transform: scaleX(-1);
+}
+
+/**
+* Filters
+**/
 
 #filters {
   vertical-align: top;
@@ -335,7 +369,7 @@ input[type=range]::-ms-thumb {
 #icons {
   display: inline-block;
   vertical-align: top;
-  margin-top: 3px;
+  margin-top: 5px;
 }
 
 #icons img {
@@ -459,7 +493,7 @@ nav h2 {
   position: relative;
 }
 
-.hotspot img {
+.hotspot-image {
   width: 100%;
   cursor: pointer;
   display: block;
@@ -502,6 +536,15 @@ nav h2 {
   color: #eee;
 }
 
+.hotspot .remove-hotspot-x:hover {
+  background: firebrick;
+}
+
+.hotspot .drag-hotspot,
+.hotspot .refresh-hotspot {
+  background: #444;
+}
+
 .hotspot .drag-hotspot {
   right: -7px;
   background: #4c4c4c;
@@ -511,9 +554,23 @@ nav h2 {
   cursor: grab;
 }
 
+.hotspot .drag-hotspot:hover,
+.hotspot .refresh-hotspot:hover {
+  background: #666;
+}
+
 .hotspot.dragging,
 .hotspot.dragging .drag-hotspot {
   cursor: grabbing;
+}
+
+.hotspot .refresh-hotspot {
+  position: absolute;
+  right: -7px;
+  top: 20px;
+  width: 10px;
+  height: 10px;
+  padding: 2px;
 }
 
 /**
@@ -524,6 +581,7 @@ nav h2 {
   position: absolute;
   left: 115px;
   bottom: 10px;
+  width: 130px;
 }
 
 #create-hotspot {
@@ -1296,11 +1354,12 @@ noscript {
 }
 
 input[type=text] {
-  padding: 10px;
+  padding: 4px 10px;
   font-size: 15px;
   border-radius: 3px;
   border: none;
   min-width: 120px;
+  background: #ddd;
 }
 
 #download-link {

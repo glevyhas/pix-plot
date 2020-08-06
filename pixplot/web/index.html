@@ -352,6 +352,11 @@
       <div id='app-name'>PixPlot</div>
       <div class='tagline'>Image Fields in a Local Collection</div>
       <div id='header-controls'>
+        <div id='image-search-container'>
+          <input id='image-search' type='text' placeholder='Search for an image'></input>
+          <img id='image-search-icon' src='assets/images/icons/search-icon.svg'>
+          <div id='typeahead-container'></div>
+        </div>
         <div id='range-slider'>
           <label>Point Size</label>
           <input id='pointsize-range-input' min='0' max='0.03' value='0' step='0.00001' type='range' />
@@ -412,8 +417,9 @@
               <% if (isLocalhost) { %>
                 <div class='hotspot-action remove-hotspot-x'>✕</div>
                 <div class='hotspot-action drag-hotspot'>⠿</div>
+                <img class='hotspot-action refresh-hotspot' src='assets/images/icons/refresh.svg'>
               <% } %>
-              <img src='data/thumbs/<%= hotspot.img %>'>
+              <img class='hotspot-image' src='data/thumbs/<%= hotspot.img %>'>
               <div class='hotspot-bar-container'>
                 <div class='hotspot-bar-inner'></div>
               </div>
@@ -476,7 +482,7 @@
       <img id='select' src='assets/images/icons/lasso.png' class='' />
       <div id='select-tooltip'>
         <div id='select-tooltip-heading'>Selection Mode</div>
-        <p>Lasso to select. Shift + click to edit selection.</p>
+        <p>Lasso to select. Shift + drag to edit selection.</p>
         <div id='select-tooltip-button'>Got it</div>
       </div>
     </div>
