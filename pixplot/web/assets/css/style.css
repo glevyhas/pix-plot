@@ -230,6 +230,7 @@ select:disabled {
   margin-right: 20px;
   position: relative;
   top: -1px;
+  display: none;
 }
 
 #image-search {
@@ -252,7 +253,7 @@ select:disabled {
 #filters {
   vertical-align: top;
   position: relative;
-  top: 0;
+  top: 2px;
   display: inline-block;
   margin: 0 10px;
 }
@@ -329,7 +330,7 @@ input[type=range]::-ms-thumb {
   display: inline-block;
   vertical-align: top;
   position: relative;
-  top: 16px;
+  top: 19px;
   margin-left: 10px;
 }
 
