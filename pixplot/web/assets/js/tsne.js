@@ -157,7 +157,7 @@ Data.prototype.parseManifest = function(json) {
   // add cells to the world
   get(getPath(this.layouts[layout.selected].layout), function(data) {
     this.addCells(data);
-    this.hotspots.render();
+    this.hotspots.initialize();
   }.bind(this))
 }
 
@@ -2663,17 +2663,20 @@ function Hotspots() {
     hotspots: document.querySelector('#hotspots'),
     nav: document.querySelector('nav'),
   }
+  this.addEventListeners();
+}
 
+Hotspots.prototype.initialize = function() {
   get(getPath(data.json.custom_hotspots), this.handleJson.bind(this),
     function(err) {
       get(getPath(data.json.default_hotspots), this.handleJson.bind(this))
     }.bind(this)
   );
-  this.addEventListeners();
 }
 
 Hotspots.prototype.handleJson = function(json) {
   this.json = json;
+  this.render();
 }
 
 Hotspots.prototype.addEventListeners = function() {
@@ -2694,18 +2697,18 @@ Hotspots.prototype.addEventListeners = function() {
       hull.push([lasso.points[i].x, lasso.points[i].y])
     }
     // augment the hotspots data
-    data.hotspots.json.push({
+    this.json.push({
       convex_hull: hull,
       label: data.hotspots.getUserClusterName(),
       img: img,
       n_images: nImages,
     })
-    data.hotspots.setCreateHotspotVisibility(false);
-    data.hotspots.setEdited(true);
+    this.setCreateHotspotVisibility(false);
+    this.setEdited(true);
     // render the hotspots
-    data.hotspots.render();
+    this.render();
     // scroll to the bottom of the hotspots
-    setTimeout(data.hotspots.scrollToBottom.bind(data.hotspots), 100);
+    setTimeout(this.scrollToBottom.bind(this), 100);
   }.bind(this))
   // add save hotspots event listener
   this.elems.saveHotspots.addEventListener('click', function() {
@@ -2741,6 +2744,7 @@ Hotspots.prototype.addEventListeners = function() {
     var idxA = parseInt(nodeToInsertId.split('-')[1]);
     var idxB = i;
     this.json.splice(idxB, 0, this.json.splice(idxA, 1)[0]);
+    this.render();
     // if the dragged item changed positions, allow user to save data
     if (idxA != idxB) this.setEdited(true);
   }.bind(this))
@@ -2798,9 +2802,9 @@ Hotspots.prototype.render = function() {
         e.preventDefault();
         e.stopPropagation();
         // remove this point from the list of points
-        data.hotspots.json.splice(i, 1);
-        data.hotspots.setEdited(true);
-        data.hotspots.render();
+        this.json.splice(i, 1);
+        this.setEdited(true);
+        this.render();
       }.bind(this, i))
     }
     // allow users to select new "diplomat" images for the cluster
