@@ -157,7 +157,7 @@ Data.prototype.parseManifest = function(json) {
   // add cells to the world
   get(getPath(this.layouts[layout.selected].layout), function(data) {
     this.addCells(data);
-    this.hotspots.render();
+    this.hotspots.initialize();
   }.bind(this))
 }
 
@@ -2663,17 +2663,20 @@ function Hotspots() {
     hotspots: document.querySelector('#hotspots'),
     nav: document.querySelector('nav'),
   }
+  this.addEventListeners();
+}
 
+Hotspots.prototype.initialize = function() {
   get(getPath(data.json.custom_hotspots), this.handleJson.bind(this),
     function(err) {
       get(getPath(data.json.default_hotspots), this.handleJson.bind(this))
     }.bind(this)
   );
-  this.addEventListeners();
 }
 
 Hotspots.prototype.handleJson = function(json) {
   this.json = json;
+  this.render();
 }
 
 Hotspots.prototype.addEventListeners = function() {
@@ -2694,18 +2697,18 @@ Hotspots.prototype.addEventListeners = function() {
       hull.push([lasso.points[i].x, lasso.points[i].y])
     }
     // augment the hotspots data
-    data.hotspots.json.push({
+    this.json.push({
       convex_hull: hull,
       label: data.hotspots.getUserClusterName(),
       img: img,
       n_images: nImages,
     })
-    data.hotspots.setCreateHotspotVisibility(false);
-    data.hotspots.setEdited(true);
+    this.setCreateHotspotVisibility(false);
+    this.setEdited(true);
     // render the hotspots
-    data.hotspots.render();
+    this.render();
     // scroll to the bottom of the hotspots
-    setTimeout(data.hotspots.scrollToBottom.bind(data.hotspots), 100);
+    setTimeout(this.scrollToBottom.bind(this), 100);
   }.bind(this))
   // add save hotspots event listener
   this.elems.saveHotspots.addEventListener('click', function() {
