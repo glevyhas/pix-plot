@@ -352,15 +352,21 @@
       <div id='app-name'>PixPlot</div>
       <div class='tagline'>Image Fields in a Local Collection</div>
       <div id='header-controls'>
+        <div id='image-search-container'>
+          <input id='image-search' type='text' placeholder='Search for an image'></input>
+          <img id='image-search-icon' src='assets/images/icons/search-icon.svg'>
+          <div id='typeahead-container'></div>
+        </div>
         <div id='range-slider'>
           <label>Point Size</label>
           <input id='pointsize-range-input' min='0' max='0.03' value='0' step='0.00001' type='range' />
         </div>
         <div id='icons'>
-          <img id='layout-date' src='assets/images/icons/date-layout.svg' />
           <img id='layout-grid' src='assets/images/icons/az-layout.svg' />
           <img id='layout-umap' src='assets/images/icons/scatter-layout.svg' />
           <img id='layout-rasterfairy' src='assets/images/icons/grid-layout.svg' />
+          <img id='layout-date' src='assets/images/icons/date-layout.svg' />
+          <img id='layout-categorical' src='assets/images/icons/categorical-layout.svg' />
         </div>
         <div id='filters'></div>
         <div id='date-slider'></div>
@@ -392,7 +398,7 @@
     </div>
     <!-- Canvas -->
     <div id='canvas-container'>
-      <div id='jitter-container'>
+      <div id='jitter-container' class='no-highlight'>
         <input type='checkbox' id='jitter-input'>
         <label>Jitter</label>
       </div>
@@ -402,19 +408,36 @@
     </div>
     <!-- Hotspot Navigation -->
     <nav>
-      <div class='nav-inner no-highlight'>
+      <div id='nav-inner' class='no-highlight'>
         <h2>Hotspots</h2>
         <div id='hotspots'></div>
         <script type='text/html' id='hotspot-template'>
-          <% _.forEach(hotspots, function(hotspot) { %>
-            <div class='hotspot'>
-              <img src='data/thumbs/<%= hotspot.img %>'>
-              <div><%= hotspot.label %></div>
+          <% _.forEach(hotspots, function(hotspot, idx) { %>
+            <div class='hotspot' id='hotspot-<%= idx %>'
+                draggable='<%= isLocalhost %>'>
+              <% if (isLocalhost) { %>
+                <div class='hotspot-action remove-hotspot-x'>✕</div>
+                <div class='hotspot-action drag-hotspot'>⠿</div>
+                <img class='hotspot-action refresh-hotspot' src='assets/images/icons/refresh.svg'>
+              <% } %>
+              <img class='hotspot-image' src='data/thumbs/<%= hotspot.img %>'>
+              <div class='hotspot-bar-container'>
+                <div class='hotspot-bar-inner'></div>
+              </div>
+              <% if (isLocalhost) { %>
+                <div class='hotspot-label' contenteditable='true' ><%= hotspot.label %></div>
+              <% } else { %>
+                <div class='hotspot-label'><%= hotspot.label %></div>
+              <% } %>
             </div>
           <% }); %>
         </script>
       </div>
     </nav>
+    <div id='hotspot-actions'>
+      <div id='save-hotspots' class='button hotspot-button'>Save Hotspots</div>
+      <div id='create-hotspot' class='no-highlight button hotspot-button'>Create Hotspot</div>
+    </div>
     <!-- Image Picker: single image selection -->
     <script type='text/html' id='selected-image-template'>
       <div class='modal-content'>
@@ -443,10 +466,8 @@
               <span id='image-date'><%- meta.date ? '(' + meta.date + ')' : '' %></span>
             </div>
             <div class='modal-text-right'>
-              <div id='meta-tags'>
-                <% _.forEach(meta.tags, function(tag) { %>
-                  <div class='meta-tag'><%- tag %></div>
-                <% }); %>
+              <div id='meta-category-container'>
+                <div class='meta-category'><%- meta.category %></div>
               </div>
             </div>
           </div>
@@ -458,6 +479,11 @@
     <div id='selection-icons' class='no-highlight'>
       <img id='pan' src='assets/images/icons/pan.svg' class='active' />
       <img id='select' src='assets/images/icons/lasso.png' class='' />
+      <div id='select-tooltip'>
+        <div id='select-tooltip-heading'>Selection Mode</div>
+        <p>Lasso to select. Shift + drag to edit selection.</p>
+        <div id='select-tooltip-button'>Got it</div>
+      </div>
     </div>
     <div id='view-selected-container'>
       <div id='selected-images-count' class='no-highlight'>
@@ -465,7 +491,7 @@
         <div id='count-target'>0</div>
         <div>images selected</div>
       </div>
-      <div id='view-selected' class='no-highlight'>View Selected</div>
+      <div id='view-selected' class='no-highlight button'>View Selected</div>
     </div>
     <div id='selected-images-modal'>
       <div class='modal-content'>

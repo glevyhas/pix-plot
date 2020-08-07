@@ -95,21 +95,21 @@ pixplot --images "path/to/images/*.jpg" --metadata "path/to/metadata.csv"
 
 Metadata should be in a comma-separated value file, should contain one row for each input image, and should contain headers specifying the column order. Here is a sample metadata file:
 
-| Filename | Tags                    | Description   | Permalink   | Year     |
-| -------- | ----------------------- | ------------- | ----------- | -------- |
-| bees.jpg | honey &#124; yellow     | bees' knees   | https://... | 1776     |
-| cats.jpg | clawed &#124; dangerous | cats' pajamas | https://... | 1972     |
+| filename | category  | description   | permalink   | Year     |
+| -------- | --------- | ------------- | ----------- | -------- |
+| bees.jpg | yellow    | bees' knees   | https://... | 1776     |
+| cats.jpg | dangerous | cats' pajamas | https://... | 1972     |
 
 The following column labels are accepted:
 
 | *Column*         | *Description*                                           |
 | ---------------- | ------------------------------------------------------- |
-| **Filename**     | the filename of the image                               |
-| **Tags**         | a pipe-delimited list of categorical tags for the image |
-| **Description**  | a plaintext description of the image's contents         |
-| **Permalink**    | a link to the image hosted on another domain            |
-| **Year**         | a year timestamp for the image (should be an integer)   |
-| **Label**        | a categorical label used for supervised UMAP projection |
+| **filename**     | the filename of the image                               |
+| **category**     | a categorical label for the image                       |
+| **description**  | a plaintext description of the image's contents         |
+| **permalink**    | a link to the image hosted on another domain            |
+| **year**         | a year timestamp for the image (should be an integer)   |
+| **label**        | a categorical label used for supervised UMAP projection |
 
 ## IIIF Images
 

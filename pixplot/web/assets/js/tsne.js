@@ -62,8 +62,8 @@ function Config() {
     },
   }
   this.transitions = {
-    duration: 3.0,
-    delay: 1.0,
+    duration: 2.0,
+    delay: 0.5,
   }
   this.transitions.ease = {
     value: 1.0 + this.transitions.delay,
@@ -71,6 +71,9 @@ function Config() {
   }
   this.pickerMaxZ = 0.4; // max z value of camera to trigger picker modal
   this.atlasesPerTex = (this.size.texture/this.size.atlas)**2;
+  this.isLocalhost = window.location.hostname.includes('localhost') ||
+    window.location.hostname.includes('127.0.0.1') ||
+    window.location.hostname.includes('0.0.0.0');
 }
 
 /**
@@ -152,7 +155,10 @@ Data.prototype.parseManifest = function(json) {
     }));
   };
   // add cells to the world
-  get(getPath(this.layouts[layout.selected].layout), this.addCells.bind(this))
+  get(getPath(this.layouts[layout.selected].layout), function(data) {
+    this.addCells(data);
+    this.hotspots.render();
+  }.bind(this))
 }
 
 // When a texture's progress updates, update the aggregate progress
@@ -510,11 +516,23 @@ Layout.prototype.init = function(options) {
     input: document.querySelector('#jitter-input'),
     container: document.querySelector('#jitter-container'),
     icons: document.querySelector('#icons'),
+    layoutCategorical: document.querySelector('#layout-categorical'),
+    layoutDate: document.querySelector('#layout-date'),
   }
+  this.showHideIcons();
   this.addEventListeners();
   this.selectActiveIcon();
   data.hotspots.showHide();
-  layout.showHideJitter();
+  this.showHideJitter();
+}
+
+Layout.prototype.showHideIcons = function() {
+  if (data.layouts.categorical) {
+    this.elems.layoutCategorical.style.display = 'inline-block';
+  }
+  if (data.layouts.date) {
+    this.elems.layoutDate.style.display = 'inline-block';
+  }
 }
 
 Layout.prototype.selectActiveIcon = function() {
@@ -574,6 +592,8 @@ Layout.prototype.set = function(layout, enableDelay) {
   var jitter = this.showHideJitter();
   // determine the path to the json to display
   var layoutType = jitter ? 'jittered' : 'layout'
+  // hide the create hotspot button
+  data.hotspots.setCreateHotspotVisibility(false);
   // begin the new layout transition
   setTimeout(function() {
     get(getPath(data.layouts[layout][layoutType]), function(pos) {
@@ -702,6 +722,8 @@ function World() {
   };
   this.elems = {
     pointSize: document.querySelector('#pointsize-range-input'),
+    selectTooltip: document.querySelector('#select-tooltip'),
+    selectTooltipButton: document.querySelector('#select-tooltip-button'),
   };
   this.addEventListeners();
 }
@@ -876,6 +898,7 @@ World.prototype.addLostContextListener = function() {
 World.prototype.addModeChangeListeners = function() {
   document.querySelector('#pan').addEventListener('click', this.handleModeIconClick.bind(this));
   document.querySelector('#select').addEventListener('click', this.handleModeIconClick.bind(this));
+  document.querySelector('#select').addEventListener('mouseenter', this.showSelectTooltip.bind(this));
 }
 
 /**
@@ -1375,6 +1398,28 @@ World.prototype.init = function() {
 
 World.prototype.handleModeIconClick = function(e) {
   this.setMode(e.target.id);
+  // hide the create hotspot button
+  data.hotspots.setCreateHotspotVisibility(false);
+}
+
+/**
+* Show the user the tooltip explaining the select mode
+**/
+
+World.prototype.showSelectTooltip = function() {
+  if (!localStorage.getItem('select-tooltip-cleared') ||
+       localStorage.getItem('select-tooltip-cleared') == 'false') {
+    this.elems.selectTooltip.style.display = 'inline-block';
+  }
+  this.elems.selectTooltipButton.addEventListener('click', function() {
+    this.hideSelectTooltip();
+  }.bind(this))
+}
+
+World.prototype.hideSelectTooltip = function() {
+  localStorage.setItem('select-tooltip-cleared', true);
+  this.elems.selectTooltip.style.display = 'none';
+  this.setMode('select');
 }
 
 /**
@@ -1424,7 +1469,8 @@ function Lasso() {
   this.mousedownCoords = {}; // obj storing x, y, z coords of mousedown
   this.elems = {
     viewSelectedContainer: document.querySelector('#view-selected-container'),
-    modalButton: document.querySelector('#view-selected'),
+    viewSelected: document.querySelector('#view-selected'),
+
     selectedImagesCount: document.querySelector('#selected-images-count'),
     countTarget: document.querySelector('#count-target'),
     xIcon: document.querySelector('#selected-images-x'),
@@ -1462,12 +1508,18 @@ Lasso.prototype.addMouseEventListeners = function() {
 
   window.addEventListener('mouseup', function(e) {
     if (!this.enabled) return;
+    // prevent the lasso points from changing
     this.setFrozen(true);
+    // if the user registered a click, clear the lasso
     if (e.clientX == this.mousedownCoords.x &&
         e.clientY == this.mousedownCoords.y &&
         !keyboard.shiftPressed() &&
-        !keyboard.commandPressed()) this.clear();
+        !keyboard.commandPressed()) {
+      this.clear();
+    }
+    // do not turn off capturing if the user is clicking the lasso symbol
     if (!e.target.id || e.target.id == 'select') return;
+    // prevent the lasso from updating its points boundary
     this.setCapturing(false);
   }.bind(this));
 }
@@ -1491,7 +1543,7 @@ Lasso.prototype.addModalEventListeners = function() {
   }.bind(this))
 
   // show the list of images the user selected
-  this.elems.modalButton.addEventListener('click', function(e) {
+  this.elems.viewSelected.addEventListener('click', function(e) {
     var images = Object.keys(this.selected).filter(function(k) {
       return this.selected[k];
     }.bind(this))
@@ -1563,6 +1615,7 @@ Lasso.prototype.clear = function() {
   this.setBorderedImages([]);
   this.removeMesh();
   this.elems.viewSelectedContainer.style.display = 'none';
+  data.hotspots.setCreateHotspotVisibility(false);
   this.setCapturing(false);
   this.points = [];
 }
@@ -1589,10 +1642,16 @@ Lasso.prototype.draw = function() {
   for (var i=0; i<keys.length; i++) {
     if (this.selected[keys[i]]) indices.push(i)
   }
-  // allow the user to see the selected images if desired
   if (indices.length) {
+    // hide the modal describing the lasso behavior
+    world.hideSelectTooltip();
+    // allow users to see the selected images if desired
     this.elems.viewSelectedContainer.style.display = 'block';
     this.elems.countTarget.textContent = indices.length;
+    // if we're in the umap layout, allow cluster persistence
+    if (layout.selected == 'umap') {
+      data.hotspots.setCreateHotspotVisibility(true);
+    }
   }
   // indicate the number of cells that are selected
   this.setNSelected(indices.length);
@@ -1677,15 +1736,7 @@ Lasso.prototype.downloadRows = function(rows) {
   var filetype = this.downloadFiletype;
   var filename = this.elems.downloadInput.value || Date.now().toString();
   if (!filename.endsWith('.' + filetype)) filename += '.' + filetype;
-  var blob = filetype == 'json'
-    ? new Blob([JSON.stringify(rows)], {type: 'octet/stream'})
-    : new Blob([Papa.unparse(rows)], {type: 'text/plain'});
-  var a = document.createElement('a');
-  document.body.appendChild(a);
-  a.download = filename;
-  a.href = window.URL.createObjectURL(blob);
-  a.click();
-  a.parentNode.removeChild(a);
+  downloadFile(rows, filename);
 }
 
 // return d[filename] = bool indicating selected
@@ -1972,8 +2023,6 @@ Dates.prototype.init = function() {
   this.selectImage = function(image) { return true };
   // init
   this.load();
-  // display the layout icon
-  document.querySelector('#layout-date').style.display = 'inline-block';
 }
 
 Dates.prototype.load = function() {
@@ -2590,53 +2639,260 @@ function Filter(obj) {
 }
 
 /**
+* Search
+**/
+
+function Search() {
+
+}
+
+/**
 * Hotspots
 **/
 
 function Hotspots() {
-  this.template = document.querySelector('#hotspot-template');
-  this.target = document.querySelector('#hotspots');
+  this.json = {};
   this.mesh = null;
-  this.init();
+  this.edited = false;
+  this.nUserClusters = 0;
+  this.elems = {
+    createHotspot: document.querySelector('#create-hotspot'),
+    saveHotspots: document.querySelector('#save-hotspots'),
+    navInner: document.querySelector('#nav-inner'),
+    template: document.querySelector('#hotspot-template'),
+    hotspots: document.querySelector('#hotspots'),
+    nav: document.querySelector('nav'),
+  }
+
+  get(getPath(data.json.custom_hotspots), this.handleJson.bind(this),
+    function(err) {
+      get(getPath(data.json.default_hotspots), this.handleJson.bind(this))
+    }.bind(this)
+  );
+  this.addEventListeners();
 }
 
-Hotspots.prototype.init = function() {
-  get(getPath(data.json.centroids), function(json) {
-    this.json = json;
-    this.target.innerHTML = _.template(this.template.innerHTML)({
-      hotspots: this.json,
-    });
-    var hotspots = document.querySelectorAll('.hotspot');
-    for (var i=0; i<hotspots.length; i++) {
-      hotspots[i].addEventListener('click', function(idx) {
-        world.flyToCellImage(data.hotspots.json[idx].img);
-      }.bind(this, i));
-      // show the convex hull of a cluster on mouse enter
-      hotspots[i].addEventListener('mouseenter', function(idx) {
-        var h = data.hotspots.json[idx].convex_hull;
-        if (!h) return;
-        var shape = new THREE.Shape();
-        shape.moveTo(h[0][0], h[0][1]);
-        for (var i=1; i<h.length; i++) shape.lineTo(h[i][0], h[i][1]);
-        var geometry = new THREE.ShapeBufferGeometry(shape);
-        var material = new THREE.MeshBasicMaterial({ color: 0xffffff });
-        material.transparent = true;
-        material.opacity = 0.4;
-        var mesh = new THREE.Mesh(geometry, material);
-        mesh.position.z = -0.0000001;
-        world.scene.add(mesh);
-        this.mesh = mesh;
-      }.bind(this, i))
-      hotspots[i].addEventListener('mouseleave', function(e) {
-        world.scene.remove(this.mesh);
-      }.bind(this))
+Hotspots.prototype.handleJson = function(json) {
+  this.json = json;
+}
+
+Hotspots.prototype.addEventListeners = function() {
+  // add create hotspot event listener
+  this.elems.createHotspot.addEventListener('click', function() {
+    var img = null,
+        nImages = 0,
+        keys = Object.keys(lasso.selected);
+    for (var i=0; i<keys.length; i++) {
+      if (lasso.selected[keys[i]]) {
+        nImages++;
+        img = keys[i];
+      }
     }
+    // flatten the user's selection to a 2D array
+    var hull = [];
+    for (var i=0; i<lasso.points.length; i++) {
+      hull.push([lasso.points[i].x, lasso.points[i].y])
+    }
+    // augment the hotspots data
+    data.hotspots.json.push({
+      convex_hull: hull,
+      label: data.hotspots.getUserClusterName(),
+      img: img,
+      n_images: nImages,
+    })
+    data.hotspots.setCreateHotspotVisibility(false);
+    data.hotspots.setEdited(true);
+    // render the hotspots
+    data.hotspots.render();
+    // scroll to the bottom of the hotspots
+    setTimeout(data.hotspots.scrollToBottom.bind(data.hotspots), 100);
+  }.bind(this))
+  // add save hotspots event listener
+  this.elems.saveHotspots.addEventListener('click', function() {
+    downloadFile(this.json, 'user_hotspots.json');
+    this.setEdited(false);
+  }.bind(this))
+  // add drag to reorder event listeners
+  this.elems.navInner.addEventListener('dragover', function(e) {
+    e.preventDefault()
+  })
+  this.elems.navInner.addEventListener('drop', function(e) {
+    // get the vertical offset of the event
+    var y = e.pageY;
+    // determine where to place the dragged element
+    var hotspots = document.querySelectorAll('.hotspot');
+    var nodeToInsertId = e.dataTransfer.getData('text');
+    var nodeToInsert = document.getElementById(nodeToInsertId);
+    var inserted = false;
+    for (var i=0; i<hotspots.length; i++) {
+      var elem = hotspots[i];
+      var rect = elem.getBoundingClientRect();
+      if (!inserted && y <= rect.top + (rect.height/2)) {
+        nodeToInsert.classList.remove('dragging');
+        elem.parentNode.insertBefore(nodeToInsert, elem);
+        inserted = true;
+        break;
+      }
+    }
+    if (!inserted) {
+      this.elems.hotspots.appendChild(nodeToInsert);
+    }
+    // rearrange the data in this.json
+    var idxA = parseInt(nodeToInsertId.split('-')[1]);
+    var idxB = i;
+    this.json.splice(idxB, 0, this.json.splice(idxA, 1)[0]);
+    // if the dragged item changed positions, allow user to save data
+    if (idxA != idxB) this.setEdited(true);
   }.bind(this))
 }
 
+Hotspots.prototype.render = function() {
+  // remove any polygon meshes
+  if (this.mesh) world.scene.remove(this.mesh);
+  // render the new data
+  this.elems.hotspots.innerHTML = _.template(this.elems.template.innerHTML)({
+    hotspots: this.json,
+    isLocalhost: config.isLocalhost,
+    edited: this.edited,
+  });
+  // render the hotspots
+  var hotspots = document.querySelectorAll('.hotspot');
+  for (var i=0; i<hotspots.length; i++) {
+    // show the number of cells in this hotspot's convex hull
+    var polygon = this.json[i].convex_hull;
+    var n = 0;
+    for (var j=0; j<data.json.images.length; j++) {
+      var p = [data.cells[j].x, data.cells[j].y];
+      if (pointInPolygon(p, polygon)) n++;
+    }
+    hotspots[i].querySelector('.hotspot-bar-inner').style.width = (n*100 / data.cells.length) + '%';
+    // add hotspot event listeners each time they are re-rendered
+    hotspots[i].querySelector('.hotspot-image').addEventListener('click', function(idx) {
+      world.flyToCellImage(this.json[idx].img);
+    }.bind(this, i));
+    // show the convex hull of a cluster on mouse enter
+    hotspots[i].addEventListener('mouseenter', function(idx) {
+      var h = this.json[idx].convex_hull;
+      if (!h) return;
+      var shape = new THREE.Shape();
+      shape.moveTo(h[0][0], h[0][1]);
+      for (var i=1; i<h.length; i++) shape.lineTo(h[i][0], h[i][1]);
+      var geometry = new THREE.ShapeBufferGeometry(shape);
+      var material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+      material.transparent = true;
+      material.opacity = 0.25;
+      var mesh = new THREE.Mesh(geometry, material);
+      mesh.position.z = -0.01;
+      world.scene.add(mesh);
+      this.mesh = mesh;
+    }.bind(this, i))
+    // remove the convex hull shape on mouseout
+    hotspots[i].addEventListener('mouseleave', function(e) {
+      world.scene.remove(this.mesh);
+    }.bind(this))
+    // allow users on localhost to delete hotspots
+    var elem = hotspots[i].querySelector('.remove-hotspot-x');
+    if (elem) {
+      elem.addEventListener('click', function(i, e) {
+        // prevent the zoom to image event
+        e.preventDefault();
+        e.stopPropagation();
+        // remove this point from the list of points
+        data.hotspots.json.splice(i, 1);
+        data.hotspots.setEdited(true);
+        data.hotspots.render();
+      }.bind(this, i))
+    }
+    // allow users to select new "diplomat" images for the cluster
+    var elem = hotspots[i].querySelector('.refresh-hotspot');
+    if (elem) {
+      elem.addEventListener('click', function(i, e) {
+        // prevent the zoom to image event
+        e.preventDefault();
+        e.stopPropagation();
+        // find the points inside this cluster's convex hull
+        var polygon = this.json[i].convex_hull;
+        var inside = [];
+        for (var j=0; j<data.json.images.length; j++) {
+          var p = [data.cells[j].x, data.cells[j].y];
+          if (pointInPolygon(p, polygon)) {
+            inside.push(j);
+          }
+        }
+        // select a random image from those in this cluster
+        var selected = Math.floor(Math.random() * inside.length);
+        this.json[i].img = data.json.images[inside[selected]];
+        // make the change saveable
+        this.setEdited(true);
+        this.render();
+      }.bind(this, i))
+    }
+    // allow users to retitle hotspots
+    hotspots[i].querySelector('.hotspot-label').addEventListener('input', function(i, e) {
+      this.setEdited(true);
+      this.json[i].label = hotspots[i].querySelector('.hotspot-label').textContent;
+    }.bind(this, i))
+    // allow users to reorder hotspots
+    hotspots[i].addEventListener('dragstart', function(e) {
+      var elem = elem = e.target;
+      var id = elem.id || null;
+      while (!id) {
+        elem = elem.parentNode;
+        id = elem.id;
+      }
+      elem.classList.add('dragging');
+      e.dataTransfer.setData('text', id);
+    })
+    // fade the hotspot in
+    setTimeout(function(i) {
+      hotspots[i].style.opacity = 1;
+    }.bind(this, i), i*100);
+  }
+}
+
+Hotspots.prototype.setEdited = function(bool) {
+  this.edited = bool;
+  // show / hide the save hotspots button
+  this.elems.saveHotspots.style.display = bool ? 'inline-block' : 'none';
+}
+
 Hotspots.prototype.showHide = function() {
-  c = ['umap'].indexOf(layout.selected) > -1 ? '' : 'disabled';
-  document.querySelector('nav').className = c;
+  this.elems.nav.className = ['umap'].indexOf(layout.selected) > -1
+    ? ''
+    : 'disabled'
+}
+
+Hotspots.prototype.scrollToBottom = function() {
+  this.elems.navInner.scrollTo({
+    top: this.elems.navInner.scrollHeight,
+    behavior: 'smooth',
+  });
+}
+
+Hotspots.prototype.getUserClusterName = function() {
+  // find the names already used
+  var usedNames = [];
+  for (var i=0; i<data.hotspots.json.length; i++) {
+    usedNames.push(data.hotspots.json[i].label);
+  }
+  // find the next unused name
+  var alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  var name = 'Cluster ' + alpha[this.nUserClusters++];
+  if (this.nUserClusters.length >= alpha.length) this.nUserClusters = 0;
+  while (usedNames.indexOf(name) > -1) {
+    var name = 'Cluster ' + alpha[this.nUserClusters++];
+    if (this.nUserClusters.length >= alpha.length) this.nUserClusters = 0;
+  }
+  return name;
+}
+
+Hotspots.prototype.setCreateHotspotVisibility = function(bool) {
+  if (!config.isLocalhost) return;
+  this.elems.createHotspot.style.display = bool ? 'inline-block' : 'none';
+}
+
+Hotspots.prototype.setSaveHotspotsVisibility = function(bool) {
+  this.elems.saveHotspots.style.display = bool ? 'inline-block' : 'none';
 }
 
 /**
@@ -2715,10 +2971,6 @@ function Tooltip() {
   this.elem = document.querySelector('#tooltip');
   this.targets = [
     {
-      elem: document.querySelector('#layout-date'),
-      text: 'Order images by date',
-    },
-    {
       elem: document.querySelector('#layout-grid'),
       text: 'Order images alphabetically by filename',
     },
@@ -2729,6 +2981,14 @@ function Tooltip() {
     {
       elem: document.querySelector('#layout-rasterfairy'),
       text: 'Represent UMAP clusters on a grid',
+    },
+    {
+      elem: document.querySelector('#layout-date'),
+      text: 'Order images by date',
+    },
+    {
+      elem: document.querySelector('#layout-categorical'),
+      text: 'Arrange images into metadata groups',
     },
     {
       elem: document.querySelector('#filters'),
@@ -2864,6 +3124,24 @@ function gunzip(data) {
     asciistring += String.fromCharCode(plain[i]);
   }
   return asciistring;
+}
+
+/**
+* Download a file to user's downloads
+**/
+
+function downloadFile(data, filename) {
+  var filenameParts = filename.split('.');
+  var filetype = filenameParts[filenameParts.length-1]; // 'csv' || 'json'
+  var blob = filetype == 'json'
+    ? new Blob([JSON.stringify(data)], {type: 'octet/stream'})
+    : new Blob([Papa.unparse(data)], {type: 'text/plain'});
+  var a = document.createElement('a');
+  document.body.appendChild(a);
+  a.download = filename;
+  a.href = window.URL.createObjectURL(blob);
+  a.click();
+  a.parentNode.removeChild(a);
 }
 
 /**
@@ -3067,29 +3345,49 @@ function pointInPolygon(point, polygon) {
 }
 
 /**
-* Conversion utils
+* Coordinate conversions
 **/
 
 function getEventWorldCoords(e) {
+  var rect = e.target.getBoundingClientRect(),
+      dx = e.clientX - rect.left,
+      dy = e.clientY - rect.top;
+  return screenToWorldCoords({x: dx, y: dy});
+}
+
+function screenToWorldCoords(pos) {
   var vector = new THREE.Vector3(),
       camera = world.camera,
       mouse = new THREE.Vector2(),
       canvasSize = getCanvasSize(),
-      // get the event offsets
-      rect = e.target.getBoundingClientRect(),
-      dx = e.clientX - rect.left,
-      dy = e.clientY - rect.top,
-      // convert from event to clip space
-      x = (dx / canvasSize.w) * 2 - 1,
-      y = -(dy / canvasSize.h) * 2 + 1;
-  // project the event location into screen coords
+      // convert from screen to clip space
+      x = (pos.x / canvasSize.w) * 2 - 1,
+      y = -(pos.y / canvasSize.h) * 2 + 1;
+  // project the screen location into world coords
   vector.set(x, y, 0.5);
   vector.unproject(camera);
   var direction = vector.sub(camera.position).normalize(),
       distance = - camera.position.z / direction.z,
       scaled = direction.multiplyScalar(distance),
-      coords = camera.position.clone().add(scaled); // coords = selector's location
+      coords = camera.position.clone().add(scaled);
   return coords;
+}
+
+function worldToScreenCoords(pos) {
+  var s = getCanvasSize(),
+      w = s.w / 2,
+      h = s.h / 2,
+      vec = new THREE.Vector3(pos.x, pos.y, pos.z || 0),
+      canvas = document.querySelector('#pixplot-canvas');
+  vec.project(world.camera);
+  vec.x =  (vec.x * w) + w;
+  vec.y = -(vec.y * h) + h;
+  // add offsets that account for the negative margins in the canvas position
+  var rect = world.canvas.getBoundingClientRect();
+  return {
+    x: vec.x + rect.left,
+    y: vec.y + rect.top
+  };
 }
 
 /**
@@ -3102,6 +3400,7 @@ var welcome = new Welcome();
 var webgl = new Webgl();
 var config = new Config();
 var filters = new Filters();
+var search = new Search();
 var picker = new Picker();
 var modal = new Modal();
 var keyboard = new Keyboard();

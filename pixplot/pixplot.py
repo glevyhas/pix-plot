@@ -67,6 +67,7 @@ config = {
   'images': None,
   'metadata': None,
   'out_dir': 'output',
+  'max_images': None,
   'use_cache': True,
   'encoding': 'utf8',
   'min_cluster_size': 20,
@@ -80,6 +81,7 @@ config = {
   'square_cells': False,
   'gzip': False,
   'plot_id': str(uuid.uuid1()),
+  'seed': 24,
 }
 
 
@@ -90,6 +92,8 @@ config = {
 
 def process_images(**kwargs):
   '''Main method for processing user images and metadata'''
+  np.random.seed(kwargs['seed'])
+  tf.compat.v1.set_random_seed(kwargs['seed'])
   copy_web_assets(**kwargs)
   kwargs['out_dir'] = join(kwargs['out_dir'], 'data')
   kwargs['image_paths'], kwargs['metadata'] = filter_images(**kwargs)
@@ -142,7 +146,10 @@ def filter_images(**kwargs):
     image_paths.append(i.path)
   # handle the case user provided no metadata
   if not kwargs.get('metadata', False):
-    return [image_paths, []]
+    return [
+      limit_image_count(image_paths, **kwargs),
+      [],
+    ]
   # handle user metadata: retain only records with image and metadata
   l = get_metadata_list(**kwargs)
   meta_bn = set([clean_filename(i.get('filename', '')) for i in l])
@@ -165,7 +172,17 @@ def filter_images(**kwargs):
       metadata.append(d[clean_filename(i)])
   kwargs['metadata'] = metadata
   write_metadata(**kwargs)
-  return [images, metadata]
+  return [
+    limit_image_count(images, **kwargs),
+    limit_image_count(metadata, **kwargs),
+  ]
+
+
+def limit_image_count(arr, **kwargs):
+  '''If the user passed a max_images value, return [:max_images] from arr'''
+  if kwargs.get('max_images', False):
+    return arr[:kwargs['max_images']]
+  return arr
 
 
 def get_image_paths(**kwargs):
@@ -227,7 +244,7 @@ def get_metadata_list(**kwargs):
   if kwargs['metadata'].endswith('.csv'):
     with open(kwargs['metadata']) as f:
       reader = csv.reader(f)
-      headers = next(reader)
+      headers = [i.lower() for i in next(reader)]
       for i in reader:
         l.append({headers[j]: i[j] if i[j] else '' for j, _ in enumerate(headers)})
   # handle json metadata
@@ -245,18 +262,18 @@ def write_metadata(metadata, **kwargs):
   for i in ['filters', 'options', 'file']:
     out_path = join(out_dir, i)
     if not exists(out_path): os.makedirs(out_path)
-  # create the lists of images with each tag
+  # create the lists of images with each category
   d = defaultdict(list)
   for i in metadata:
     filename = clean_filename(i['filename'])
-    i['tags'] = [j.strip() for j in i.get('tags', '').split('|')]
-    for j in i['tags']: d[ '__'.join(j.split()) ].append(filename)
+    i['category'] = i.get('category', '').strip()
+    d[ '__'.join(i['category'].split()) ].append(filename)
     write_json(os.path.join(out_dir, 'file', filename + '.json'), i, **kwargs)
   write_json(os.path.join(out_dir, 'filters', 'filters.json'), [{
     'filter_name': 'select',
     'filter_values': list(d.keys()),
   }], **kwargs)
-  # create the options for the tag dropdown
+  # create the options for the category dropdown
   for i in d:
     write_json(os.path.join(out_dir, 'options', i + '.json'), d[i], **kwargs)
   # create the map from date to images with that date (if dates present)
@@ -334,7 +351,8 @@ def get_manifest(**kwargs):
     'imagelist': get_path('imagelists', 'imagelist', **kwargs),
     'atlas_dir': kwargs['atlas_dir'],
     'metadata': True if kwargs['metadata'] else False,
-    'centroids': get_centroids(vecs=read_json(layouts['umap']['layout'], **kwargs), **kwargs),
+    'default_hotspots': get_hotspots(vecs=read_json(layouts['umap']['layout'], **kwargs), **kwargs),
+    'custom_hotspots': get_path('hotspots', 'user_hotspots', add_hash=False, **kwargs),
     'config': {
       'sizes': {
         'atlas': kwargs['atlas_size'],
@@ -372,7 +390,7 @@ def get_atlas_data(**kwargs):
   '''
   # if the atlas files already exist, load from cache
   out_dir = os.path.join(kwargs['out_dir'], 'atlases', kwargs['plot_id'])
-  if os.path.exists(out_dir) and kwargs['use_cache']:
+  if os.path.exists(out_dir) and kwargs['use_cache'] and not kwargs.get('shuffle', False):
     print(' * loading saved atlas data')
     return out_dir
   if not os.path.exists(out_dir):
@@ -489,7 +507,7 @@ def get_umap_layout(**kwargs):
     min_dist=kwargs['min_distance'],
     metric=kwargs['metric'])
   # run PCA to reduce dimensionality of image vectors
-  w = PCA(n_components=100).fit_transform(kwargs['vecs'])
+  w = PCA(n_components=min(100, len(kwargs['vecs']))).fit_transform(kwargs['vecs'])
   # fetch categorical labels for images (if provided)
   y = []
   if kwargs.get('metadata', False):
@@ -679,22 +697,22 @@ def round_date(date, unit):
 ##
 
 
-def get_categorical_layout(null_tag='Other', margin=2, **kwargs):
+def get_categorical_layout(null_category='Other', margin=2, **kwargs):
   '''
   Return a numpy array with shape (n_points, 2) with the point
   positions of observations in box regions determined by
-  each point's tags metadata attribute (if applicable)
+  each point's category metadata attribute (if applicable)
   '''
   if not kwargs.get('metadata', False): return False
   # determine the out path and return from cache if possible
   out_path = get_path('layouts', 'categorical', **kwargs)
   labels_out_path = get_path('layouts', 'categorical-labels', **kwargs)
   if os.path.exists(out_path): return out_path
-  # accumulate d[tag] = [indices of points with tag]
-  tags = [i['tags'][0] if i.get('tags', False) else None for i in kwargs['metadata']]
-  if not any(tags): return False
+  # accumulate d[category] = [indices of points with category]
+  categories = [i['category'] if i.get('category', False) else None for i in kwargs['metadata']]
+  if not any(categories): return False
   d = defaultdict(list)
-  for idx, i in enumerate(tags): d[i].append(idx)
+  for idx, i in enumerate(categories): d[i].append(idx)
   # store the number of observations in each group
   keys_and_counts = [{'key': i, 'count': len(d[i])} for i in d]
   keys_and_counts.sort(key=operator.itemgetter('count'), reverse=True)
@@ -708,9 +726,9 @@ def get_categorical_layout(null_tag='Other', margin=2, **kwargs):
     offsets[i['key']] += sum([j['count'] for j in keys_and_counts[:idx]])
   sorted_points = []
   for idx, i in enumerate(stream_images(**kwargs)):
-    tag = i.metadata['tags'][0] if i.metadata.get('tags', False) else null_tag
-    sorted_points.append(points[ offsets[tag] + counts[tag] ])
-    counts[tag] += 1
+    category = i.metadata.get('category', null_category)
+    sorted_points.append(points[ offsets[category] + counts[category] ])
+    counts[category] += 1
   sorted_points = np.array(sorted_points)
   # add to the sorted points the anchors for the text labels for each group
   text_anchors = np.array([[i.x, i.y-margin/2] for i in boxes])
@@ -740,7 +758,7 @@ def get_categorical_layout(null_tag='Other', margin=2, **kwargs):
 def get_categorical_boxes(group_counts, margin=2):
   '''
   @arg [int] group_counts: counts of the number of images in each
-    distinct level within the metadata's tags
+    distinct level within the metadata's caetgories
   @kwarg int margin: space between boxes in the 2D layout
   @returns [Box] an array of Box() objects; one per level in `group_counts`
   '''
@@ -850,7 +868,7 @@ def read_json(path, **kwargs):
     return json.load(f)
 
 
-def get_centroids(**kwargs):
+def get_hotspots(**kwargs):
   '''Return the stable clusters from the condensed tree of connected components from the density graph'''
   print(' * HDBSCAN clustering data with ' + str(multiprocessing.cpu_count()) + ' cores...')
   config = {
@@ -858,6 +876,7 @@ def get_centroids(**kwargs):
     'min_cluster_size': kwargs['min_cluster_size'],
     'cluster_selection_epsilon': 0.01,
     'min_samples': 1,
+    'approx_min_span_tree': False,
   }
   v = kwargs['vecs']
   z = HDBSCAN(**config).fit(v)
@@ -898,9 +917,9 @@ def get_centroids(**kwargs):
   clusters = sorted(retained, key=lambda i: i['n_images'], reverse=True)
   for idx, i in enumerate(clusters):
     i['label'] = 'Cluster {}'.format(idx+1)
-  # save the centroids to disk and return the path to the saved json
-  print(' * found', len(clusters), 'clusters')
-  return write_json(get_path('centroids', 'centroid', **kwargs), clusters, **kwargs)
+  # save the hotspots to disk and return the path to the saved json
+  print(' * found', len(clusters), 'hotspots')
+  return write_json(get_path('hotspots', 'hotspot', **kwargs), clusters, **kwargs)
 
 
 def get_heightmap(path, label, **kwargs):
@@ -999,6 +1018,7 @@ def parse():
   parser = argparse.ArgumentParser(description=description, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   parser.add_argument('--images', type=str, default=config['images'], help='path to a glob of images to process', required=False)
   parser.add_argument('--metadata', type=str, default=config['metadata'], help='path to a csv or glob of JSON files with image metadata (see readme for format)', required=False)
+  parser.add_argument('--max_images', type=int, default=config['max_images'], help='maximum number of images to process from the input glob', required=False)
   parser.add_argument('--use_cache', type=bool, default=config['use_cache'], help='given inputs identical to prior inputs, load outputs from cache', required=False)
   parser.add_argument('--encoding', type=str, default=config['encoding'], help='the encoding of input metadata', required=False)
   parser.add_argument('--min_cluster_size', type=int, default=config['min_cluster_size'], help='the minimum number of images in a cluster', required=False)
@@ -1012,6 +1032,7 @@ def parse():
   parser.add_argument('--gzip', action='store_true', help='save outputs with gzip compression')
   parser.add_argument('--shuffle', action='store_true', help='shuffle the input images before data processing begins')
   parser.add_argument('--plot_id', type=str, default=config['plot_id'], help='unique id for a plot; useful for resuming processing on a started plot')
+  parser.add_argument('--seed', type=int, default=config['seed'], help='seed for random processes')
   config.update(vars(parser.parse_args()))
   process_images(**config)
 
