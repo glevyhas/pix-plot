@@ -2744,6 +2744,7 @@ Hotspots.prototype.addEventListeners = function() {
     var idxA = parseInt(nodeToInsertId.split('-')[1]);
     var idxB = i;
     this.json.splice(idxB, 0, this.json.splice(idxA, 1)[0]);
+    this.render();
     // if the dragged item changed positions, allow user to save data
     if (idxA != idxB) this.setEdited(true);
   }.bind(this))
@@ -2801,9 +2802,9 @@ Hotspots.prototype.render = function() {
         e.preventDefault();
         e.stopPropagation();
         // remove this point from the list of points
-        data.hotspots.json.splice(i, 1);
-        data.hotspots.setEdited(true);
-        data.hotspots.render();
+        this.json.splice(i, 1);
+        this.setEdited(true);
+        this.render();
       }.bind(this, i))
     }
     // allow users to select new "diplomat" images for the cluster
