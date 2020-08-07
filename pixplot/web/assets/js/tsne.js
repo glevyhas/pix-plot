@@ -155,7 +155,10 @@ Data.prototype.parseManifest = function(json) {
     }));
   };
   // add cells to the world
-  get(getPath(this.layouts[layout.selected].layout), this.addCells.bind(this))
+  get(getPath(this.layouts[layout.selected].layout), function(data) {
+    this.addCells(data);
+    this.hotspots.render();
+  }.bind(this))
 }
 
 // When a texture's progress updates, update the aggregate progress
@@ -2671,7 +2674,6 @@ function Hotspots() {
 
 Hotspots.prototype.handleJson = function(json) {
   this.json = json;
-  this.render();
 }
 
 Hotspots.prototype.addEventListeners = function() {
@@ -2820,13 +2822,15 @@ Hotspots.prototype.render = function() {
         // select a random image from those in this cluster
         var selected = Math.floor(Math.random() * inside.length);
         this.json[i].img = data.json.images[inside[selected]];
+        // make the change saveable
+        this.setEdited(true);
         this.render();
       }.bind(this, i))
     }
     // allow users to retitle hotspots
     hotspots[i].querySelector('.hotspot-label').addEventListener('input', function(i, e) {
-      data.hotspots.setEdited(true);
-      data.hotspots.json[i].label = hotspots[i].querySelector('.hotspot-label').textContent;
+      this.setEdited(true);
+      this.json[i].label = hotspots[i].querySelector('.hotspot-label').textContent;
     }.bind(this, i))
     // allow users to reorder hotspots
     hotspots[i].addEventListener('dragstart', function(e) {
