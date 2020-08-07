@@ -413,7 +413,8 @@
         <div id='hotspots'></div>
         <script type='text/html' id='hotspot-template'>
           <% _.forEach(hotspots, function(hotspot, idx) { %>
-            <div class='hotspot' id='hotspot-<%= idx %>' draggable='<%= isLocalhost %>'>
+            <div class='hotspot' id='hotspot-<%= idx %>'
+                draggable='<%= isLocalhost %>'>
               <% if (isLocalhost) { %>
                 <div class='hotspot-action remove-hotspot-x'>✕</div>
                 <div class='hotspot-action drag-hotspot'>⠿</div>
@@ -465,10 +466,8 @@
               <span id='image-date'><%- meta.date ? '(' + meta.date + ')' : '' %></span>
             </div>
             <div class='modal-text-right'>
-              <div id='meta-tags'>
-                <% _.forEach(meta.tags, function(tag) { %>
-                  <div class='meta-tag'><%- tag %></div>
-                <% }); %>
+              <div id='meta-category-container'>
+                <div class='meta-category'><%- meta.category %></div>
               </div>
             </div>
           </div>

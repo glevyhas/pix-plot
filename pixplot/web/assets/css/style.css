@@ -230,7 +230,6 @@ select:disabled {
   margin-right: 20px;
   position: relative;
   top: -1px;
-  display: none;
 }
 
 #image-search {
@@ -491,6 +490,7 @@ nav h2 {
   width: 75px;
   font-size: 13px;
   position: relative;
+  transition: opacity 0.3s;
 }
 
 .hotspot-image {
@@ -1095,11 +1095,11 @@ noscript {
   vertical-align: top;
 }
 
-#meta-tags {
+#meta-category-container {
   margin: 0 -2px 10px;
 }
 
-.meta-tag {
+.meta-category {
   display: inline-block;
   padding: 4px 6px;
   margin: 2px;
@@ -1167,6 +1167,7 @@ noscript {
   padding: 13px;
   border: 1px solid #717171;
   display: none;
+  border-radius: 3px;
 }
 
 #select-tooltip::before {
@@ -1183,7 +1184,7 @@ noscript {
 
 #select-tooltip,
 #select-tooltip::before {
-  background: #333;
+  background: #222;
 }
 
 #select-tooltip-heading {
@@ -1197,7 +1198,7 @@ noscript {
 
 #select-tooltip-button {
   display: inline-block;
-  border: 1px solid #F2C54A;
+  border: 2px solid #F2C54A;
   padding: 3px 20px;
   margin-top: 4px;
   border-radius: 3px;
@@ -1260,6 +1261,7 @@ noscript {
   border-radius: 3px;
   text-align: center;
   margin-bottom: 5px;
+  border: 1px solid #717171;
 }
 
 #count-target {

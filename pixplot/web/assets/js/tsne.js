@@ -719,6 +719,8 @@ function World() {
   };
   this.elems = {
     pointSize: document.querySelector('#pointsize-range-input'),
+    selectTooltip: document.querySelector('#select-tooltip'),
+    selectTooltipButton: document.querySelector('#select-tooltip-button'),
   };
   this.addEventListeners();
 }
@@ -1402,17 +1404,19 @@ World.prototype.handleModeIconClick = function(e) {
 **/
 
 World.prototype.showSelectTooltip = function() {
-  var elem = document.querySelector('#select-tooltip');
-  var button = document.querySelector('#select-tooltip-button');
   if (!localStorage.getItem('select-tooltip-cleared') ||
        localStorage.getItem('select-tooltip-cleared') == 'false') {
-    elem.style.display = 'inline-block';
+    this.elems.selectTooltip.style.display = 'inline-block';
   }
-  button.addEventListener('click', function() {
-    localStorage.setItem('select-tooltip-cleared', true);
-    elem.style.display = 'none';
-    this.setMode('select');
+  this.elems.selectTooltipButton.addEventListener('click', function() {
+    this.hideSelectTooltip();
   }.bind(this))
+}
+
+World.prototype.hideSelectTooltip = function() {
+  localStorage.setItem('select-tooltip-cleared', true);
+  this.elems.selectTooltip.style.display = 'none';
+  this.setMode('select');
 }
 
 /**
@@ -1635,8 +1639,10 @@ Lasso.prototype.draw = function() {
   for (var i=0; i<keys.length; i++) {
     if (this.selected[keys[i]]) indices.push(i)
   }
-  // allow users to see the selected images if desired
   if (indices.length) {
+    // hide the modal describing the lasso behavior
+    world.hideSelectTooltip();
+    // allow users to see the selected images if desired
     this.elems.viewSelectedContainer.style.display = 'block';
     this.elems.countTarget.textContent = indices.length;
     // if we're in the umap layout, allow cluster persistence
@@ -2833,6 +2839,10 @@ Hotspots.prototype.render = function() {
       elem.classList.add('dragging');
       e.dataTransfer.setData('text', id);
     })
+    // fade the hotspot in
+    setTimeout(function(i) {
+      hotspots[i].style.opacity = 1;
+    }.bind(this, i), i*100);
   }
 }
 

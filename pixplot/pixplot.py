@@ -244,7 +244,7 @@ def get_metadata_list(**kwargs):
   if kwargs['metadata'].endswith('.csv'):
     with open(kwargs['metadata']) as f:
       reader = csv.reader(f)
-      headers = [i.lowercase() for i in next(reader)]
+      headers = [i.lower() for i in next(reader)]
       for i in reader:
         l.append({headers[j]: i[j] if i[j] else '' for j, _ in enumerate(headers)})
   # handle json metadata
@@ -262,18 +262,18 @@ def write_metadata(metadata, **kwargs):
   for i in ['filters', 'options', 'file']:
     out_path = join(out_dir, i)
     if not exists(out_path): os.makedirs(out_path)
-  # create the lists of images with each tag
+  # create the lists of images with each category
   d = defaultdict(list)
   for i in metadata:
     filename = clean_filename(i['filename'])
-    i['tags'] = [j.strip() for j in i.get('tags', '').split('|')]
-    for j in i['tags']: d[ '__'.join(j.split()) ].append(filename)
+    i['category'] = i.get('category', '').strip()
+    d[ '__'.join(i['category'].split()) ].append(filename)
     write_json(os.path.join(out_dir, 'file', filename + '.json'), i, **kwargs)
   write_json(os.path.join(out_dir, 'filters', 'filters.json'), [{
     'filter_name': 'select',
     'filter_values': list(d.keys()),
   }], **kwargs)
-  # create the options for the tag dropdown
+  # create the options for the category dropdown
   for i in d:
     write_json(os.path.join(out_dir, 'options', i + '.json'), d[i], **kwargs)
   # create the map from date to images with that date (if dates present)
@@ -697,22 +697,22 @@ def round_date(date, unit):
 ##
 
 
-def get_categorical_layout(null_tag='Other', margin=2, **kwargs):
+def get_categorical_layout(null_category='Other', margin=2, **kwargs):
   '''
   Return a numpy array with shape (n_points, 2) with the point
   positions of observations in box regions determined by
-  each point's tags metadata attribute (if applicable)
+  each point's category metadata attribute (if applicable)
   '''
   if not kwargs.get('metadata', False): return False
   # determine the out path and return from cache if possible
   out_path = get_path('layouts', 'categorical', **kwargs)
   labels_out_path = get_path('layouts', 'categorical-labels', **kwargs)
   if os.path.exists(out_path): return out_path
-  # accumulate d[tag] = [indices of points with tag]
-  tags = [i['tags'][0] if i.get('tags', False) else None for i in kwargs['metadata']]
-  if not any(tags): return False
+  # accumulate d[category] = [indices of points with category]
+  categories = [i['category'] if i.get('category', False) else None for i in kwargs['metadata']]
+  if not any(categories): return False
   d = defaultdict(list)
-  for idx, i in enumerate(tags): d[i].append(idx)
+  for idx, i in enumerate(categories): d[i].append(idx)
   # store the number of observations in each group
   keys_and_counts = [{'key': i, 'count': len(d[i])} for i in d]
   keys_and_counts.sort(key=operator.itemgetter('count'), reverse=True)
@@ -726,9 +726,9 @@ def get_categorical_layout(null_tag='Other', margin=2, **kwargs):
     offsets[i['key']] += sum([j['count'] for j in keys_and_counts[:idx]])
   sorted_points = []
   for idx, i in enumerate(stream_images(**kwargs)):
-    tag = i.metadata['tags'][0] if i.metadata.get('tags', False) else null_tag
-    sorted_points.append(points[ offsets[tag] + counts[tag] ])
-    counts[tag] += 1
+    category = i.metadata.get('category', null_category)
+    sorted_points.append(points[ offsets[category] + counts[category] ])
+    counts[category] += 1
   sorted_points = np.array(sorted_points)
   # add to the sorted points the anchors for the text labels for each group
   text_anchors = np.array([[i.x, i.y-margin/2] for i in boxes])
@@ -758,7 +758,7 @@ def get_categorical_layout(null_tag='Other', margin=2, **kwargs):
 def get_categorical_boxes(group_counts, margin=2):
   '''
   @arg [int] group_counts: counts of the number of images in each
-    distinct level within the metadata's tags
+    distinct level within the metadata's caetgories
   @kwarg int margin: space between boxes in the 2D layout
   @returns [Box] an array of Box() objects; one per level in `group_counts`
   '''
