@@ -262,12 +262,12 @@ def write_metadata(metadata, **kwargs):
   for i in ['filters', 'options', 'file']:
     out_path = join(out_dir, i)
     if not exists(out_path): os.makedirs(out_path)
-  # create the lists of images with each category
+  # create the lists of images with each tag
   d = defaultdict(list)
   for i in metadata:
     filename = clean_filename(i['filename'])
-    i['category'] = i.get('category', '').strip()
-    d[ '__'.join(i['category'].split()) ].append(filename)
+    i['tags'] = [j.strip() for j in i.get('tags', '').split('|')]
+    for j in i['tags']: d[ '__'.join(j.split()) ].append(filename)
     write_json(os.path.join(out_dir, 'file', filename + '.json'), i, **kwargs)
   write_json(os.path.join(out_dir, 'filters', 'filters.json'), [{
     'filter_name': 'select',

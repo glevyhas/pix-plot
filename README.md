@@ -95,10 +95,10 @@ pixplot --images "path/to/images/*.jpg" --metadata "path/to/metadata.csv"
 
 Metadata should be in a comma-separated value file, should contain one row for each input image, and should contain headers specifying the column order. Here is a sample metadata file:
 
-| filename | category  | description   | permalink   | Year     |
-| -------- | --------- | ------------- | ----------- | -------- |
-| bees.jpg | yellow    | bees' knees   | https://... | 1776     |
-| cats.jpg | dangerous | cats' pajamas | https://... | 1972     |
+| filename | category  | tags  | description   | permalink   | Year     |
+| -------- | --------- | ----- | ------------- | ----------- | -------- |
+| bees.jpg | yellow    | a|b|c | bees' knees   | https://... | 1776     |
+| cats.jpg | dangerous | b|c|d | cats' pajamas | https://... | 1972     |
 
 The following column labels are accepted:
 
@@ -106,6 +106,7 @@ The following column labels are accepted:
 | ---------------- | ------------------------------------------------------- |
 | **filename**     | the filename of the image                               |
 | **category**     | a categorical label for the image                       |
+| **tags**         | a pipe-delimited list of categorical tags for the image |
 | **description**  | a plaintext description of the image's contents         |
 | **permalink**    | a link to the image hosted on another domain            |
 | **year**         | a year timestamp for the image (should be an integer)   |
