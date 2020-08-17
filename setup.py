@@ -28,6 +28,7 @@ setup(
     'hdbscan>=0.8.24',
     'iiif-downloader>=0.0.6',
     'Keras<=2.3.0',
+    'lap>=0.4.0',
     'matplotlib>=2.0.0',
     'numpy>=1.16.0',
     'Pillow>=6.1.0',

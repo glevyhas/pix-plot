@@ -633,7 +633,7 @@ Layout.prototype.setPointScalar = function() {
   var size = false, // size for points
       l = this.selected; // selected layout
   if (l == 'tsne' || l == 'umap') size = config.size.points.scatter;
-  if (l == 'grid' || l == 'rasterfairy') size = config.size.points.grid;
+  if (l == 'alphabetic' || l == 'grid') size = config.size.points.grid;
   if (l == 'date') size = config.size.points.date;
   if (size) {
     world.elems.pointSize.value = size;
@@ -1753,7 +1753,7 @@ Lasso.prototype.downloadSelected = function() {
           subfolder.file(imageFilename, base64, {base64: true});
           if (++nAdded == images.length) {
             zip.generateAsync({type: 'blob'}).then(function(blob) {
-              downloadBlob(blob, 'selection.zip')
+              downloadBlob(blob, filename)
             });
           }
         })
@@ -3005,7 +3005,7 @@ function Tooltip() {
   this.elem = document.querySelector('#tooltip');
   this.targets = [
     {
-      elem: document.querySelector('#layout-grid'),
+      elem: document.querySelector('#layout-alphabetic'),
       text: 'Order images alphabetically by filename',
     },
     {
@@ -3013,7 +3013,7 @@ function Tooltip() {
       text: 'Cluster images via UMAP dimensionality reduction',
     },
     {
-      elem: document.querySelector('#layout-rasterfairy'),
+      elem: document.querySelector('#layout-grid'),
       text: 'Represent UMAP clusters on a grid',
     },
     {

@@ -10,6 +10,7 @@ from dateutil.parser import parse as parse_date
 from sklearn.preprocessing import minmax_scale
 from keras_preprocessing.image import load_img
 from pointgrid import align_points_to_grid
+from scipy.spatial.distance import cdist
 from distutils.dir_util import copy_tree
 from sklearn.decomposition import PCA
 from scipy.spatial import ConvexHull
@@ -38,6 +39,7 @@ import uuid
 import math
 import gzip
 import json
+import lap
 import sys
 import csv
 import os
@@ -454,7 +456,7 @@ def get_layouts(**kwargs):
   '''Get the image positions in each projection'''
   vecs = vectorize_images(**kwargs)
   umap = get_umap_layout(vecs=vecs, **kwargs)
-  raster = get_rasterfairy_layout(umap=umap, **kwargs)
+  linear_assignment = get_lap_layout(umap=umap, **kwargs)
   grid = get_grid_layout(**kwargs)
   umap_jittered = get_pointgrid_layout(umap, 'umap', **kwargs)
   categorical = get_categorical_layout(**kwargs)
@@ -464,11 +466,11 @@ def get_layouts(**kwargs):
       'layout': umap,
       'jittered': umap_jittered,
     },
-    'grid': {
+    'alphabetic': {
       'layout': grid,
     },
-    'rasterfairy': {
-      'layout': raster,
+    'grid': {
+      'layout': linear_assignment,
     },
     'categorical': categorical,
     'date': date,
@@ -549,6 +551,29 @@ def get_rasterfairy_layout(**kwargs):
   except:
     print(' * coonswarp rectification could not be performed')
   pos = rasterfairy.transformPointCloud2D(umap)[0]
+  return write_layout(out_path, pos, **kwargs)
+
+
+def get_lap_layout(**kwargs):
+  print(' * creating linear assignment layout')
+  out_path = get_path('layouts', 'assignment', **kwargs)
+  if os.path.exists(out_path) and kwargs['use_cache']: return out_path
+  # load the umap layout
+  umap = np.array(read_json(kwargs['umap'], **kwargs))
+  umap = (umap + 1)/2 # scale 0:1
+  # determine length of each side in square grid
+  side = math.ceil(umap.shape[0]**(1/2))
+  # create square grid 0:1 in each dimension
+  grid_x, grid_y = np.meshgrid(np.linspace(0, 1, side), np.linspace(0, 1, side))
+  grid = np.dstack((grid_x, grid_y)).reshape(-1, 2)
+  # compute pairwise distance costs
+  cost = cdist(grid, umap, 'sqeuclidean')
+  # increase cost
+  cost = cost * (10000000. / cost.max())
+  # run the linear assignment
+  min_cost, row_assignments, col_assignments = lap.lapjv(np.copy(cost), extend_cost=True)
+  # use the assignment vals to determine gridified positions of `arr`
+  pos = grid[col_assignments]
   return write_layout(out_path, pos, **kwargs)
 
 
@@ -709,7 +734,7 @@ def get_categorical_layout(null_category='Other', margin=2, **kwargs):
   labels_out_path = get_path('layouts', 'categorical-labels', **kwargs)
   if os.path.exists(out_path): return out_path
   # accumulate d[category] = [indices of points with category]
-  categories = [i['category'] if i.get('category', False) else None for i in kwargs['metadata']]
+  categories = [i.get('category', None) for i in kwargs['metadata']]
   if not any(categories): return False
   d = defaultdict(list)
   for idx, i in enumerate(categories): d[i].append(idx)
