@@ -1201,6 +1201,23 @@ World.prototype.setBuffer = function(key, arr) {
 }
 
 /**
+* Helpers that mutate entire buffers
+**/
+
+World.prototype.setBorderedImages = function(indices) {
+  var vals = new Uint8Array(data.cells.length);
+  for (var i=0; i<indices.length; i++) vals[indices[i]] = 1;
+  this.setBuffer('selected', vals);
+}
+
+World.prototype.setOpaqueImages = function(indices) {
+  var vals = new Float32Array(data.cells.length);
+  for (var i=0; i<vals.length; i++) vals[i] = 0.35;
+  for (var i=0; i<indices.length; i++) vals[indices[i]] = 1;
+  this.setBuffer('opacity', vals);
+}
+
+/**
 * Return the color fragment shader or prepare and return
 * the texture fragment shader.
 *
@@ -1217,7 +1234,7 @@ World.prototype.getFragmentShader = function(obj) {
       firstTex = obj.firstTex,
       textures = obj.textures,
       fragShader = document.querySelector('#fragment-shader').textContent;
-  // the calling agent requested the color shader, used for selecting
+  // return shader for selecing clicked images (colorizes cells distinctly)
   if (useColor) {
     fragShader = fragShader.replace('uniform sampler2D textures[N_TEXTURES];', '');
     fragShader = fragShader.replace('TEXTURE_LOOKUP_TREE', '');
@@ -1610,7 +1627,7 @@ Lasso.prototype.setFrozen = function(bool) {
 }
 
 Lasso.prototype.clear = function() {
-  this.setBorderedImages([]);
+  world.setBorderedImages([]);
   this.removeMesh();
   this.elems.viewSelectedContainer.style.display = 'none';
   data.hotspots.setCreateHotspotVisibility(false);
@@ -1620,12 +1637,6 @@ Lasso.prototype.clear = function() {
 
 Lasso.prototype.removeMesh = function() {
   if (this.mesh) world.scene.remove(this.mesh);
-}
-
-Lasso.prototype.setBorderedImages = function(indices) {
-  var vals = new Uint8Array(data.cells.length);
-  for (var i=0; i<indices.length; i++) vals[indices[i]] = 1;
-  world.setBuffer('selected', vals);
 }
 
 Lasso.prototype.draw = function() {
@@ -1654,7 +1665,7 @@ Lasso.prototype.draw = function() {
   // indicate the number of cells that are selected
   this.setNSelected(indices.length);
   // illuminate the points that are inside the polyline
-  this.setBorderedImages(indices);
+  world.setBorderedImages(indices);
   // obtain and store a mesh, then add the mesh to the scene
   this.mesh = this.getMesh();
   world.scene.add( this.mesh );
@@ -2050,7 +2061,9 @@ Dates.prototype.init = function() {
   // add the dates object to the filters for joint filtering
   filters.filters.push(this);
   // function for filtering images
-  this.selectImage = function(image) { return true };
+  this.imageSelected = function(image) {
+    return true;
+  };
   // init
   this.load();
 }
@@ -2071,7 +2084,7 @@ Dates.prototype.load = function() {
       json.dates[k].forEach(function(img) {
         this.state.data[img] = _k;
       }.bind(this))
-      this.selectImage = function(image) {
+      this.imageSelected = function(image) {
         var year = this.state.data[image];
         // if the selected years are the starting domain, select all images
         if (this.state.selected[0] == this.state.min &&
@@ -2613,19 +2626,19 @@ Filters.prototype.loadFilters = function() {
 
 // determine which images to keep in the current selection
 Filters.prototype.filterImages = function() {
-  var arr = new Float32Array(data.cells.length);
+  var indices = [];
   for (var i=0; i<data.json.images.length; i++) {
     var keep = true;
     for (var j=0; j<this.filters.length; j++) {
-      if (this.filters[j].selectImage &&
-          !this.filters[j].selectImage(data.json.images[i])) {
+      if (this.filters[j].imageSelected &&
+          this.filters[j].imageSelected(data.json.images[i])) {
         keep = false;
         break;
       }
     }
-    arr[i] = keep ? 1.0 : 0.35;
+    if (keep) indices.push(i);
   }
-  world.setBuffer('opacity', arr);
+  world.setOpaqueImages(indices);
 }
 
 function Filter(obj) {
@@ -2649,7 +2662,9 @@ function Filter(obj) {
     self.selected = e.target.value;
     if (self.selected == 'All Values') {
       // function that indicates whether to include an image in a selection
-      self.selectImage = function(image) { return true; }
+      self.imageSelected = function(image) {
+        return true;
+      }
       filters.filterImages();
     } else {
       var filename = self.selected.replace(/\//g, '-').replace(/ /g, '__') + '.json',
@@ -2659,7 +2674,9 @@ function Filter(obj) {
           obj[i] = true;
           return obj;
         }, {})
-        self.selectImage = function(image) { return image in vals; }
+        self.imageSelected = function(image) {
+          return image in vals;
+        }
         filters.filterImages();
       })
     }
@@ -2712,14 +2729,10 @@ Hotspots.prototype.handleJson = function(json) {
 Hotspots.prototype.addEventListeners = function() {
   // add create hotspot event listener
   this.elems.createHotspot.addEventListener('click', function() {
-    var img = null,
-        nImages = 0,
-        keys = Object.keys(lasso.selected);
-    for (var i=0; i<keys.length; i++) {
-      if (lasso.selected[keys[i]]) {
-        nImages++;
-        img = keys[i];
-      }
+    // find the indices of the cells selected
+    var indices = [];
+    for (var i=0; i<data.cells.length; i++) {
+      if (lasso.selected[ data.json.images[i] ]) indices.push(i);
     }
     // flatten the user's selection to a 2D array
     var hull = [];
@@ -2730,8 +2743,8 @@ Hotspots.prototype.addEventListeners = function() {
     this.json.push({
       convex_hull: hull,
       label: data.hotspots.getUserClusterName(),
-      img: img,
-      n_images: nImages,
+      img: data.json.images[choose(indices)],
+      images: indices,
     })
     this.setCreateHotspotVisibility(false);
     this.setEdited(true);
@@ -3235,6 +3248,14 @@ function getElem(tag, obj) {
     elem[attr] = obj[attr];
   })
   return elem;
+}
+
+/**
+* Choose an element from an array
+**/
+
+function choose(arr) {
+  return arr[ Math.floor(Math.random() * arr.length) ];
 }
 
 /**

@@ -127,6 +127,19 @@ def copy_web_assets(**kwargs):
 
 def filter_images(**kwargs):
   '''Main method for filtering images given user metadata (if provided)'''
+  # validate that input image names are unique
+  seen = set()
+  duplicates = set()
+  for i in stream_images(image_paths=get_image_paths(**kwargs)):
+    if i.path in seen:
+      duplicates.add(i.path)
+  if duplicates:
+    raise Exception('''
+      Image filenames should all be unique, but the following filenames are duplicated\n
+      {}
+      '''.format('\n'.join(duplicates)))
+  del seen
+  # process and filter the images
   image_paths = []
   for i in stream_images(image_paths=get_image_paths(**kwargs)):
     # get image height and width
@@ -905,41 +918,41 @@ def get_hotspots(**kwargs):
   }
   v = kwargs['vecs']
   z = HDBSCAN(**config).fit(v)
-  # find the points in each cluster
-  d = defaultdict(list)
+  # create a map from cluster label to image indices in cluster
+  d = defaultdict(lambda: defaultdict(list))
   for idx, i in enumerate(z.labels_):
-    d[i].append(v[idx])
+    d[i]['images'].append(idx)
   # find the convex hull for each cluster's points
-  convex_hulls = []
   for i in d:
-    hull = ConvexHull(d[i])
+    positions = np.array([v[j] for j in d[i]['images']])
+    hull = ConvexHull(positions)
     points = [hull.points[j] for j in hull.vertices]
     # the last convex hull simplex needs to connect back to the first point
-    convex_hulls.append(np.vstack([points, points[0]]))
+    d[i]['convex_hull'] = np.vstack([points, points[0]]).tolist()
   # find the centroids for each cluster
   centroids = []
   for i in d:
-    x, y = np.array(d[i]).T
-    centroids.append(np.array([np.mean(x), np.mean(y)]))
-  # identify the number of points in each cluster
-  lens = [len(d[i]) for i in d]
-  # combine data into cluster objects
-  closest, _ = pairwise_distances_argmin_min(centroids, v)
-  paths = [kwargs['image_paths'][i] for i in closest]
-  clusters = [{
-    'img': clean_filename(paths[idx]),
-    'convex_hull': convex_hulls[idx].tolist(),
-    'n_images': lens[idx],
-  } for idx, i in enumerate(closest)]
+    positions = np.array([v[j] for j in d[i]['images']])
+    x, y = np.array(positions).T
+    d[i]['centroid'] = np.array([np.mean(x), np.mean(y)]).tolist()
+    # find the image closest to the centroid
+    closest, _ = pairwise_distances_argmin_min(np.array([d[i]['centroid']]), v)
+    d[i]['img'] = os.path.basename(kwargs['image_paths'][closest[0]])
   # remove massive clusters
-  retained = []
-  for idx, i in enumerate(clusters):
-    x, y = np.array(i['convex_hull']).T
-    area = 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
-    if area < 0.2:
-      retained.append(i)
-  # sort the clusers by size
-  clusters = sorted(retained, key=lambda i: i['n_images'], reverse=True)
+  deletable = []
+  for i in d:
+    # find percent of images in cluster
+    image_percent = len(d[i]['images']) / len(v)
+    # find percent of plot area in cluster
+    x, y = np.array(d[i]['convex_hull']).T
+    area_percent = 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
+    # determine if image or area percent is too large
+    if image_percent > 0.5 or area_percent > 0.3:
+      deletable.append(i)
+  for i in deletable: del d[i]
+  # sort the clusers by size and then label the clusters
+  clusters = d.values()
+  clusters = sorted(clusters, key=lambda i: len(i['images']), reverse=True)
   for idx, i in enumerate(clusters):
     i['label'] = 'Cluster {}'.format(idx+1)
   # save the hotspots to disk and return the path to the saved json
