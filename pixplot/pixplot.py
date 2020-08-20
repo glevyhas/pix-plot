@@ -10,6 +10,7 @@ from dateutil.parser import parse as parse_date
 from sklearn.preprocessing import minmax_scale
 from keras_preprocessing.image import load_img
 from pointgrid import align_points_to_grid
+from scipy.spatial.distance import cdist
 from distutils.dir_util import copy_tree
 from sklearn.decomposition import PCA
 from scipy.spatial import ConvexHull
@@ -38,6 +39,7 @@ import uuid
 import math
 import gzip
 import json
+import lap
 import sys
 import csv
 import os
@@ -125,6 +127,19 @@ def copy_web_assets(**kwargs):
 
 def filter_images(**kwargs):
   '''Main method for filtering images given user metadata (if provided)'''
+  # validate that input image names are unique
+  seen = set()
+  duplicates = set()
+  for i in stream_images(image_paths=get_image_paths(**kwargs)):
+    if i.path in seen:
+      duplicates.add(i.path)
+  if duplicates:
+    raise Exception('''
+      Image filenames should all be unique, but the following filenames are duplicated\n
+      {}
+      '''.format('\n'.join(duplicates)))
+  del seen
+  # process and filter the images
   image_paths = []
   for i in stream_images(image_paths=get_image_paths(**kwargs)):
     # get image height and width
@@ -252,6 +267,10 @@ def get_metadata_list(**kwargs):
     for i in glob2.glob(kwargs['metadata']):
       with open(i) as f:
         l.append(json.load(f))
+  # if the user provided a category but not a tag, use the category as the tag
+  for i in l:
+    if i.get('category', False) and not i.get('tags', False):
+      i.update({'tags': i['category']})
   return l
 
 
@@ -454,8 +473,11 @@ def get_layouts(**kwargs):
   '''Get the image positions in each projection'''
   vecs = vectorize_images(**kwargs)
   umap = get_umap_layout(vecs=vecs, **kwargs)
-  raster = get_rasterfairy_layout(umap=umap, **kwargs)
-  grid = get_grid_layout(**kwargs)
+  try:
+    linear_assignment = get_lap_layout(umap=umap, **kwargs)
+  except:
+    linear_assignment = get_rasterfairy_layout(umap=umap, **kwargs)
+  alphabetic = get_alphabetic_layout(**kwargs)
   umap_jittered = get_pointgrid_layout(umap, 'umap', **kwargs)
   categorical = get_categorical_layout(**kwargs)
   date = get_date_layout(**kwargs)
@@ -464,11 +486,11 @@ def get_layouts(**kwargs):
       'layout': umap,
       'jittered': umap_jittered,
     },
-    'grid': {
-      'layout': grid,
+    'alphabetic': {
+      'layout': alphabetic,
     },
-    'rasterfairy': {
-      'layout': raster,
+    'grid': {
+      'layout': linear_assignment,
     },
     'categorical': categorical,
     'date': date,
@@ -552,7 +574,30 @@ def get_rasterfairy_layout(**kwargs):
   return write_layout(out_path, pos, **kwargs)
 
 
-def get_grid_layout(**kwargs):
+def get_lap_layout(**kwargs):
+  print(' * creating linear assignment layout')
+  out_path = get_path('layouts', 'assignment', **kwargs)
+  if os.path.exists(out_path) and kwargs['use_cache']: return out_path
+  # load the umap layout
+  umap = np.array(read_json(kwargs['umap'], **kwargs))
+  umap = (umap + 1)/2 # scale 0:1
+  # determine length of each side in square grid
+  side = math.ceil(umap.shape[0]**(1/2))
+  # create square grid 0:1 in each dimension
+  grid_x, grid_y = np.meshgrid(np.linspace(0, 1, side), np.linspace(0, 1, side))
+  grid = np.dstack((grid_x, grid_y)).reshape(-1, 2)
+  # compute pairwise distance costs
+  cost = cdist(grid, umap, 'sqeuclidean')
+  # increase cost
+  cost = cost * (10000000. / cost.max())
+  # run the linear assignment
+  min_cost, row_assignments, col_assignments = lap.lapjv(np.copy(cost), extend_cost=True)
+  # use the assignment vals to determine gridified positions of `arr`
+  pos = grid[col_assignments]
+  return write_layout(out_path, pos, **kwargs)
+
+
+def get_alphabetic_layout(**kwargs):
   '''Get the x,y positions of images in a grid projection'''
   print(' * creating grid layout')
   out_path = get_path('layouts', 'grid', **kwargs)
@@ -709,7 +754,7 @@ def get_categorical_layout(null_category='Other', margin=2, **kwargs):
   labels_out_path = get_path('layouts', 'categorical-labels', **kwargs)
   if os.path.exists(out_path): return out_path
   # accumulate d[category] = [indices of points with category]
-  categories = [i['category'] if i.get('category', False) else None for i in kwargs['metadata']]
+  categories = [i.get('category', None) for i in kwargs['metadata']]
   if not any(categories): return False
   d = defaultdict(list)
   for idx, i in enumerate(categories): d[i].append(idx)
@@ -880,41 +925,41 @@ def get_hotspots(**kwargs):
   }
   v = kwargs['vecs']
   z = HDBSCAN(**config).fit(v)
-  # find the points in each cluster
-  d = defaultdict(list)
+  # create a map from cluster label to image indices in cluster
+  d = defaultdict(lambda: defaultdict(list))
   for idx, i in enumerate(z.labels_):
-    d[i].append(v[idx])
+    d[i]['images'].append(idx)
   # find the convex hull for each cluster's points
-  convex_hulls = []
   for i in d:
-    hull = ConvexHull(d[i])
+    positions = np.array([v[j] for j in d[i]['images']])
+    hull = ConvexHull(positions)
     points = [hull.points[j] for j in hull.vertices]
     # the last convex hull simplex needs to connect back to the first point
-    convex_hulls.append(np.vstack([points, points[0]]))
+    d[i]['convex_hull'] = np.vstack([points, points[0]]).tolist()
   # find the centroids for each cluster
   centroids = []
   for i in d:
-    x, y = np.array(d[i]).T
-    centroids.append(np.array([np.mean(x), np.mean(y)]))
-  # identify the number of points in each cluster
-  lens = [len(d[i]) for i in d]
-  # combine data into cluster objects
-  closest, _ = pairwise_distances_argmin_min(centroids, v)
-  paths = [kwargs['image_paths'][i] for i in closest]
-  clusters = [{
-    'img': clean_filename(paths[idx]),
-    'convex_hull': convex_hulls[idx].tolist(),
-    'n_images': lens[idx],
-  } for idx, i in enumerate(closest)]
+    positions = np.array([v[j] for j in d[i]['images']])
+    x, y = np.array(positions).T
+    d[i]['centroid'] = np.array([np.mean(x), np.mean(y)]).tolist()
+    # find the image closest to the centroid
+    closest, _ = pairwise_distances_argmin_min(np.array([d[i]['centroid']]), v)
+    d[i]['img'] = os.path.basename(kwargs['image_paths'][closest[0]])
   # remove massive clusters
-  retained = []
-  for idx, i in enumerate(clusters):
-    x, y = np.array(i['convex_hull']).T
-    area = 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
-    if area < 0.2:
-      retained.append(i)
-  # sort the clusers by size
-  clusters = sorted(retained, key=lambda i: i['n_images'], reverse=True)
+  deletable = []
+  for i in d:
+    # find percent of images in cluster
+    image_percent = len(d[i]['images']) / len(v)
+    # find percent of plot area in cluster
+    x, y = np.array(d[i]['convex_hull']).T
+    area_percent = 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
+    # determine if image or area percent is too large
+    if image_percent > 0.5 or area_percent > 0.3:
+      deletable.append(i)
+  for i in deletable: del d[i]
+  # sort the clusers by size and then label the clusters
+  clusters = d.values()
+  clusters = sorted(clusters, key=lambda i: len(i['images']), reverse=True)
   for idx, i in enumerate(clusters):
     i['label'] = 'Cluster {}'.format(idx+1)
   # save the hotspots to disk and return the path to the saved json

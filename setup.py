@@ -11,7 +11,7 @@ for root, subdirs, files in os.walk(os.path.join('pixplot', 'web')):
 
 setup(
   name='pixplot',
-  version='0.0.93',
+  version='0.0.94',
   packages=['pixplot'],
   package_data={
     'pixplot': web,
@@ -28,6 +28,7 @@ setup(
     'hdbscan>=0.8.24',
     'iiif-downloader>=0.0.6',
     'Keras<=2.3.0',
+    'lap>=0.4.0',
     'matplotlib>=2.0.0',
     'numpy>=1.16.0',
     'Pillow>=6.1.0',
