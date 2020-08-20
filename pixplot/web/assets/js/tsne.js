@@ -2631,7 +2631,7 @@ Filters.prototype.filterImages = function() {
     var keep = true;
     for (var j=0; j<this.filters.length; j++) {
       if (this.filters[j].imageSelected &&
-          this.filters[j].imageSelected(data.json.images[i])) {
+          !this.filters[j].imageSelected(data.json.images[i])) {
         keep = false;
         break;
       }
