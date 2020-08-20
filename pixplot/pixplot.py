@@ -267,6 +267,10 @@ def get_metadata_list(**kwargs):
     for i in glob2.glob(kwargs['metadata']):
       with open(i) as f:
         l.append(json.load(f))
+  # if the user provided a category but not a tag, use the category as the tag
+  for i in l:
+    if i.get('category', False) and not i.get('tags', False):
+      i.update({'tags': i['category']})
   return l
 
 
@@ -469,8 +473,11 @@ def get_layouts(**kwargs):
   '''Get the image positions in each projection'''
   vecs = vectorize_images(**kwargs)
   umap = get_umap_layout(vecs=vecs, **kwargs)
-  linear_assignment = get_lap_layout(umap=umap, **kwargs)
-  grid = get_grid_layout(**kwargs)
+  try:
+    linear_assignment = get_lap_layout(umap=umap, **kwargs)
+  except:
+    linear_assignment = get_rasterfairy_layout(umap=umap, **kwargs)
+  alphabetic = get_alphabetic_layout(**kwargs)
   umap_jittered = get_pointgrid_layout(umap, 'umap', **kwargs)
   categorical = get_categorical_layout(**kwargs)
   date = get_date_layout(**kwargs)
@@ -480,7 +487,7 @@ def get_layouts(**kwargs):
       'jittered': umap_jittered,
     },
     'alphabetic': {
-      'layout': grid,
+      'layout': alphabetic,
     },
     'grid': {
       'layout': linear_assignment,
@@ -590,7 +597,7 @@ def get_lap_layout(**kwargs):
   return write_layout(out_path, pos, **kwargs)
 
 
-def get_grid_layout(**kwargs):
+def get_alphabetic_layout(**kwargs):
   '''Get the x,y positions of images in a grid projection'''
   print(' * creating grid layout')
   out_path = get_path('layouts', 'grid', **kwargs)
