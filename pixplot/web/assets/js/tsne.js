@@ -1583,9 +1583,7 @@ Lasso.prototype.addModalEventListeners = function() {
   }
 
   // let users trigger the download
-  this.elems.downloadLink.addEventListener('click', function(e) {
-    this.downloadSelected();
-  }.bind(this))
+  this.elems.downloadLink.addEventListener('click', this.downloadSelected.bind(this))
 
   // allow users to clear the selected images
   this.elems.xIcon.addEventListener('click', this.clear.bind(this))
@@ -1636,7 +1634,7 @@ Lasso.prototype.draw = function() {
   // remove the old mesh
   this.removeMesh();
   // get the indices of images that are inside the polygon
-  this.selected = this.getSelected();
+  this.selected = this.getSelectedMap();
   var indices = [],
       keys = Object.keys(this.selected);
   for (var i=0; i<keys.length; i++) {
@@ -1699,10 +1697,9 @@ Lasso.prototype.getHull = function() {
   return hull;
 }
 
-Lasso.prototype.downloadSelected = function() {
-  var images = Object.keys(this.selected).filter(function(k) {
-    return this.selected[k]
-  }.bind(this));
+// pass a 2d array of metadata values for selected images to `callback`
+Lasso.prototype.getSelectedMetadata = function(callback) {
+  var images = this.getSelectedFilenames();
   // conditionally fetch the metadata for each selected image
   var rows = [];
   if (data.json.metadata) {
@@ -1722,25 +1719,58 @@ Lasso.prototype.downloadSelected = function() {
               m.permalink,
             ])
           }
-          this.downloadRows(rows);
+          callback(rows);
         }
       }.bind(this));
     }
   } else {
     for (var i=0; i<images.length; i++) rows.push([images[i]]);
-    this.downloadRows(rows);
+    callback(rows);
   }
 }
 
-Lasso.prototype.downloadRows = function(rows) {
+Lasso.prototype.downloadSelected = function() {
+  // format the filename to use for download
   var filetype = this.downloadFiletype;
   var filename = this.elems.downloadInput.value || Date.now().toString();
   if (!filename.endsWith('.' + filetype)) filename += '.' + filetype;
-  downloadFile(rows, filename);
+  // fetch the metadata associated with user-selected images
+  this.getSelectedMetadata(function(arr) {
+    if (filetype == 'csv' || filetype == 'json') downloadFile(arr, filename);
+    else if (filetype == 'zip') {
+      // initialize zip archive with metadata and images subdirectory
+      var zip = new JSZip();
+      zip.file('metadata.csv', Papa.unparse(arr));
+      var subfolder = zip.folder('images');
+      // add the selected images to the zip archive
+      var images = this.getSelectedFilenames();
+      var nAdded = 0;
+      for (var i=0; i<images.length; i++) {
+        var imagePath = getPath('data/originals/' + images[i]);
+        imageToDataUrl(imagePath, function(result) {
+          var imageFilename = result.src.split('originals/')[1];
+          var base64 = result.dataUrl.split(';base64,')[1];
+          subfolder.file(imageFilename, base64, {base64: true});
+          if (++nAdded == images.length) {
+            zip.generateAsync({type: 'blob'}).then(function(blob) {
+              downloadBlob(blob, 'selection.zip')
+            });
+          }
+        })
+      }
+    }
+  }.bind(this));
+}
+
+// return list of selected filenames; [filename, filename, ...]
+Lasso.prototype.getSelectedFilenames = function() {
+  return Object.keys(this.selected).filter(function(k) {
+    return this.selected[k]
+  }.bind(this));
 }
 
 // return d[filename] = bool indicating selected
-Lasso.prototype.getSelected = function() {
+Lasso.prototype.getSelectedMap = function() {
   var polygon = this.points.map(function(i) {
     return [i.x, i.y]
   });
@@ -3146,6 +3176,36 @@ function downloadFile(data, filename) {
   a.href = window.URL.createObjectURL(blob);
   a.click();
   a.parentNode.removeChild(a);
+}
+
+function downloadBlob(blob, filename) {
+  var a = document.createElement('a');
+  document.body.appendChild(a);
+  a.download = filename;
+  a.href = window.URL.createObjectURL(blob);
+  a.click();
+  a.parentNode.removeChild(a);
+}
+
+// pass the dataUrl for image at location `src` to `callback`
+function imageToDataUrl(src, callback, mimetype) {
+  mimetype = mimetype || 'image/png';
+  var img = new Image();
+  img.crossOrigin = 'Anonymous';
+  img.onload = function() {
+    var canvas = document.createElement('CANVAS');
+    var ctx = canvas.getContext('2d');
+    canvas.height = this.naturalHeight;
+    canvas.width = this.naturalWidth;
+    ctx.drawImage(this, 0, 0);
+    var dataUrl = canvas.toDataURL(mimetype);
+    callback({src: src, dataUrl: dataUrl});
+  };
+  img.src = src;
+  if (img.complete || img.complete === undefined) {
+    img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+    img.src = src;
+  }
 }
 
 /**
