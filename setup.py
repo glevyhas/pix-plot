@@ -24,6 +24,7 @@ setup(
   license='MIT',
   install_requires=[
     'cmake>=3.15.3',
+    'Cython>=0.29.21',
     'glob2>=0.6',
     'hdbscan>=0.8.24',
     'iiif-downloader>=0.0.6',
@@ -36,7 +37,7 @@ setup(
     'python-dateutil>=2.8.0',
     'scikit-learn>=0.19.0',
     'scipy>=1.1.0',
-    'tensorflow>=1.14.0<=2.0.0',
+    'tensorflow>=1.14.0,<=2.0.0',
     'umap-learn>=0.3.10',
     'yale-dhlab-rasterfairy>=1.0.3',
     'yale-dhlab-keras-preprocessing>=1.1.1',
