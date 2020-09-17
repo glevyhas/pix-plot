@@ -97,8 +97,8 @@ Metadata should be in a comma-separated value file, should contain one row for e
 
 | filename | category  | tags  | description   | permalink   | Year     |
 | -------- | --------- | ----- | ------------- | ----------- | -------- |
-| bees.jpg | yellow    | a|b|c | bees' knees   | https://... | 1776     |
-| cats.jpg | dangerous | b|c|d | cats' pajamas | https://... | 1972     |
+| bees.jpg | yellow    | a\|b\|c | bees' knees   | https://... | 1776     |
+| cats.jpg | dangerous | b\|c\|d | cats' pajamas | https://... | 1972     |
 
 The following column labels are accepted:
 
