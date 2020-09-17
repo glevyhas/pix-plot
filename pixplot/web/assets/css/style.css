@@ -507,9 +507,13 @@ input[type=range]::-ms-thumb {
   display: none;
 }
 
+#settings-icon {
+  transform: rotate(0deg);
+  transition: transform 0.3s;
+}
+
 #settings-icon.active {
   transform: rotate(180deg);
-  transition: transform 0.3s;
 }
 
 /**
