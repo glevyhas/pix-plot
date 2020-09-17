@@ -345,33 +345,48 @@
     </script>
 
     <!-- Header -->
-    <header id='header' class='no-highlight'>
-      <a href='https://dhlab.yale.edu' target='_blank'>
-        <img id='logo' src='assets/images/dhlab-logo.svg' alt='DHLab logo' />
-      </a>
-      <div id='app-name'>PixPlot</div>
-      <div class='tagline'>Image Fields in a Local Collection</div>
+    <div id='header-container'>
+      <header id='header' class='no-highlight'>
+        <a href='https://dhlab.yale.edu' target='_blank'>
+          <img id='logo' src='assets/images/dhlab-logo.svg' alt='DHLab logo' />
+        </a>
+        <div id='app-name'>PixPlot</div>
+        <div class='tagline'>Image Fields in a Local Collection</div>
+      </header>
+
       <div id='header-controls'>
-        <div id='image-search-container'>
-          <input id='image-search' type='text' placeholder='Search for an image'></input>
-          <img id='image-search-icon' src='assets/images/icons/search-icon.svg'>
-          <div id='typeahead-container'></div>
+        <div id='header-controls-top'>
+          <div id='image-search-container'>
+            <input id='image-search' type='text' placeholder='Search for an image'></input>
+            <img id='image-search-icon' src='assets/images/icons/search-icon.svg'>
+            <div id='typeahead-container'></div>
+          </div>
+          <div id='date-container'>
+            <div id='date-label' class='settings-label'>Date</div>
+            <div id='date-slider'></div>
+          </div>
+          <div id='filters'></div>
+          <div id='icons'>
+            <img id='layout-alphabetic' src='assets/images/icons/az-layout.svg' />
+            <img id='layout-umap' src='assets/images/icons/scatter-layout.svg' />
+            <img id='layout-grid' src='assets/images/icons/grid-layout.svg' />
+            <img id='layout-date' src='assets/images/icons/date-layout.svg' />
+            <img id='layout-categorical' src='assets/images/icons/categorical-layout.svg' />
+            <img id='settings-icon' src='assets/images/icons/gear-icon.svg' />
+          </div>
         </div>
-        <div id='range-slider'>
-          <label>Point Size</label>
-          <input id='pointsize-range-input' min='0' max='0.03' value='0' step='0.00001' type='range' />
+        <div id='header-controls-bottom'>
+          <div id='jitter-container'>
+            <div class='settings-label'>Jitter</div>
+            <input type='checkbox' id='jitter-input'>
+          </div>
+          <div id='range-slider'>
+            <div class='settings-label'>Point Size</div>
+            <input id='pointsize-range-input' min='0' max='0.03' value='0' step='0.00001' type='range' />
+          </div>
         </div>
-        <div id='icons'>
-          <img id='layout-alphabetic' src='assets/images/icons/az-layout.svg' />
-          <img id='layout-umap' src='assets/images/icons/scatter-layout.svg' />
-          <img id='layout-grid' src='assets/images/icons/grid-layout.svg' />
-          <img id='layout-date' src='assets/images/icons/date-layout.svg' />
-          <img id='layout-categorical' src='assets/images/icons/categorical-layout.svg' />
-        </div>
-        <div id='filters'></div>
-        <div id='date-slider'></div>
       </div>
-    </header>
+    </div>
     <div id='tooltip'></div>
     <!-- Loader -->
     <div id='loader-scene'>
@@ -398,10 +413,6 @@
     </div>
     <!-- Canvas -->
     <div id='canvas-container'>
-      <div id='jitter-container' class='no-highlight'>
-        <input type='checkbox' id='jitter-input'>
-        <label>Jitter</label>
-      </div>
       <div id='canvas-target'>
         <canvas id='pixplot-canvas' />
       </div>
