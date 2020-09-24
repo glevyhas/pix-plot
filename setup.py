@@ -1,17 +1,26 @@
+from os.path import join, exists, dirname, realpath
 from setuptools import setup
-from os.path import join
 import os
+
+try:
+  # python 2
+  from urllib.request import urlretrieve as download_function
+except:
+  # python 3
+  from urllib.request import retrieve as download_function
 
 # populate list of all paths in `./pixplot/web`
 web = []
-for root, subdirs, files in os.walk(os.path.join('pixplot', 'web')):
-  if not files: continue
-  for file in files:
-    web.append(os.path.join(root.replace('pixplot/', ''), file))
+dirs = [join('pixplot', 'web'), join('pixplot', 'models')]
+for i in dirs:
+  for root, subdirs, files in os.walk(i):
+    if not files: continue
+    for file in files:
+      web.append(join(root.replace('pixplot/', ''), file))
 
 setup(
   name='pixplot',
-  version='0.0.94',
+  version='0.0.97',
   packages=['pixplot'],
   package_data={
     'pixplot': web,
@@ -24,6 +33,7 @@ setup(
   license='MIT',
   install_requires=[
     'cmake>=3.15.3',
+    'Cython>=0.29.21',
     'glob2>=0.6',
     'hdbscan>=0.8.24',
     'iiif-downloader>=0.0.6',
@@ -36,7 +46,8 @@ setup(
     'python-dateutil>=2.8.0',
     'scikit-learn>=0.19.0',
     'scipy>=1.1.0',
-    'tensorflow>=1.14.0<=2.0.0',
+    'tensorflow>=1.14.0,<=2.0.0',
+    'tf-pose==0.11.0',
     'umap-learn>=0.3.10',
     'yale-dhlab-rasterfairy>=1.0.3',
     'yale-dhlab-keras-preprocessing>=1.1.1',
@@ -47,3 +58,9 @@ setup(
     ],
   },
 )
+
+# after installing the base package, download the model
+print(' * downoading cmu model')
+url = 'https://lab-apps.s3-us-west-2.amazonaws.com/pixplot-assets/tf-pose/graph_opt.pb'
+out_dir = join(dirname(realpath(__file__)), 'pixplot', 'models', 'graph', 'cmu')
+download_function(url, join(out_dir, 'graph_opt.pb'))

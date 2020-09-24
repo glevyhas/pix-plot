@@ -136,33 +136,34 @@ select:disabled {
 **/
 
 #header {
-  height: 60px;
+  height: 48px;
   width: 100%;
   position: fixed;
   top: 0px;
-  overflow: hidden;
-  box-shadow: 2px 1px 2px rgba(39, 39, 39, 0.2);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.16);
+  border-bottom: 1px solid #1f1f1f;
   font-size: 0;
 }
 
 #header,
 #logo {
-  background: #333;
+  background: #333333;
   position: relative;
   z-index: 4;
 }
 
 #logo {
-  width: 40px;
+  width: 33px;
   padding: 10px;
-  height: 40px;
+  position: relative;
+  top: 2px;
 }
 
 #app-name {
   display: inline-block;
   height: 100%;
   vertical-align: top;
-  padding: 18px 34px;
+  padding: 11px 34px;
   box-sizing: border-box;
   font-weight: 300;
   background: #444;
@@ -186,6 +187,7 @@ select:disabled {
   background: inherit;
   position: relative;
   z-index: 1;
+  display: none;
 }
 
 @media(max-width: 335px) {
@@ -205,21 +207,41 @@ select:disabled {
 **/
 
 #header-controls {
-  display: inline-block;
-  position: absolute;
-  right: 20px;
-  top: 0;
-  left: 515px;
-  padding: 15px 0;
-  min-width: 280px;
+  display: block;
   opacity: 0;
   transition: opacity 0.5s;
   text-align: right;
   white-space: nowrap;
+  vertical-align: top;
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 108px;
 }
 
-#header-controls * {
-  display: inline-block;
+#header-controls-top {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 4;
+}
+
+#header-controls-bottom {
+  height: 36px;
+  position: absolute;
+  top: 48px;
+  right: 0;
+  left: 0;
+  background: #222222;
+  z-index: 2;
+  transition: transform 0.3s;
+  transform: translate(0, -48px);
+  box-shadow: 0 3px 2px rgba(0, 0, 0, 0.3);
+}
+
+#header-controls-bottom.open {
+  transform: translate(0, 0);
 }
 
 /**
@@ -250,12 +272,80 @@ select:disabled {
 * Filters
 **/
 
+.settings-label {
+  font-size: 12px;
+  color: #999;
+  font-weight: 600;
+  display: inline-block;
+}
+
 #filters {
   vertical-align: top;
   position: relative;
-  top: 2px;
   display: inline-block;
-  margin: 0 10px;
+}
+
+.filter {
+  position: relative;
+  display: inline-block;
+  font-size: 13px;
+  text-align: left;
+  color: #fff;
+  cursor: pointer;
+  padding: 15px 40px;
+  margin: 0 20px;
+}
+
+.filter-options {
+  display: none;
+  position: absolute;
+  left: 20px;
+  background: #efefef;
+  color: #000;
+  padding: 10px 20px;
+  top: 48px;
+  z-index: 0;
+}
+
+.filter.open .filter-options {
+  display: block;
+  cursor: initial;
+}
+
+.filter-label {
+  display: inline-block;
+  padding-right: 13px;
+  position: relative;
+}
+
+.filter-label::after {
+  content: '▾';
+  font-size: 10px;
+  position: absolute;
+  right: 0;
+  top: 2px;
+}
+
+.filter.has-selection .filter-label,
+.filter.has-selection .filter-label::after {
+  color: #eab755;
+}
+
+.filter-option {
+  display: block;
+  cursor: pointer;
+}
+
+.filter-option div {
+  position: relative;
+  top: -2px;
+  margin: 2px 5px;
+  display: inline-block;
+  cursor: pointer;
+}
+
+.filter-option input {
+  cursor: pointer;
 }
 
 /**
@@ -265,55 +355,56 @@ select:disabled {
 input[type=range] {
   -webkit-appearance: none;
   appearance: none;
-  width: 100%;
+  width: 100px;
   height: 2px;
-  border-radius: 10px;
-  background: #c3c3c3;
+  border-radius: 0;
+  background: #707070;
   outline: none;
+  vertical-align: top;
 }
 
 input[type=range]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 14px;
-  height: 14px;
+  width: 10px;
+  height: 10px;
   background: #eee;
   cursor: pointer;
-  border-radius: 14px;
+  border-radius: 10px;
 }
 
 input[type=range]::-moz-range-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 14px;
-  height: 14px;
+  width: 10px;
+  height: 10px;
   background: #eee;
   cursor: pointer;
-  border-radius: 14px;
+  border-radius: 10px;
 }
 
 input[type=range]::-ms-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 14px;
-  height: 14px;
+  width: 10px;
+  height: 10px;
   background: #eee;
   cursor: pointer;
-  border-radius: 14px;
+  border-radius: 10px;
+}
+
+#header-controls-bottom input[type=range] {
+  margin-top: 19px;
 }
 
 #range-slider {
-  margin-right: 10px;
-  width: 100px;
+  margin-right: 50px;
   display: inline-block;
 }
 
-#range-slider label {
-  color: #c3c3c3;
-  font-size: 9px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  display: block;
+#range-slider .settings-label {
+  margin-top: 10px;
+  margin-right: 5px;
 }
 
 #pointsize-range-input {
@@ -324,28 +415,41 @@ input[type=range]::-ms-thumb {
 * Dual range slider
 **/
 
+#date-container {
+  display: inline-block;
+}
+
+#date-label {
+  display: inline-block;
+  vertical-align: top;
+  margin-top: 15px;
+}
+
 #date-slider {
-  height: 6px;
+  height: 2px;
   width: 100px;
   display: inline-block;
   vertical-align: top;
   position: relative;
+  margin: 0 13px;
   top: 19px;
-  margin-left: 10px;
+  border: none;
 }
 
 #date-slider .noUi-connect {
-  background: #eab755;
+  background: #707070;
 }
 
 #date-slider .noUi-handle {
   background: #eee;
   box-shadow: none;
-  width: 16px;
-  height: 16px;
+  width: 10px;
+  height: 10px;
   border-radius: 16px;
-  right: -8px;
-  border: 1px solid #888;
+  right: -6px;
+  top: -4px;
+  border: none;
+  cursor: grab;
 }
 
 #date-slider .noUi-handle::before,
@@ -355,11 +459,19 @@ input[type=range]::-ms-thumb {
 
 #date-slider .noUi-tooltip {
   font-size: 9px;
-  padding: 0;
-  margin-bottom: 1px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: #c4c4c4;
+  padding: 0 1px;
+  border: none;
+  background: #333;
+  color: #ccc;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  display: inline-block;
+  top: 14px;
+  height: 14px;
+}
+
+#date-slider .noUi-connects {
+  background: #707070;
 }
 
 /**
@@ -369,15 +481,21 @@ input[type=range]::-ms-thumb {
 #icons {
   display: inline-block;
   vertical-align: top;
-  margin-top: 5px;
+  margin-top: 10px;
+  margin-right: 20px;
 }
 
 #icons img {
   height: 19px;
-  margin: 0 8px;
+  margin: 0 20px;
   opacity: 0.2;
   cursor: pointer;
   vertical-align: top;
+  padding: 5px;
+}
+
+#icons img:hover {
+  opacity: 0.5;
 }
 
 #icons img.active {
@@ -385,8 +503,14 @@ input[type=range]::-ms-thumb {
 }
 
 #layout-date,
-#layout-categorical {
+#layout-categorical,
+#layout-pose {
   display: none;
+}
+
+#settings-icon.active {
+  transform: rotate(180deg);
+  transition: transform 0.3s;
 }
 
 /**
@@ -394,19 +518,8 @@ input[type=range]::-ms-thumb {
 **/
 
 #jitter-container {
-  position: absolute;
-  top: 77px;
-  right: 20px;
-  z-index: 1;
-  background: #444;
-  font-size: 12px;
-  padding: 5px;
-  border-radius: 3px;
-  color: #dedede;
-  font-family: courier;
-  text-transform: uppercase;
-  transition: opacity 0.5s;
-  opacity: 0;
+  display: inline-block;
+  margin: 0 57px;
 }
 
 #jitter-container.visible {
@@ -443,7 +556,7 @@ nav {
   height: auto;
   box-sizing: border-box;
   padding: 60px 0 0;
-  background: rgba(17,17,17,0.95);
+  background: #222;
   box-shadow: 1px 0px 2px rgba(0, 0, 0, 0.7);
   transition: opacity 0.5s;
   color: #ddd;
@@ -458,7 +571,6 @@ nav {
   overflow-x: hidden;
   overflow-y: auto;
   padding-right: 30px;
-  background: #222;
   transition: opacity 0.5s;
   box-sizing: content-box;
   width: 100%;
@@ -543,13 +655,12 @@ nav h2 {
 
 .hotspot .drag-hotspot,
 .hotspot .refresh-hotspot {
-  background: #444;
+  background: #2f2f2f;
+  color: #fff;
 }
 
 .hotspot .drag-hotspot {
   right: -7px;
-  background: #4c4c4c;
-  color: #fff;
   font-size: 11px;
   line-height: 12px;
   cursor: grab;
@@ -557,7 +668,7 @@ nav h2 {
 
 .hotspot .drag-hotspot:hover,
 .hotspot .refresh-hotspot:hover {
-  background: #666;
+  background: #444;
 }
 
 .hotspot.dragging,
@@ -961,7 +1072,7 @@ noscript {
 
 #selected-image-target {
   position: absolute;
-  top: 60px;
+  top: 48px;
   right: 0;
   bottom: 0;
   left: 0;
@@ -1278,7 +1389,7 @@ noscript {
 
 #selected-images-modal {
   position: absolute;
-  top: 60px;
+  top: 48px;
   left: 0;
   right: 0;
   bottom: 0;

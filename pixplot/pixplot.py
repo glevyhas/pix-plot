@@ -6,25 +6,28 @@ from keras.applications.inception_v3 import preprocess_input
 from keras.applications import InceptionV3, imagenet_utils
 from sklearn.metrics import pairwise_distances_argmin_min
 from keras.backend.tensorflow_backend import set_session
+from tf_pose.networks import get_graph_path, model_wh
+from collections import defaultdict, namedtuple
 from dateutil.parser import parse as parse_date
 from sklearn.preprocessing import minmax_scale
 from keras_preprocessing.image import load_img
+from tf_pose.estimator import TfPoseEstimator
 from pointgrid import align_points_to_grid
 from scipy.spatial.distance import cdist
 from distutils.dir_util import copy_tree
 from sklearn.decomposition import PCA
 from scipy.spatial import ConvexHull
 from iiif_downloader import Manifest
-from collections import defaultdict
 from rasterfairy import coonswarp
 import matplotlib.pyplot as plt
 from keras.models import Model
 from scipy.stats import kde
 from hdbscan import HDBSCAN
 import keras.backend as K
+from tf_pose import common
 import tensorflow as tf
-from umap import UMAP
 import multiprocessing
+from umap import UMAP
 import pkg_resources
 import rasterfairy
 import numpy as np
@@ -82,6 +85,9 @@ config = {
   'pointgrid_fill': 0.05,
   'square_cells': False,
   'gzip': False,
+  'extract_poses': False,
+  'min_size': 64**2,
+  'min_score': 0.5,
   'plot_id': str(uuid.uuid1()),
   'seed': 24,
 }
@@ -128,22 +134,30 @@ def copy_web_assets(**kwargs):
 def filter_images(**kwargs):
   '''Main method for filtering images given user metadata (if provided)'''
   # validate that input image names are unique
-  seen = set()
+  image_paths = set()
   duplicates = set()
   for i in stream_images(image_paths=get_image_paths(**kwargs)):
-    if i.path in seen:
+    if i.path in image_paths:
       duplicates.add(i.path)
+    image_paths.add(i.path)
   if duplicates:
     raise Exception('''
-      Image filenames should all be unique, but the following filenames are duplicated\n
+      Image filenames should be unique, but the following filenames are duplicated\n
       {}
       '''.format('\n'.join(duplicates)))
-  del seen
+  # if the user requested pose detection, subdivide images
+  if kwargs['extract_poses']:
+    # copy the uncropped input images
+    if not os.path.exists(os.path.join(kwargs['out_dir'], 'uncropped')):
+      os.makedirs(os.path.join(kwargs['out_dir'], 'uncropped'))
+    for i in image_paths:
+      shutil.copy(i, os.path.join(kwargs['out_dir'], 'uncropped', os.path.basename(i)))
+    image_paths = subdivide_images_with_openpose(image_paths=image_paths, **kwargs)
   # process and filter the images
-  image_paths = []
-  for i in stream_images(image_paths=get_image_paths(**kwargs)):
+  filtered_image_paths = []
+  for i in stream_images(image_paths=image_paths):
     # get image height and width
-    w,h = i.original.size
+    w, h = i.original.size
     # remove images with 0 height or width when resized to lod height
     if (h == 0) or (w == 0):
       print(' * skipping {} because it contains 0 height or width'.format(i.path))
@@ -158,17 +172,14 @@ def filter_images(**kwargs):
     if (w/h) > (kwargs['atlas_size']/kwargs['cell_size']):
       print(' * skipping {} because its dimensions are oblong'.format(i.path))
       continue
-    image_paths.append(i.path)
+    filtered_image_paths.append(i.path)
   # handle the case user provided no metadata
   if not kwargs.get('metadata', False):
-    return [
-      limit_image_count(image_paths, **kwargs),
-      [],
-    ]
+    return [filtered_image_paths, []]
   # handle user metadata: retain only records with image and metadata
   l = get_metadata_list(**kwargs)
   meta_bn = set([clean_filename(i.get('filename', '')) for i in l])
-  img_bn = set([clean_filename(i) for i in image_paths])
+  img_bn = set([clean_filename(i, trim_idx=True) for i in filtered_image_paths])
   # identify images with metadata and those without metadata
   meta_present = img_bn.intersection(meta_bn)
   meta_missing = list(img_bn - meta_bn)
@@ -181,23 +192,13 @@ def filter_images(**kwargs):
   d = {clean_filename(i['filename']): i for i in l}
   images = []
   metadata = []
-  for i in image_paths:
-    if clean_filename(i) in meta_present:
+  for i in filtered_image_paths:
+    if clean_filename(i, trim_idx=True) in meta_present:
       images.append(i)
-      metadata.append(d[clean_filename(i)])
+      metadata.append(d[clean_filename(i, trim_idx=True)])
   kwargs['metadata'] = metadata
   write_metadata(**kwargs)
-  return [
-    limit_image_count(images, **kwargs),
-    limit_image_count(metadata, **kwargs),
-  ]
-
-
-def limit_image_count(arr, **kwargs):
-  '''If the user passed a max_images value, return [:max_images] from arr'''
-  if kwargs.get('max_images', False):
-    return arr[:kwargs['max_images']]
-  return arr
+  return [images, metadata]
 
 
 def get_image_paths(**kwargs):
@@ -222,10 +223,13 @@ def get_image_paths(**kwargs):
   if not image_paths:
     print('\nError: No input images were found. Please check your --images glob\n')
     sys.exit()
-  # optional shuffle that mutates image_paths
+  # optionally shuffle the image_paths
   if kwargs['shuffle']:
     print(' * shuffling input images')
-    random.shuffle(image_paths)
+    random.Random(kwargs['seed']).shuffle(image_paths)
+  # optionally limit the number of images in image_paths
+  if kwargs.get('max_images', False):
+    image_paths = image_paths[:kwargs['max_images']]
   return image_paths
 
 
@@ -241,9 +245,13 @@ def stream_images(**kwargs):
       print(' * image', i, 'could not be processed --', exc)
 
 
-def clean_filename(s):
+def clean_filename(s, trim_idx=False):
   '''Given a string that points to a filename, return a clean filename'''
-  return unquote(os.path.basename(s))
+  s = unquote(os.path.basename(s))
+  if trim_idx:
+    extension = s.split('.')[-1]
+    s = '-'.join(s.split('-')[:-1]) + extension
+  return s
 
 
 ##
@@ -379,6 +387,7 @@ def get_manifest(**kwargs):
         'lod': kwargs['lod_cell_height'],
       },
     },
+    'images_cropped': kwargs.get('extract_poses', False),
     'creation_date': datetime.datetime.today().strftime('%d-%B-%Y-%H:%M:%S'),
   }
   path = get_path('manifests', 'manifest', **kwargs)
@@ -471,14 +480,12 @@ def save_atlas(atlas, out_dir, n):
 
 def get_layouts(**kwargs):
   '''Get the image positions in each projection'''
-  vecs = vectorize_images(**kwargs)
-  umap = get_umap_layout(vecs=vecs, **kwargs)
-  try:
-    linear_assignment = get_lap_layout(umap=umap, **kwargs)
-  except:
-    linear_assignment = get_rasterfairy_layout(umap=umap, **kwargs)
-  alphabetic = get_alphabetic_layout(**kwargs)
+  umap = get_umap_layout(**kwargs)
   umap_jittered = get_pointgrid_layout(umap, 'umap', **kwargs)
+  grid = get_rasterfairy_layout(umap=umap, **kwargs)
+  pose = get_pose_layout(**kwargs)
+  pose_jittered = get_pointgrid_layout(pose, 'pose', **kwargs)
+  alphabetic = get_alphabetic_layout(**kwargs)
   categorical = get_categorical_layout(**kwargs)
   date = get_date_layout(**kwargs)
   layouts = {
@@ -490,7 +497,11 @@ def get_layouts(**kwargs):
       'layout': alphabetic,
     },
     'grid': {
-      'layout': linear_assignment,
+      'layout': grid,
+    },
+    'pose': {
+      'layout': pose,
+      'jittered': pose_jittered,
     },
     'categorical': categorical,
     'date': date,
@@ -498,10 +509,10 @@ def get_layouts(**kwargs):
   return layouts
 
 
-def vectorize_images(**kwargs):
-  '''Create and return vector representation of Image() instances'''
-  print(' * preparing to vectorize {} images'.format(len(kwargs['image_paths'])))
-  vector_dir = os.path.join(kwargs['out_dir'], 'image-vectors')
+def get_inception_vectors(**kwargs):
+  '''Create and return Inception vector representation of Image() instances'''
+  print(' * generating Inception vectors for {} images'.format(len(kwargs['image_paths'])))
+  vector_dir = os.path.join(kwargs['out_dir'], 'image-vectors', 'inception')
   if not os.path.exists(vector_dir): os.makedirs(vector_dir)
   base = InceptionV3(include_top=True, weights='imagenet',)
   model = Model(inputs=base.input, outputs=base.get_layer('avg_pool').output)
@@ -522,6 +533,7 @@ def vectorize_images(**kwargs):
 
 def get_umap_layout(**kwargs):
   '''Get the x,y positions of images passed through a umap projection'''
+  vecs = get_inception_vectors(**kwargs)
   print(' * creating UMAP layout')
   out_path = get_path('layouts', 'umap', **kwargs)
   if os.path.exists(out_path) and kwargs['use_cache']: return out_path
@@ -529,7 +541,7 @@ def get_umap_layout(**kwargs):
     min_dist=kwargs['min_distance'],
     metric=kwargs['metric'])
   # run PCA to reduce dimensionality of image vectors
-  w = PCA(n_components=min(100, len(kwargs['vecs']))).fit_transform(kwargs['vecs'])
+  w = PCA(n_components=min(100, len(vecs))).fit_transform(vecs)
   # fetch categorical labels for images (if provided)
   y = []
   if kwargs.get('metadata', False):
@@ -576,7 +588,7 @@ def get_rasterfairy_layout(**kwargs):
 
 def get_lap_layout(**kwargs):
   print(' * creating linear assignment layout')
-  out_path = get_path('layouts', 'assignment', **kwargs)
+  out_path = get_path('layouts', 'linear-assignment', **kwargs)
   if os.path.exists(out_path) and kwargs['use_cache']: return out_path
   # load the umap layout
   umap = np.array(read_json(kwargs['umap'], **kwargs))
@@ -624,7 +636,133 @@ def get_pointgrid_layout(path, label, **kwargs):
 
 
 ##
-# Date layout
+# Pose Layout
+##
+
+
+def get_pose_layout(**kwargs):
+  '''Return the path to JSON with openpose embeddings'''
+  out_path = get_path('layouts', 'pose', **kwargs)
+  if os.path.exists(out_path) and kwargs['use_cache']: return out_path
+  # generate a new pose layout
+  print(' * generating pose layout')
+  vector_dir = os.path.join(kwargs['out_dir'], 'image-vectors', 'openpose')
+  vecs = []
+  # images are vectorized during subdivision step
+  for i in stream_images(**kwargs):
+    vector_path = os.path.join(vector_dir, os.path.basename(i.path) + '.npy')
+    vec = np.load(vector_path)
+    vec = vec.reshape(18, 3)
+    vec = normalize_2d_vector(vec[:,:2]) # slice out the confidence scores
+    vecs.append(vec.flatten())
+  vecs = np.array(vecs)
+  # create lower-dimensional embedding of pose vectors
+  model = UMAP(n_neighbors=kwargs['n_neighbors'],
+    min_dist=kwargs['min_distance'],
+    metric=kwargs['metric'])
+  z = model.fit(vecs).embedding_
+  return write_layout(out_path, z, **kwargs)
+
+
+def get_openpose_vector(human):
+  '''Given an OpenPose human object return a vector of that human's keypoints'''
+  human_vec = []
+  # find the mean positions in x, y axes and use that position for missing verts
+  stacked = np.array([[b[1].x, b[1].y] for b in human.body_parts.items()])
+  x_mean, y_mean = np.mean(stacked, axis=(0))
+  BodyPart = namedtuple('BodyPart', ['x', 'y', 'score'])
+  for i in range(18):
+    if i in human.body_parts:
+      pos = human.body_parts[i]
+    else:
+      pos = BodyPart(x=x_mean, y=y_mean, score=0)
+    human_vec.append([pos.x or 0, pos.y or 0, pos.score or 0])
+  return np.array(human_vec)
+
+
+def crop_openpose_figure(im, vec, margin=0.4):
+  '''Given an OpenPose image and pose vector return the cropped figure'''
+  x = vec[:,0]
+  y = vec[:,1]
+  x_min = np.min(x)
+  x_max = np.max(x)
+  y_min = np.min(y)
+  y_max = np.max(y)
+  h, w, _ = im.shape
+  x_margin = (x_max-x_min) * margin
+  y_margin = (y_max-y_min) * margin/2
+  # apply the margins
+  x_min = int(max((x_min - x_margin), 0) * w)
+  x_max = int(min((x_max + x_margin), 1) * w)
+  y_min = int(max((y_min - y_margin), 0) * h)
+  y_max = int(min((y_max + y_margin), 1) * h)
+  return im[y_min:y_max, x_min:x_max, :]
+
+
+def subdivide_images_with_openpose(**kwargs):
+  '''Cut each input image into single-pose subimages and save vectors for each'''
+  print(' * subdividing images with OpenPose model')
+  # determine the subset of input images for which we've already parsed pose vectors
+  parsed_list = []
+  parsed_path = os.path.join(kwargs['out_dir'], 'image-vectors', 'openpose', 'parsed.json')
+  vectors_path = os.path.join(kwargs['out_dir'], 'image-vectors', 'openpose', 'vectors.json')
+  if os.path.exists(parsed_path): parsed_list = json.load(open(parsed_path))
+  # create the directories where output files will be stored
+  vector_dir = os.path.join(kwargs['out_dir'], 'image-vectors', 'openpose')
+  if not os.path.exists(vector_dir): os.makedirs(vector_dir)
+  image_dir = os.path.join(kwargs['out_dir'], 'poses')
+  if not os.path.exists(image_dir): os.makedirs(image_dir)
+  # subdivde images
+  graph_path = os.path.join(dirname(realpath(__file__)), 'models', 'graph', 'cmu', 'graph_opt.pb')
+  estimator = TfPoseEstimator(graph_path, target_size=(432, 368))
+  pose_image_paths = []
+  vectors_list = []
+  for idx, i in enumerate(stream_images(image_paths=kwargs['image_paths'])):
+    print(' * processing {}/{} images'.format(idx+1, len(kwargs['image_paths'])))
+    # split the file into its basename and extension
+    file_extension = i.path.split('.')[-1]
+    file_basename = '.'.join(os.path.basename(i.path).split('.')[:-1])
+    if i.path in parsed_list:
+      for j in glob2.glob(os.path.join(kwargs['out_dir'], 'poses', file_basename + '-*')):
+        pose_image_paths.append(j)
+      continue
+    # parse the new image
+    im = common.read_imgfile(i.path, None, None)
+    im = im[:, :, [2, 1, 0]] # swap color channels to rgb
+    humans = estimator.inference(im, resize_to_default=True, upsample_size=4.0)
+    for hdx, human in enumerate(humans):
+      # vector shape = 18, 3 (n_verts, x, y, confidence)
+      vector = get_openpose_vector(human)
+      mean_score = np.sum(vector[:,2]) / vector.shape[0]
+      if mean_score < kwargs['min_score']: continue
+      # crop out the image that corresponds to this image
+      cropped_im = crop_openpose_figure(im, vector)
+      w, h, _ = cropped_im.shape
+      if w * h < kwargs.get('min_size', 64**2): continue
+      vector_path = os.path.join(vector_dir, file_basename + '-' + str(hdx) + '.' + file_extension)
+      np.save(vector_path, vector.flatten())
+      vectors_list.append(vector.tolist())
+      img_path = os.path.join(image_dir, file_basename + '-' + str(hdx) + '.' + file_extension)
+      save_img(img_path, cropped_im)
+      pose_image_paths.append(img_path)
+    parsed_list.append(i.path)
+  # store the images we processed
+  write_json(parsed_path, parsed_list)
+  write_json(vectors_path, vectors_list)
+  return pose_image_paths
+
+
+def normalize_2d_vector(arr):
+  '''Normalize a 2d vector by subtracting the axis mean from each point'''
+  x, y = arr.T
+  return np.array([
+    x-np.mean(x),
+    y-np.mean(y),
+  ]).T
+
+
+##
+# Date Layout
 ##
 
 
@@ -738,7 +876,7 @@ def round_date(date, unit):
 
 
 ##
-# Metadata layout
+# Metadata Layout
 ##
 
 
@@ -1051,7 +1189,6 @@ class Image:
     else: b[:h, :w, :] = a
     return b
 
-
 ##
 # Entry Point
 ##
@@ -1073,7 +1210,10 @@ def parse():
   parser.add_argument('--min_distance', type=float, default=config['min_distance'], help='the min_distance argument for umap')
   parser.add_argument('--metric', type=str, default=config['metric'], help='the metric argument for umap')
   parser.add_argument('--pointgrid_fill', type=float, default=config['pointgrid_fill'], help='float 0:1 that determines sparsity of jittered distributions (lower means more sparse)')
-  parser.add_argument('--copy_web_only', action='store_true', help='update ./output/web without reprocessing data')
+  parser.add_argument('--copy_web_only', action='store_true', help='update ./output/assets without reprocessing data')
+  parser.add_argument('--extract_poses', action='store_true', help='create pose-based embeddings of input images')
+  parser.add_argument('--min_size', type=float, default=config['min_size'], help='min size of cropped images')
+  parser.add_argument('--min_score', type=float, default=config['min_score'], help='min average vertex score in pose-based embeddings')
   parser.add_argument('--gzip', action='store_true', help='save outputs with gzip compression')
   parser.add_argument('--shuffle', action='store_true', help='shuffle the input images before data processing begins')
   parser.add_argument('--plot_id', type=str, default=config['plot_id'], help='unique id for a plot; useful for resuming processing on a started plot')

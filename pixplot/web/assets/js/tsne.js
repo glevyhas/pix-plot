@@ -518,6 +518,7 @@ Layout.prototype.init = function(options) {
     icons: document.querySelector('#icons'),
     layoutCategorical: document.querySelector('#layout-categorical'),
     layoutDate: document.querySelector('#layout-date'),
+    layoutPose: document.querySelector('#layout-pose'),
   }
   this.showHideIcons();
   this.addEventListeners();
@@ -532,6 +533,9 @@ Layout.prototype.showHideIcons = function() {
   }
   if (data.layouts.date) {
     this.elems.layoutDate.style.display = 'inline-block';
+  }
+  if (data.layouts.pose) {
+    this.elems.layoutPose.style.display = 'inline-block';
   }
 }
 
@@ -632,8 +636,9 @@ Layout.prototype.recenterCamera = function(enableDelay) {
 Layout.prototype.setPointScalar = function() {
   var size = false, // size for points
       l = this.selected; // selected layout
-  if (l == 'tsne' || l == 'umap') size = config.size.points.scatter;
+  if (l == 'tsne' || l == 'umap' || l == 'pose') size = config.size.points.scatter;
   if (l == 'alphabetic' || l == 'grid') size = config.size.points.grid;
+  if (l == 'categorical') size = config.size.points.categorical;
   if (l == 'date') size = config.size.points.date;
   if (size) {
     world.elems.pointSize.value = size;
@@ -916,7 +921,7 @@ World.prototype.setCenter = function() {
 * Draw each of the vertices
 **/
 
-World.prototype.plot = function() {
+World.prototype.plotPoints = function() {
   // add the cells for each draw call
   var drawCallToCells = this.getDrawCallToCells();
   this.group = new THREE.Group();
@@ -1397,8 +1402,8 @@ World.prototype.init = function() {
   var loc = this.getInitialLocation();
   this.camera.position.set(loc.x, loc.y, loc.z);
   this.camera.lookAt(loc.x, loc.y, loc.z);
-  // draw the points and start the render loop
-  this.plot();
+  // draw points and start the render loop
+  this.plotPoints();
   //resize the canvas and scale rendered assets
   this.handleResize();
   // initialize the first frame
@@ -1824,10 +1829,12 @@ function ConvexHullGrahamScan() {
 
 ConvexHullGrahamScan.prototype = {
   constructor: ConvexHullGrahamScan,
+
   Point: function (x, y) {
     this.x = x;
     this.y = y;
   },
+
   _findPolarAngle: function (a, b) {
     var ONE_RADIAN = 57.295779513082;
     var deltaX, deltaY;
@@ -1844,6 +1851,7 @@ ConvexHullGrahamScan.prototype = {
     }
     return angle;
   },
+
   addPoint: function (x, y) {
     // check for a new anchor
     var newAnchor =
@@ -2044,7 +2052,7 @@ function Dates() {}
 Dates.prototype.init = function() {
   // set elems used below
   this.elems = {
-    slider: document.querySelector('#date-slider'),
+    slider: document.querySelector('#date-container'),
   }
   // remove the dom element if there is no date data
   if (!data.json.layouts.date) {
@@ -2295,7 +2303,12 @@ Modal.prototype.showCells = function(cellIndices, cellIdx) {
   // parse data attributes
   var multiImage = self.cellIndices.length > 1;
   var filename = data.json.images[self.cellIndices[self.cellIdx]];
-  var src = config.data.dir + '/originals/' + filename;
+  // conditionalize the path to the image
+  var suffix = filename.split('.')[ filename.split('.').length - 1 ];
+  var split = filename.split('-');
+  var src = data.json.images_cropped
+    ? config.data.dir + '/uncropped/' + split.slice(0, split.length-1).join('-') + '.' + suffix
+    : config.data.dir + '/originals/' + filename;
   // define function to show the modal
   function showModal(json) {
     var json = json || {};
@@ -2612,7 +2625,6 @@ LOD.prototype.clear = function() {
 function Filters() {
   this.filters = [];
   self.values = [];
-  this.selected = null;
 }
 
 Filters.prototype.loadFilters = function() {
@@ -2643,46 +2655,136 @@ Filters.prototype.filterImages = function() {
 
 function Filter(obj) {
   this.values = obj.filter_values || [];
-  this.name = obj.filter_name || '';
   if (this.values.length <= 1) return;
+  this.selected = null;
+  this.name = obj.filter_name || '';
+  this.elem = document.createElement('div');
+  this.elem.addEventListener('mouseenter', this.show.bind(this));
+  this.elem.addEventListener('mouseleave', this.hide.bind(this));
   // create the filter's select
-  var select = document.createElement('select'),
-      option = document.createElement('option');
-  option.textContent = 'All Values';
-  select.appendChild(option);
+  this.elem.className = 'filter';
+  var label = document.createElement('div');
+  label.className = 'settings-label filter-label';
+  label.textContent = 'Category';
+  this.elem.appendChild(label);
   // format all filter options
+  var children = document.createElement('div');
+  children.className = 'filter-options';
   for (var i=0; i<this.values.length; i++) {
-    var option = document.createElement('option');
-    option.textContent = this.values[i].replace(/__/g, ' ');
-    select.appendChild(option);
+    var child = document.createElement('div');
+    child.setAttribute('data-label', this.values[i]);
+    child.addEventListener('click', this.onChange.bind(this));
+    child.className = 'filter-option no-highlight';
+    var input = document.createElement('input');
+    var label = document.createElement('div');
+    input.setAttribute('type', 'checkbox');
+    label.textContent = this.values[i].replace(/__/g, ' ');
+    child.appendChild(input);
+    child.appendChild(label);
+    children.appendChild(child);
   }
-  // add the change listener
-  var self = this;
-  select.onchange = function(e) {
-    self.selected = e.target.value;
-    if (self.selected == 'All Values') {
-      // function that indicates whether to include an image in a selection
-      self.imageSelected = function(image) {
-        return true;
+  this.elem.appendChild(children);
+  // add the select to the DOM
+  document.querySelector('#filters').appendChild(this.elem);
+  // allow canvas clicks to close the filter options
+  document.querySelector('#pixplot-canvas').addEventListener('click', this.hide.bind(this));
+}
+
+Filter.prototype.showHide = function(e) {
+  this.elem.classList.toggle('open');
+}
+
+Filter.prototype.show = function() {
+  this.elem.classList.add('open');
+}
+
+Filter.prototype.hide = function() {
+  this.elem.classList.remove('open');
+}
+
+Filter.prototype.onChange = function(e) {
+  // find the filter
+  var elem = e.target;
+  while (!elem.classList.contains('filter-option')) elem = elem.parentNode;
+  // toggle the classlist
+  elem.classList.toggle('active');
+  // update the ui given the state of this element
+  if (elem.classList.contains('active')) {
+    // uncheck all of the other options
+    var elems = this.elem.querySelectorAll('.filter-option');
+    for (var i=0; i<elems.length; i++) {
+      elems[i].classList.remove('active');
+      elems[i].querySelector('input').checked = false;
+    }
+    // update state
+    elem.classList.add('active');
+    elem.querySelector('input').checked = true;
+    this.selected = elem.getAttribute('data-label');
+    this.elem.classList.add('has-selection');
+  } else {
+    // update state
+    elem.classList.remove('active');
+    elem.querySelector('input').checked = false;
+    this.selected = null;
+    this.elem.classList.remove('has-selection');
+  }
+  if (!this.selected) {
+    // function that indicates whether to include an image in a selection
+    this.imageSelected = function(image) {
+      return true;
+    }
+    filters.filterImages();
+  } else {
+    var filename = this.selected.replace(/\//g, '-').replace(/ /g, '__') + '.json',
+        path = getPath(config.data.dir + '/metadata/options/' + filename);
+    get(path, function(json) {
+      var vals = json.reduce(function(obj, i) {
+        obj[i] = true;
+        return obj;
+      }, {})
+      this.imageSelected = function(image) {
+        return image in vals;
       }
       filters.filterImages();
-    } else {
-      var filename = self.selected.replace(/\//g, '-').replace(/ /g, '__') + '.json',
-          path = getPath(config.data.dir + '/metadata/options/' + filename);
-      get(path, function(json) {
-        var vals = json.reduce(function(obj, i) {
-          obj[i] = true;
-          return obj;
-        }, {})
-        self.imageSelected = function(image) {
-          return image in vals;
-        }
-        filters.filterImages();
-      })
-    }
+    }.bind(this))
   }
-  // add the select to the DOM
-  document.querySelector('#filters').appendChild(select);
+}
+
+/**
+* Settings
+**/
+
+function Settings() {
+  this.elems = {
+    tray: document.querySelector('#header-controls-bottom'),
+    icon: document.querySelector('#settings-icon'),
+    canvas: document.querySelector('#pixplot-canvas'),
+  }
+  this.state = {
+    open: false,
+  }
+  this.elems.icon.addEventListener('click', this.toggleOpen.bind(this));
+  this.elems.canvas.addEventListener('click', this.close.bind(this));
+}
+
+Settings.prototype.open = function() {
+  this.state.open = true;
+  this.elems.tray.classList.add('open');
+  this.elems.icon.classList.add('no-tooltip');
+  this.elems.icon.classList.add('active');
+  tooltip.hide();
+}
+
+Settings.prototype.close = function() {
+  this.state.open = false;
+  this.elems.tray.classList.remove('open');
+  this.elems.icon.classList.remove('no-tooltip');
+  this.elems.icon.classList.remove('active');
+}
+
+Settings.prototype.toggleOpen = function() {
+  if (this.state.open) this.close();
+  else this.open();
 }
 
 /**
@@ -3038,22 +3140,25 @@ function Tooltip() {
       text: 'Arrange images into metadata groups',
     },
     {
-      elem: document.querySelector('#filters'),
-      text: 'Highlight images with selected metadata attribute',
+      elem: document.querySelector('#settings-icon'),
+      text: 'Configure plot settings',
     },
   ];
   this.targets.forEach(function(i) {
     i.elem.addEventListener('mouseenter', function(e) {
+      if (e.target.classList.contains('no-tooltip')) return;
       var offsets = i.elem.getBoundingClientRect();
       this.elem.textContent = i.text;
       this.elem.style.position = 'absolute';
       this.elem.style.left = (offsets.left + i.elem.clientWidth - this.elem.clientWidth + 9) + 'px';
       this.elem.style.top = (offsets.top + i.elem.clientHeight + 16) + 'px';
     }.bind(this));
-    i.elem.addEventListener('mouseout', function(e) {
-      this.elem.style.top = '-10000px';
-    }.bind(this))
-  }.bind(this))
+    i.elem.addEventListener('mouseleave', this.hide.bind(this))
+  }.bind(this));
+}
+
+Tooltip.prototype.hide = function() {
+  this.elem.style.top = '-10000px';
 }
 
 /**
@@ -3485,7 +3590,6 @@ var welcome = new Welcome();
 var webgl = new Webgl();
 var config = new Config();
 var filters = new Filters();
-var search = new Search();
 var picker = new Picker();
 var modal = new Modal();
 var keyboard = new Keyboard();
@@ -3495,5 +3599,6 @@ var world = new World();
 var text = new Text();
 var dates = new Dates();
 var lod = new LOD();
+var settings = new Settings();
 var tooltip = new Tooltip();
 var data = new Data();
