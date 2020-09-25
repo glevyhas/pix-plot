@@ -9,6 +9,14 @@ except:
   # python 3
   from urllib.request import retrieve as download_function
 
+# before installing the base package, download the model
+print(' * downoading cmu model')
+url = 'https://lab-apps.s3-us-west-2.amazonaws.com/pixplot-assets/tf-pose/graph_opt.pb'
+out_dir = join(dirname(realpath(__file__)), 'pixplot', 'models', 'graph', 'cmu')
+if not exists(out_dir): os.makedirs(out_dir)
+out_path = join(out_dir, 'graph_opt.pb')
+if not exists(out_path): download_function(url, out_path)
+
 # populate list of all paths in `./pixplot/web`
 web = []
 dirs = [join('pixplot', 'web'), join('pixplot', 'models')]
@@ -58,10 +66,3 @@ setup(
     ],
   },
 )
-
-# after installing the base package, download the model
-print(' * downoading cmu model')
-url = 'https://lab-apps.s3-us-west-2.amazonaws.com/pixplot-assets/tf-pose/graph_opt.pb'
-out_dir = join(dirname(realpath(__file__)), 'pixplot', 'models', 'graph', 'cmu')
-if not exists(out_dir): os.makedirs(out_dir)
-download_function(url, join(out_dir, 'graph_opt.pb'))

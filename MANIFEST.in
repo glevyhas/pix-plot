@@ -1,5 +1,2 @@
-recursive-include web/*
-recursive-include web/assets/*
-recursive-include models/*
-recursive-include models/graph/*
-recursive-include models/graph/cmu/*
+graft web
+graft models
