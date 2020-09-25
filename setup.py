@@ -63,4 +63,5 @@ setup(
 print(' * downoading cmu model')
 url = 'https://lab-apps.s3-us-west-2.amazonaws.com/pixplot-assets/tf-pose/graph_opt.pb'
 out_dir = join(dirname(realpath(__file__)), 'pixplot', 'models', 'graph', 'cmu')
+if not exists(out_dir): os.makedirs(out_dir)
 download_function(url, join(out_dir, 'graph_opt.pb'))
