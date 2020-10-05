@@ -51,8 +51,8 @@
     uniform float borderWidth;
     uniform float delay;
 
-    attribute vec3 pos0;          // x y z position offsets for an instance
-    attribute vec3 pos1;          // x y z position to which we're transitioning
+    attribute vec3 position;          // x y z position offsets for an instance
+    attribute vec3 targetPosition;          // x y z position to which we're transitioning
     attribute vec3 color;         // unique color for cell; used for raycasting
     attribute float width;        // px width of cell in lod texture
     attribute float height;       // px height of cell in lod texture
@@ -80,15 +80,15 @@
       vSelected = selected;
 
       // determine how far this point has proceeded in its transition
-      float delayX = (pos1.x + 1.0) / 2.0;
-      float delayY = (pos0.y + 1.0) / 2.0;
-      // pos0 has domains -1:1, so the delay sum above is <= 2.0
+      float delayX = (targetPosition.x + 1.0) / 2.0;
+      float delayY = (position.y + 1.0) / 2.0;
+      // position has domains -1:1, so the delay sum above is <= 2.0
       float d = ((delayX + delayY) / 2.0) * delay;
 
       float percent = clamp(transitionPercent - d, 0.0, 1.0);
 
       // set point position as a mixture between the position + target
-      vec3 pos = mix(pos0, pos1, smoothstep(0., 1., percent));
+      vec3 pos = mix(position, targetPosition, smoothstep(0., 1., percent));
       vec4 world = modelViewMatrix * vec4(pos, 1.0);
       gl_Position = projectionMatrix * world;
 

@@ -126,7 +126,7 @@ select:disabled {
 
 #stats {
   position: absolute;
-  top: 60px;
+  top: 55px;
   left: 106px;
   width: 80px;
 }
@@ -1536,6 +1536,8 @@ input[type=text] {
   border-radius: 3px;
   color: #333;
   opacity: 0.97;
+  position: absolute;
+  top: -10000px;
 }
 
 #tooltip::after {

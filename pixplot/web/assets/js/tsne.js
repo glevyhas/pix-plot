@@ -472,18 +472,18 @@ Cell.prototype.setBuffer = function(attr) {
       attrs.offset.array[(idxInDrawCall * 2) + 1] = this.dy;
       return;
 
-    case 'pos0':
+    case 'position':
       // set the cell's translation
-      attrs.pos0.array[(idxInDrawCall * 3)] = this.x;
-      attrs.pos0.array[(idxInDrawCall * 3) + 1] = this.y;
-      attrs.pos0.array[(idxInDrawCall * 3) + 2] = this.z;
+      attrs.position.array[(idxInDrawCall * 3)] = this.x;
+      attrs.position.array[(idxInDrawCall * 3) + 1] = this.y;
+      attrs.position.array[(idxInDrawCall * 3) + 2] = this.z;
       return;
 
-    case 'pos1':
+    case 'targetPosition':
       // set the cell's translation
-      attrs.pos1.array[(idxInDrawCall * 3)] = this.tx;
-      attrs.pos1.array[(idxInDrawCall * 3) + 1] = this.ty;
-      attrs.pos1.array[(idxInDrawCall * 3) + 2] = this.tz;
+      attrs.targetPosition.array[(idxInDrawCall * 3)] = this.tx;
+      attrs.targetPosition.array[(idxInDrawCall * 3) + 1] = this.ty;
+      attrs.targetPosition.array[(idxInDrawCall * 3) + 2] = this.tz;
       return;
   }
 }
@@ -608,11 +608,11 @@ Layout.prototype.set = function(layout, enableDelay) {
         data.cells[i].tx = pos[i][0];
         data.cells[i].ty = pos[i][1];
         data.cells[i].tz = pos[i][2] || data.cells[i].getZ(pos[i][0], pos[i][1]);
-        data.cells[i].setBuffer('pos1');
+        data.cells[i].setBuffer('targetPosition');
       }
-      // update the transition uniforms and pos1 buffers on each mesh
+      // update the transition uniforms and targetPosition buffers on each mesh
       for (var i=0; i<world.group.children.length; i++) {
-        world.group.children[i].geometry.attributes.pos1.needsUpdate = true;
+        world.group.children[i].geometry.attributes.targetPosition.needsUpdate = true;
         TweenLite.to(world.group.children[i].material.uniforms.transitionPercent,
           config.transitions.duration, config.transitions.ease);
       }
@@ -680,11 +680,11 @@ Layout.prototype.onTransitionComplete = function() {
     cell.x = cell.tx;
     cell.y = cell.ty;
     cell.z = cell.tz;
-    cell.setBuffer('pos0');
+    cell.setBuffer('position');
   });
-  // pass each updated pos0 buffer to the gpu
+  // pass each updated position buffer to the gpu
   for (var i=0; i<world.group.children.length; i++) {
-    world.group.children[i].geometry.attributes.pos0.needsUpdate = true;
+    world.group.children[i].geometry.attributes.position.needsUpdate = true;
     world.group.children[i].material.uniforms.transitionPercent = { type: 'f', value: 0 };
   }
   // indicate the world is no longer transitioning
@@ -929,8 +929,8 @@ World.prototype.plotPoints = function() {
     var meshCells = drawCallToCells[drawCallIdx],
         attrs = this.getGroupAttributes(meshCells),
         geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('pos0', attrs.pos0);
-    geometry.setAttribute('pos1', attrs.pos1);
+    geometry.setAttribute('position', attrs.position);
+    geometry.setAttribute('targetPosition', attrs.targetPosition);
     geometry.setAttribute('color', attrs.color);
     geometry.setAttribute('width', attrs.width);
     geometry.setAttribute('height', attrs.height);
@@ -950,6 +950,90 @@ World.prototype.plotPoints = function() {
     this.group.add(mesh);
   }
   this.scene.add(this.group);
+}
+
+/**
+* WIP
+**/
+
+World.prototype.plotLines = function() {
+  var threshold = 0.1,
+      pairs = [
+    [10, 9], // right leg
+    [9, 8],
+    [8, 1],
+    [1, 11], // left leg
+    [11, 12],
+    [12, 13],
+    [1, 2],  // right arm
+    [2, 3],
+    [3, 4],
+    [1, 5],  // left arm
+    [5, 6],
+    [6, 7],
+  ]
+  var positions = [];
+  var path = getPath('output/data/image-vectors/openpose/vectors.json');
+  // json is a 3d array [[[x,y,score]]]
+  get(path, function(json) {
+    json.forEach(function(body, bodyIdx) {
+      // find the mean of x and y positions in skeleton to center the skeleton
+      var sums = {
+        x: 0,
+        y: 0,
+        score: 0,
+      };
+      var domains = {
+        x: [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY],
+        y: [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY],
+        score: [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY],
+      }
+      body.forEach(function(vert) {
+        // increment sums
+        sums.x += vert[0];
+        sums.y += vert[1];
+        sums.score += vert[2];
+        // update the domains
+        if (vert[0] < domains.x[0]) domains.x[0] = vert[0];
+        if (vert[0] > domains.x[1]) domains.x[1] = vert[0];
+        if (vert[1] < domains.y[0]) domains.y[0] = vert[1];
+        if (vert[1] > domains.y[1]) domains.y[1] = vert[1];
+        if (vert[2] < domains.score[0]) domains.score[0] = vert[2];
+        if (vert[2] > domains.score[1]) domains.score[1] = vert[2];
+      })
+      // get midpoint position along each axis
+      var midpoints = {
+        x: (domains.x[0] + domains.x[1])/2,
+        y: 1 - ((domains.y[0] + domains.y[1])/2),
+      }
+      // get a size scalar
+      var scalar = (0.05 / (domains.y[1] - domains.y[0]));
+      var vertices = [];
+      body.forEach(function(vert, vertIdx) {
+        var x = vert[0];
+        var y = 1-vert[1];
+        vertices.push({
+          x: data.cells[bodyIdx].x + (scalar * (x-midpoints.x)),
+          y: data.cells[bodyIdx].y + (scalar * (y-midpoints.y)),
+          score: vert[2],
+        })
+      })
+
+      for (var i=0; i<pairs.length; i++) {
+        var a = vertices[pairs[i][0]];
+        var b = vertices[pairs[i][1]];
+        if (a.score < threshold || b.score < threshold) continue;
+        positions.push(new THREE.Vector3(a.x, a.y, 0));
+        positions.push(new THREE.Vector3(b.x, b.y, 0));
+      }
+    })
+
+    // draw lines
+    var material = new THREE.LineBasicMaterial({color: 0xffffff, linewidth: 10});
+    var geometry = new THREE.BufferGeometry().setFromPoints(positions);
+    var lines = new THREE.LineSegments(geometry, material);
+    world.scene.add(lines);
+  })
 }
 
 /**
@@ -977,12 +1061,12 @@ World.prototype.getGroupAttributes = function(cells) {
     var cell = cells[i];
     var rgb = this.color.setHex(cells[i].idx + 1); // use 1-based ids for colors
     it.texIndex[it.texIndexIterator++] = cell.texIdx; // index of texture among all textures -1 means LOD texture
-    it.pos0[it.pos0Iterator++] = cell.x; // current position.x
-    it.pos0[it.pos0Iterator++] = cell.y; // current position.y
-    it.pos0[it.pos0Iterator++] = cell.z; // current position.z
-    it.pos1[it.pos1Iterator++] = cell.tx; // target position.x
-    it.pos1[it.pos1Iterator++] = cell.ty; // target position.y
-    it.pos1[it.pos1Iterator++] = cell.tz; // target position.z
+    it.position[it.positionIterator++] = cell.x; // current position.x
+    it.position[it.positionIterator++] = cell.y; // current position.y
+    it.position[it.positionIterator++] = cell.z; // current position.z
+    it.targetPosition[it.targetPositionIterator++] = cell.tx; // target position.x
+    it.targetPosition[it.targetPositionIterator++] = cell.ty; // target position.y
+    it.targetPosition[it.targetPositionIterator++] = cell.tz; // target position.z
     it.color[it.colorIterator++] = rgb.r; // could be single float
     it.color[it.colorIterator++] = rgb.g; // unique color for GPU picking
     it.color[it.colorIterator++] = rgb.b; // unique color for GPU picking
@@ -995,8 +1079,8 @@ World.prototype.getGroupAttributes = function(cells) {
   }
 
   // format the arrays into THREE attributes
-  var pos0 = new THREE.BufferAttribute(it.pos0, 3, true, 1),
-      pos1 = new THREE.BufferAttribute(it.pos1, 3, true, 1),
+  var position = new THREE.BufferAttribute(it.position, 3, true, 1),
+      targetPosition = new THREE.BufferAttribute(it.targetPosition, 3, true, 1),
       color = new THREE.BufferAttribute(it.color, 3, true, 1),
       opacity = new THREE.BufferAttribute(it.opacity, 1, true, 1),
       selected = new THREE.Uint8BufferAttribute(it.selected, 1, false, 1),
@@ -1005,15 +1089,15 @@ World.prototype.getGroupAttributes = function(cells) {
       height = new THREE.Uint8BufferAttribute(it.height, 1, false, 1),
       offset = new THREE.Uint16BufferAttribute(it.offset, 2, false, 1);
   texIndex.usage = THREE.DynamicDrawUsage;
-  pos0.usage = THREE.DynamicDrawUsage;
-  pos1.usage = THREE.DynamicDrawUsage;
+  position.usage = THREE.DynamicDrawUsage;
+  targetPosition.usage = THREE.DynamicDrawUsage;
   opacity.usage = THREE.DynamicDrawUsage;
   selected.usage = THREE.DynamicDrawUsage;
   offset.usage = THREE.DynamicDrawUsage;
   var texIndices = this.getTexIndices(cells);
   return {
-    pos0: pos0,
-    pos1: pos1,
+    position: position,
+    targetPosition: targetPosition,
     color: color,
     width: width,
     height: height,
@@ -1036,8 +1120,8 @@ World.prototype.getGroupAttributes = function(cells) {
 
 World.prototype.getCellIterators = function(n) {
   return {
-    pos0: new Float32Array(n * 3),
-    pos1: new Float32Array(n * 3),
+    position: new Float32Array(n * 3),
+    targetPosition: new Float32Array(n * 3),
     color: new Float32Array(n * 3),
     width: new Uint8Array(n),
     height: new Uint8Array(n),
@@ -1045,8 +1129,8 @@ World.prototype.getCellIterators = function(n) {
     opacity: new Float32Array(n),
     selected: new Uint8Array(n),
     texIndex: new Int8Array(n),
-    pos0Iterator: 0,
-    pos1Iterator: 0,
+    positionIterator: 0,
+    targetPositionIterator: 0,
     colorIterator: 0,
     widthIterator: 0,
     heightIterator: 0,
@@ -1404,6 +1488,8 @@ World.prototype.init = function() {
   this.camera.lookAt(loc.x, loc.y, loc.z);
   // draw points and start the render loop
   this.plotPoints();
+  // draw lines
+  this.plotLines();
   //resize the canvas and scale rendered assets
   this.handleResize();
   // initialize the first frame

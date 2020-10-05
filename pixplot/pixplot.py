@@ -87,7 +87,8 @@ config = {
   'gzip': False,
   'extract_poses': False,
   'min_size': 64**2,
-  'min_score': 0.5,
+  'min_score': 0.1,
+  'min_vertices': 12,
   'plot_id': str(uuid.uuid1()),
   'seed': 24,
 }
@@ -703,10 +704,10 @@ def subdivide_images_with_openpose(**kwargs):
   '''Cut each input image into single-pose subimages and save vectors for each'''
   print(' * subdividing images with OpenPose model')
   # determine the subset of input images for which we've already parsed pose vectors
-  parsed_list = []
   parsed_path = os.path.join(kwargs['out_dir'], 'image-vectors', 'openpose', 'parsed.json')
   vectors_path = os.path.join(kwargs['out_dir'], 'image-vectors', 'openpose', 'vectors.json')
-  if os.path.exists(parsed_path): parsed_list = json.load(open(parsed_path))
+  # load d[original_image_path] = [{daughter_image_path: [vert confidence array]}]
+  parsed_dict = json.load(open(parsed_path)) if os.path.exists(parsed_path) else defaultdict(list)
   # create the directories where output files will be stored
   vector_dir = os.path.join(kwargs['out_dir'], 'image-vectors', 'openpose')
   if not os.path.exists(vector_dir): os.makedirs(vector_dir)
@@ -722,9 +723,13 @@ def subdivide_images_with_openpose(**kwargs):
     # split the file into its basename and extension
     file_extension = i.path.split('.')[-1]
     file_basename = '.'.join(os.path.basename(i.path).split('.')[:-1])
-    if i.path in parsed_list:
-      for j in glob2.glob(os.path.join(kwargs['out_dir'], 'poses', file_basename + '-*')):
-        pose_image_paths.append(j)
+    # load all relevant daughter image in the parsed dict
+    if parsed_dict.get(i.path, False):
+      for pose_path, pose_vector in parsed_dict[i.path].items():
+        pose_vector = np.array(pose_vector).reshape(18, 3)
+        if pose_vector_is_valid(pose_vector, **kwargs):
+          pose_image_paths.append(pose_path)
+          vectors_list.append(pose_vector)
       continue
     # parse the new image
     im = common.read_imgfile(i.path, None, None)
@@ -733,8 +738,8 @@ def subdivide_images_with_openpose(**kwargs):
     for hdx, human in enumerate(humans):
       # vector shape = 18, 3 (n_verts, x, y, confidence)
       vector = get_openpose_vector(human)
-      mean_score = np.sum(vector[:,2]) / vector.shape[0]
-      if mean_score < kwargs['min_score']: continue
+      # filter if the point with lowest confidence is too low
+      if not pose_vector_is_valid(vector, **kwargs): continue
       # crop out the image that corresponds to this image
       cropped_im = crop_openpose_figure(im, vector)
       w, h, _ = cropped_im.shape
@@ -745,11 +750,20 @@ def subdivide_images_with_openpose(**kwargs):
       img_path = os.path.join(image_dir, file_basename + '-' + str(hdx) + '.' + file_extension)
       save_img(img_path, cropped_im)
       pose_image_paths.append(img_path)
-    parsed_list.append(i.path)
+      parsed_dict[i.path].append({img_path: vector.tolist()})
   # store the images we processed
-  write_json(parsed_path, parsed_list)
+  write_json(parsed_path, parsed_dict)
   write_json(vectors_path, vectors_list)
   return pose_image_paths
+
+
+def pose_vector_is_valid(vector, **kwargs):
+  '''Return a bool indicating whether to retain openpose vector `vector`'''
+  assert vector.shape == (18, 3)
+  confidence_vals = [i for i in vector[:,2] if i > 0]
+  if len(confidence_vals) < kwargs['min_vertices']: return False
+  if min(confidence_vals) < kwargs['min_score']: return False
+  return True
 
 
 def normalize_2d_vector(arr):
@@ -1213,7 +1227,8 @@ def parse():
   parser.add_argument('--copy_web_only', action='store_true', help='update ./output/assets without reprocessing data')
   parser.add_argument('--extract_poses', action='store_true', help='create pose-based embeddings of input images')
   parser.add_argument('--min_size', type=float, default=config['min_size'], help='min size of cropped images')
-  parser.add_argument('--min_score', type=float, default=config['min_score'], help='min average vertex score in pose-based embeddings')
+  parser.add_argument('--min_score', type=float, default=config['min_score'], help='min vertex score in a pose-based embedding')
+  parser.add_argument('--min_vertices', type=float, default=config['min_vertices'], help='min number of discovered vertices in a pose-based embedding')
   parser.add_argument('--gzip', action='store_true', help='save outputs with gzip compression')
   parser.add_argument('--shuffle', action='store_true', help='shuffle the input images before data processing begins')
   parser.add_argument('--plot_id', type=str, default=config['plot_id'], help='unique id for a plot; useful for resuming processing on a started plot')
