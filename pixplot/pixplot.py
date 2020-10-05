@@ -1228,7 +1228,7 @@ def parse():
   parser.add_argument('--extract_poses', action='store_true', help='create pose-based embeddings of input images')
   parser.add_argument('--min_size', type=float, default=config['min_size'], help='min size of cropped images')
   parser.add_argument('--min_score', type=float, default=config['min_score'], help='min vertex score in a pose-based embedding')
-  parser.add_argument('--min_vertices', type=float, default=config['min_vertices'], help='min number of discovered vertices in a pose-based embedding')
+  parser.add_argument('--min_vertices', type=int, default=config['min_vertices'], help='min number of discovered vertices in a pose-based embedding 0:18')
   parser.add_argument('--gzip', action='store_true', help='save outputs with gzip compression')
   parser.add_argument('--shuffle', action='store_true', help='shuffle the input images before data processing begins')
   parser.add_argument('--plot_id', type=str, default=config['plot_id'], help='unique id for a plot; useful for resuming processing on a started plot')

@@ -291,6 +291,32 @@
     }
     </script>
 
+    <script type='x-shader/x-vertex' id='line-vertex-shader'>
+    precision highp float;
+
+    uniform mat4 modelViewMatrix;
+    uniform mat4 projectionMatrix;
+    uniform float transitionPercent;
+    uniform vec3 cameraPosition;
+
+    attribute vec3 position;
+    attribute vec3 targetPosition;
+
+    void main() {
+      vec3 pos = mix(position, targetPosition, clamp(transitionPercent, 0.0, 1.0));
+      vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+      gl_Position = projectionMatrix * mvPos;
+    }
+    </script>
+
+    <script type='x-shader/x-fragment' id='line-fragment-shader'>
+    precision highp float;
+
+    void main() {
+      gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+    }
+    </script>
+
     <!-- Worker -->
     <script type='script/worker' id='worker'>
     self.onmessage = function(event) {
@@ -558,7 +584,7 @@
     <script type='text/javascript' src='assets/vendor/dist/three.min.js'></script>
     <script type='text/javascript' src='assets/vendor/dist/lodash.min.js'></script>
     <script type='text/javascript' src='assets/js/object-assign-polyfill.js'></script>
-    <script type='text/javascript' src='assets/vendor/dist/tweenlite.min.js'></script>
+    <script type='text/javascript' src='assets/vendor/dist/gsap.min.js'></script>
     <script type='text/javascript' src='assets/vendor/dist/trackball-controls.min.js'></script>
     <script type='text/javascript' src='assets/vendor/dist/stats.min.js'></script>
     <script type='text/javascript' src='assets/vendor/dist/gunzip.min.js'></script>
