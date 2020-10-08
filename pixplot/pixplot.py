@@ -174,6 +174,9 @@ def filter_images(**kwargs):
       print(' * skipping {} because its dimensions are oblong'.format(i.path))
       continue
     filtered_image_paths.append(i.path)
+  # if there are no remaining images, throw an error
+  if len(filtered_image_paths) == 0:
+    raise Exception('No images were found! Please check your input image glob.')
   # handle the case user provided no metadata
   if not kwargs.get('metadata', False):
     return [filtered_image_paths, []]
@@ -707,7 +710,8 @@ def subdivide_images_with_openpose(**kwargs):
   parsed_path = os.path.join(kwargs['out_dir'], 'image-vectors', 'openpose', 'parsed.json')
   vectors_path = os.path.join(kwargs['out_dir'], 'image-vectors', 'openpose', 'vectors.json')
   # load d[original_image_path] = [{daughter_image_path: [vert confidence array]}]
-  parsed_dict = json.load(open(parsed_path)) if os.path.exists(parsed_path) else defaultdict(list)
+  parsed_dict = json.load(open(parsed_path)) if os.path.exists(parsed_path) else None
+  if not parsed_dict: parsed_dict = defaultdict(list)
   # create the directories where output files will be stored
   vector_dir = os.path.join(kwargs['out_dir'], 'image-vectors', 'openpose')
   if not os.path.exists(vector_dir): os.makedirs(vector_dir)
