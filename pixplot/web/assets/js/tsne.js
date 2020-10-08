@@ -614,20 +614,19 @@ Layout.prototype.set = function(layout, enableDelay) {
       var lineGeometry = world.getLineGeometry('targetPosition');
       world.lines.geometry.attributes.targetPosition.array = lineGeometry.attributes.position.array.slice(0);
       world.lines.geometry.attributes.targetPosition.needsUpdate = true;
-      TweenLite.to(
-        world.lines.material.uniforms.transitionPercent,
-        config.transitions.duration,
-        config.transitions.ease,
-      )
+      // begin accumulating a list of elements to animate
+      var animatable = [world.lines.material.uniforms.transitionPercent];
       // update the transition uniforms and targetPosition buffers on each mesh
       for (var i=0; i<world.group.children.length; i++) {
         world.group.children[i].geometry.attributes.targetPosition.needsUpdate = true;
-        TweenLite.to(
-          world.group.children[i].material.uniforms.transitionPercent,
-          config.transitions.duration,
-          config.transitions.ease,
-        );
+        animatable.push(world.group.children[i].material.uniforms.transitionPercent);
       }
+      // begin the animation
+      TweenMax.to(
+        animatable,
+        config.transitions.duration,
+        config.transitions.ease,
+      );
       // prepare to update all the cell buffers once transition completes
       setTimeout(this.onTransitionComplete.bind(this), config.transitions.duration * 1000);
     }.bind(this))
@@ -999,16 +998,16 @@ World.prototype.getLineGeometry = function(vertexType) {
   var pairs = [
     [10, 9], // right leg
     [9, 8],
-    [8, 1],
-    [1, 11], // left leg
-    [11, 12],
+    [11, 12], // left leg
     [12, 13],
-    [1, 2],  // right arm
-    [2, 3],
+    [2, 3], // right arm
     [3, 4],
-    [1, 5],  // left arm
-    [5, 6],
+    [5, 6], // left arm
     [6, 7],
+    [11, 5], // torso
+    [5, 2],
+    [2, 8],
+    [8, 11],
   ];
   this.lineJson.forEach(function(body, bodyIdx) {
     // find the mean of x and y positions in skeleton to center the skeleton
