@@ -611,11 +611,15 @@ Layout.prototype.set = function(layout, enableDelay) {
         data.cells[i].setBuffer('targetPosition');
       }
       // set the target locations of lines
-      var lineGeometry = world.getLineGeometry('targetPosition');
-      world.lines.geometry.attributes.targetPosition.array = lineGeometry.attributes.position.array.slice(0);
-      world.lines.geometry.attributes.targetPosition.needsUpdate = true;
-      // begin accumulating a list of elements to animate
-      var animatable = [world.lines.material.uniforms.transitionPercent];
+      if (lines.mesh) {
+        var lineGeometry = lines.getGeometry('targetPosition');
+        lines.mesh.geometry.attributes.targetPosition.array = lineGeometry.attributes.position.array.slice(0);
+        lines.mesh.geometry.attributes.targetPosition.needsUpdate = true;
+        // begin accumulating a list of elements to animate
+        var animatable = [lines.mesh.material.uniforms.transitionPercent];
+      } else {
+        var animatable = [];
+      }
       // update the transition uniforms and targetPosition buffers on each mesh
       for (var i=0; i<world.group.children.length; i++) {
         world.group.children[i].geometry.attributes.targetPosition.needsUpdate = true;
@@ -684,9 +688,11 @@ Layout.prototype.onTransitionComplete = function() {
     cell.setBuffer('position');
   });
   // update the buffers for the lines
-  world.lines.geometry.attributes.position.array = world.lines.geometry.attributes.targetPosition.array.slice(0);
-  world.lines.geometry.attributes.position.needsUpdate = true;
-  world.lines.material.uniforms.transitionPercent = {type: 'f', value: 0};
+  if (lines.mesh) {
+    lines.mesh.geometry.attributes.position.array = lines.mesh.geometry.attributes.targetPosition.array.slice(0);
+    lines.mesh.geometry.attributes.position.needsUpdate = true;
+    lines.mesh.material.uniforms.transitionPercent = {type: 'f', value: 0};
+  }
   // pass each updated position buffer to the gpu
   for (var i=0; i<world.group.children.length; i++) {
     world.group.children[i].geometry.attributes.position.needsUpdate = true;
@@ -972,101 +978,6 @@ World.prototype.plotPoints = function() {
 }
 
 /**
-* Draw lines that represent the openpose figures extracted
-**/
-
-World.prototype.plotLines = function() {
-  // json is a 3d array [[[x,y,score]]]
-  get(getPath('output/data/image-vectors/openpose/vectors.json'), function(json) {
-    this.lineJson = json;
-    // draw lines
-    var material = new THREE.RawShaderMaterial({
-      vertexShader: document.querySelector('#line-vertex-shader').textContent,
-      fragmentShader: document.querySelector('#line-fragment-shader').textContent,
-      uniforms: { transitionPercent: { type: 'f', value: 0.0 }, },
-    })
-    var geometry = this.getLineGeometry('position');
-    geometry.setAttribute('targetPosition', geometry.attributes.position.clone(), 3);
-    this.lines = new THREE.LineSegments(geometry, material);
-    world.scene.add(this.lines);
-  }.bind(this))
-}
-
-World.prototype.getLineGeometry = function(vertexType) {
-  var threshold = 0.1;
-  var positions = [];
-  var pairs = [
-    [10, 9], // right leg
-    [9, 8],
-    [11, 12], // left leg
-    [12, 13],
-    [2, 3], // right arm
-    [3, 4],
-    [5, 6], // left arm
-    [6, 7],
-    [11, 5], // torso
-    [5, 2],
-    [2, 8],
-    [8, 11],
-  ];
-  this.lineJson.forEach(function(body, bodyIdx) {
-    // find the mean of x and y positions in skeleton to center the skeleton
-    var sums = {
-      x: 0,
-      y: 0,
-      score: 0,
-    };
-    var domains = {
-      x: [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY],
-      y: [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY],
-      score: [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY],
-    }
-    // set the domain and sum of x, y, and score for this body
-    body.forEach(function(vert) {
-      sums.x += vert[0];
-      sums.y += vert[1];
-      sums.score += vert[2];
-      if (vert[0] < domains.x[0]) domains.x[0] = vert[0];
-      if (vert[0] > domains.x[1]) domains.x[1] = vert[0];
-      if (vert[1] < domains.y[0]) domains.y[0] = vert[1];
-      if (vert[1] > domains.y[1]) domains.y[1] = vert[1];
-      if (vert[2] < domains.score[0]) domains.score[0] = vert[2];
-      if (vert[2] > domains.score[1]) domains.score[1] = vert[2];
-    })
-    // get midpoint position along each axis
-    var midpoints = {
-      x: (domains.x[0] + domains.x[1])/2,
-      y: 1 - ((domains.y[0] + domains.y[1])/2),
-    }
-    // set the size scalar
-    var scalar = (0.05 / (domains.y[1] - domains.y[0]));
-    // identify the body vertices
-    var vertices = [];
-    body.forEach(function(vert, vertIdx) {
-      var x = vert[0];
-      var y = 1-vert[1];
-      var keys = vertexType == 'position'
-        ? {x: 'x', y: 'y'}
-        : {x: 'tx', y: 'ty'}
-      vertices.push({
-        x: data.cells[bodyIdx][keys.x] + (scalar * (x-midpoints.x)),
-        y: data.cells[bodyIdx][keys.y] + (scalar * (y-midpoints.y)),
-        score: vert[2],
-      })
-    })
-    // add the lines between the vertices
-    for (var i=0; i<pairs.length; i++) {
-      var a = vertices[pairs[i][0]];
-      var b = vertices[pairs[i][1]];
-      if (a.score < threshold || b.score < threshold) continue;
-      positions.push(new THREE.Vector3(a.x, a.y, 0));
-      positions.push(new THREE.Vector3(b.x, b.y, 0));
-    }
-  })
-  return new THREE.BufferGeometry().setFromPoints(positions);
-}
-
-/**
 * Find the index of each cell's draw call
 **/
 
@@ -1290,9 +1201,9 @@ World.prototype.getShaderMaterial = function(obj) {
         type: 'vec3',
         value: new Float32Array([234/255, 183/255, 85/255]),
       },
-      delay: {
+      display: {
         type: 'f',
-        value: config.transitions.delay,
+        value: 1.0,
       }
     },
     vertexShader: vertex,
@@ -1519,7 +1430,7 @@ World.prototype.init = function() {
   // draw points and start the render loop
   this.plotPoints();
   // draw lines
-  this.plotLines();
+  lines.plot();
   //resize the canvas and scale rendered assets
   this.handleResize();
   // initialize the first frame
@@ -2399,6 +2310,134 @@ Text.prototype.formatText = function(json) {
     })
   })
   this.setWords(l);
+}
+
+/**
+* Draw lines to represent poses
+**/
+
+function Lines() {
+  this.elems = {
+    container: document.querySelector('#pose-display-container'),
+    select: document.querySelector('#pose-display-select'),
+  }
+}
+
+Lines.prototype.plot = function() {
+  if (!data.layouts.pose) return;
+  // json is a 3d array [[[x, y, score]]]
+  get(getPath('data/image-vectors/openpose/vectors.json'), function(json) {
+    this.json = json;
+    // draw lines
+    var material = new THREE.RawShaderMaterial({
+      vertexShader: document.querySelector('#line-vertex-shader').textContent,
+      fragmentShader: document.querySelector('#line-fragment-shader').textContent,
+      uniforms: {
+        transitionPercent: { type: 'f', value: 0.0 },
+        display: { type: 'f', value: 0.0 },
+      },
+    })
+    var geometry = this.getGeometry('position');
+    geometry.setAttribute('targetPosition', geometry.attributes.position.clone(), 3);
+    this.mesh = new THREE.LineSegments(geometry, material);
+    world.scene.add(this.mesh);
+    // make the poses displayable
+    this.elems.container.style.display = 'inline-block';
+    this.elems.select.addEventListener('change', this.toggleLineDisplay.bind(this));
+  }.bind(this))
+}
+
+Lines.prototype.getGeometry = function(vertexType) {
+  var threshold = 0.1; // confidence threshold needed to render vertex
+  var positions = [];
+  var pairs = [
+    [10, 9], // right leg
+    [9, 8],
+    [11, 12], // left leg
+    [12, 13],
+    [2, 3], // right arm
+    [3, 4],
+    [5, 6], // left arm
+    [6, 7],
+    [11, 5], // torso
+    [5, 2],
+    [2, 8],
+    [8, 11],
+  ];
+  this.json.forEach(function(body, bodyIdx) {
+    // find the mean of x and y positions in skeleton to center the skeleton
+    var sums = {
+      x: 0,
+      y: 0,
+      score: 0,
+    };
+    var domains = {
+      x: [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY],
+      y: [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY],
+      score: [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY],
+    }
+    // set the domain and sum of x, y, and score for this body
+    body.forEach(function(vert) {
+      sums.x += vert[0];
+      sums.y += vert[1];
+      sums.score += vert[2];
+      if (vert[0] < domains.x[0]) domains.x[0] = vert[0];
+      if (vert[0] > domains.x[1]) domains.x[1] = vert[0];
+      if (vert[1] < domains.y[0]) domains.y[0] = vert[1];
+      if (vert[1] > domains.y[1]) domains.y[1] = vert[1];
+      if (vert[2] < domains.score[0]) domains.score[0] = vert[2];
+      if (vert[2] > domains.score[1]) domains.score[1] = vert[2];
+    })
+    // get midpoint position along each axis
+    var midpoints = {
+      x: (domains.x[0] + domains.x[1])/2,
+      y: 1 - ((domains.y[0] + domains.y[1])/2),
+    }
+    // set the size scalar
+    var scalar = (0.05 / (domains.y[1] - domains.y[0]));
+    // identify the body vertices
+    var vertices = [];
+    body.forEach(function(vert, vertIdx) {
+      var x = vert[0];
+      var y = 1-vert[1];
+      var keys = vertexType == 'position'
+        ? {x: 'x', y: 'y'}
+        : {x: 'tx', y: 'ty'}
+      vertices.push({
+        x: data.cells[bodyIdx][keys.x] + (scalar * (x-midpoints.x)),
+        y: data.cells[bodyIdx][keys.y] + (scalar * (y-midpoints.y)),
+        score: vert[2],
+      })
+    })
+    // add the lines between the vertices
+    for (var i=0; i<pairs.length; i++) {
+      var a = vertices[pairs[i][0]];
+      var b = vertices[pairs[i][1]];
+      if (a.score < threshold || b.score < threshold) continue;
+      positions.push(new THREE.Vector3(a.x, a.y, 0));
+      positions.push(new THREE.Vector3(b.x, b.y, 0));
+    }
+  })
+  return new THREE.BufferGeometry().setFromPoints(positions);
+}
+
+Lines.prototype.toggleLineDisplay = function() {
+  this.setDisplay(this.elems.select.value);
+}
+
+// selected must be 'lines' or 'images'
+Lines.prototype.setDisplay = function(selected) {
+  if (selected == 'poses') {
+    for (var i=0; i<world.group.children.length; i++) {
+      world.group.children[i].material.uniforms.display.value = 0.0;
+    }
+    lines.mesh.material.uniforms.display.value = 1.0;
+  } else {
+    for (var i=0; i<world.group.children.length; i++) {
+      world.group.children[i].material.uniforms.display.value = 1.0;
+    }
+    lines.mesh.material.uniforms.display.value = 0.0;
+  }
 }
 
 /**
@@ -3715,6 +3754,7 @@ var layout = new Layout();
 var world = new World();
 var text = new Text();
 var dates = new Dates();
+var lines = new Lines();
 var lod = new LOD();
 var settings = new Settings();
 var tooltip = new Tooltip();

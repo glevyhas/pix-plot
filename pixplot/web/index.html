@@ -49,7 +49,6 @@
     uniform float transitionPercent;
     uniform float scaleTransitionPercent;
     uniform float borderWidth;
-    uniform float delay;
 
     attribute vec3 position;       // x y z position offsets for an instance
     attribute vec3 targetPosition; // x y z position to which we're transitioning
@@ -123,6 +122,7 @@
     uniform float lodPxHeight;
     uniform float borderWidth;
     uniform vec3 borderColor;
+    uniform float display;
 
     varying vec3 vColor;         // cell's color (for gpu picking)
     varying vec2 vOffset;        // cell's offset in px from left, top of tex
@@ -138,70 +138,74 @@
     #endif
 
     void main() {
-      // is this cell a LOD cell?
-      bool isLod = vTextureIndex < -0.5;
+      if (display < 0.5) {
+        discard;
+      } else {
+        // is this cell a LOD cell?
+        bool isLod = vTextureIndex < -0.5;
 
-      // get the width of the border on each side of the cell
-      float borderW = borderWidth / 2.0;
+        // get the width of the border on each side of the cell
+        float borderW = borderWidth / 2.0;
 
-      // find the width and height of this cell in its texture (in px)
-      float w = isLod ? vWidth : vWidth/vHeight*cellPxHeight;
-      float h = isLod ? vHeight : cellPxHeight;
+        // find the width and height of this cell in its texture (in px)
+        float w = isLod ? vWidth : vWidth/vHeight*cellPxHeight;
+        float h = isLod ? vHeight : cellPxHeight;
 
-      // find the length of the cell in its longest dimension (in px)
-      float big = max(w, h);
+        // find the length of the cell in its longest dimension (in px)
+        float big = max(w, h);
 
-      // set boolean indicating whether to center cells
-      bool center = true;
+        // set boolean indicating whether to center cells
+        bool center = true;
 
-      // find min, max vals of 0:1 scaled x axis to be textured
-      float x0 = center ? (big-w)/2.0/big : 0.0;
-      float x1 = center ? (w/big)+x0 : w / big;
+        // find min, max vals of 0:1 scaled x axis to be textured
+        float x0 = center ? (big-w)/2.0/big : 0.0;
+        float x1 = center ? (w/big)+x0 : w / big;
 
-      // find min, max vals of 0:1 scaled y axis to be textured
-      float y0 = center ? (big-h)/2.0/big : 0.0;
-      float y1 = center ? (h/big)+y0 : h / big;
+        // find min, max vals of 0:1 scaled y axis to be textured
+        float y0 = center ? (big-h)/2.0/big : 0.0;
+        float y1 = center ? (h/big)+y0 : h / big;
 
-      // clip the cell to center the texture on the x axis
-      if (h > w && (gl_PointCoord.x < x0 || gl_PointCoord.x > x1)) discard;
+        // clip the cell to center the texture on the x axis
+        if (h > w && (gl_PointCoord.x < x0 || gl_PointCoord.x > x1)) discard;
 
-      // if this cell's image is landscape clip bottom margin
-      else if (w > h && gl_PointCoord.y < y0 || gl_PointCoord.y > y1) discard;
+        // if this cell's image is landscape clip bottom margin
+        else if (w > h && gl_PointCoord.y < y0 || gl_PointCoord.y > y1) discard;
 
-      // if this shader is using vColor attributes skip texture processing
-      if (int(useColor) == 1) gl_FragColor = vec4(vColor, 1.0);
+        // if this shader is using vColor attributes skip texture processing
+        if (int(useColor) == 1) gl_FragColor = vec4(vColor, 1.0);
 
-      // this cell should be textured
-      else {
+        // this cell should be textured
+        else {
 
-        // check if the current pointcoord position is within the border
-        if (vSelected > 0.5 &&
-           (gl_PointCoord.x < x0 + borderW ||
-            gl_PointCoord.x > x1 - borderW ||
-            gl_PointCoord.y < y0 + borderW ||
-            gl_PointCoord.y > y1 - borderW)) {
-          gl_FragColor = vec4(borderColor, 1.0);
+          // check if the current pointcoord position is within the border
+          if (vSelected > 0.5 &&
+             (gl_PointCoord.x < x0 + borderW ||
+              gl_PointCoord.x > x1 - borderW ||
+              gl_PointCoord.y < y0 + borderW ||
+              gl_PointCoord.y > y1 - borderW)) {
+            gl_FragColor = vec4(borderColor, 1.0);
 
-        } else {
+          } else {
 
-          // get the x and y positions to sample for this cell's texture
-          float x = center ? gl_PointCoord.x - x0 : gl_PointCoord.x;
-          float y = center ? gl_PointCoord.y - y0 : gl_PointCoord.y;
+            // get the x and y positions to sample for this cell's texture
+            float x = center ? gl_PointCoord.x - x0 : gl_PointCoord.x;
+            float y = center ? gl_PointCoord.y - y0 : gl_PointCoord.y;
 
-          // scale the x and y positions to the size of the texture
-          vec2 uv = vOffset + vec2(x, y) * big;
+            // scale the x and y positions to the size of the texture
+            vec2 uv = vOffset + vec2(x, y) * big;
 
-          // set variables consumed by fragment tree below
-          vec2 scaledUv = isLod ? uv/lodAtlasPxPerSide : uv/cellAtlasPxPerSide;
-          int textureIndex = isLod ? -1 : int(vTextureIndex);
+            // set variables consumed by fragment tree below
+            vec2 scaledUv = isLod ? uv/lodAtlasPxPerSide : uv/cellAtlasPxPerSide;
+            int textureIndex = isLod ? -1 : int(vTextureIndex);
 
-          // target to be replaced by texture tree
-          TEXTURE_LOOKUP_TREE
+            // target to be replaced by texture tree
+            TEXTURE_LOOKUP_TREE
 
-          gl_FragColor = mix(gl_FragColor, vec4(0.0), 1.0-vOpacity);
-          gl_FragColor.a = 1.0;
+            gl_FragColor = mix(gl_FragColor, vec4(0.0), 1.0-vOpacity);
+            gl_FragColor.a = 1.0;
 
-          if (vSelected > 0.5) gl_FragColor = mix(gl_FragColor, vec4(borderColor, 1.0), 0.15);
+            if (vSelected > 0.5) gl_FragColor = mix(gl_FragColor, vec4(borderColor, 1.0), 0.15);
+          }
         }
       }
     }
@@ -305,9 +309,14 @@
 
     <script type='x-shader/x-fragment' id='line-fragment-shader'>
     precision highp float;
+    uniform float display;
 
     void main() {
-      gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+      if (display < 0.5) {
+        discard;
+      } else {
+        gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+      }
     }
     </script>
 
@@ -397,6 +406,13 @@
           </div>
         </div>
         <div id='header-controls-bottom'>
+          <div id='pose-display-container'>
+            <div class='settings-label'>Display</div>
+            <select id='pose-display-select'>
+              <option default value='images'>Images</option>
+              <option value='poses'>Poses</option>
+            </select>
+          </div>
           <div id='jitter-container'>
             <div class='settings-label'>Jitter</div>
             <input type='checkbox' id='jitter-input'>
