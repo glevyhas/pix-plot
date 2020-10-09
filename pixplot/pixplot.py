@@ -42,7 +42,6 @@ import uuid
 import math
 import gzip
 import json
-import lap
 import sys
 import csv
 import os
@@ -592,6 +591,10 @@ def get_rasterfairy_layout(**kwargs):
 
 def get_lap_layout(**kwargs):
   print(' * creating linear assignment layout')
+  try:
+    import lap
+  except:
+    raise Exception('LAP must be installed to use get_lap_layout')
   out_path = get_path('layouts', 'linear-assignment', **kwargs)
   if os.path.exists(out_path) and kwargs['use_cache']: return out_path
   # load the umap layout
