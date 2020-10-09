@@ -86,7 +86,7 @@ config = {
   'square_cells': False,
   'gzip': False,
   'extract_poses': False,
-  'min_size': 64**2,
+  'min_size': 100,
   'min_score': 0.3,
   'min_vertices': 14,
   'plot_id': str(uuid.uuid1()),
@@ -635,7 +635,7 @@ def get_pointgrid_layout(path, label, **kwargs):
   out_path = get_path('layouts', label + '-jittered', **kwargs)
   if os.path.exists(out_path) and kwargs['use_cache']: return out_path
   arr = np.array(read_json(path, **kwargs))
-  z = align_points_to_grid(arr, fill=0.025)
+  z = align_points_to_grid(arr, fill=0.045)
   return write_layout(out_path, z, **kwargs)
 
 
@@ -747,7 +747,7 @@ def subdivide_images_with_openpose(**kwargs):
       # crop out the image that corresponds to this image
       cropped_im = crop_openpose_figure(im, vector)
       w, h, _ = cropped_im.shape
-      if w * h < kwargs.get('min_size', 64**2): continue
+      if (w < kwargs['min_size']) or (h < kwargs['min_size']): continue
       vector_path = os.path.join(vector_dir, file_basename + '-' + str(hdx) + '.' + file_extension)
       np.save(vector_path, vector.flatten())
       vectors_list.append(vector.tolist())
