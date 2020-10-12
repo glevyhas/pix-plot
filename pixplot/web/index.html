@@ -45,7 +45,7 @@
     uniform mat4 projectionMatrix;
     uniform vec3 cameraPosition;
     uniform float scale;
-    uniform float scaleTarget;
+    uniform float targetScale;
     uniform float transitionPercent;
     uniform float scaleTransitionPercent;
     uniform float borderWidth;
@@ -86,7 +86,7 @@
       gl_Position = projectionMatrix * world;
 
       // use the unscaled point position and camera position to set point size
-      float s = mix(scale, scaleTarget, percent);
+      float s = mix(scale, targetScale, percent);
       float pointSize = s / -world.z;
 
       if (selected > 0.5) {
@@ -296,13 +296,25 @@
     uniform mat4 projectionMatrix;
     uniform float transitionPercent;
     uniform vec3 cameraPosition;
+    uniform float scale;
+    uniform float targetScale;
 
     attribute vec3 position;
     attribute vec3 targetPosition;
+    attribute vec2 midpoint;
+    attribute vec2 targetMidpoint;
 
     void main() {
-      vec3 pos = mix(position, targetPosition, clamp(transitionPercent, 0.0, 1.0));
-      vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+      float percent = clamp(transitionPercent, 0.0, 1.0);
+      vec3 positionC = mix(position, targetPosition, percent);
+      vec2 midpointC = mix(midpoint, targetMidpoint, percent);
+      float scaleC = mix(scale, targetScale, percent);
+
+      // scale the pos
+      positionC.x -= ((midpointC.x - positionC.x) * scaleC * 0.2);
+      positionC.y -= ((midpointC.y - positionC.y) * scaleC * 0.2);
+
+      vec4 mvPos = modelViewMatrix * vec4(positionC, 1.0);
       gl_Position = projectionMatrix * mvPos;
     }
     </script>
@@ -396,16 +408,16 @@
           </div>
           <div id='filters'></div>
           <div id='icons'>
-            <img id='layout-alphabetic' src='assets/images/icons/az-layout.svg' />
-            <img id='layout-umap' src='assets/images/icons/scatter-layout.svg' />
-            <img id='layout-grid' src='assets/images/icons/grid-layout.svg' />
-            <img id='layout-date' src='assets/images/icons/date-layout.svg' />
-            <img id='layout-categorical' src='assets/images/icons/categorical-layout.svg' />
-            <img id='layout-pose' src='assets/images/icons/pose-layout.svg' />
+            <img class='layout-icon' id='layout-alphabetic' src='assets/images/icons/az-layout.svg' />
+            <img class='layout-icon' id='layout-umap' src='assets/images/icons/scatter-layout.svg' />
+            <img class='layout-icon' id='layout-grid' src='assets/images/icons/grid-layout.svg' />
+            <img class='layout-icon' id='layout-date' src='assets/images/icons/date-layout.svg' />
+            <img class='layout-icon' id='layout-categorical' src='assets/images/icons/categorical-layout.svg' />
+            <img class='layout-icon' id='layout-pose' src='assets/images/icons/pose-layout.svg' />
             <img id='settings-icon' src='assets/images/icons/gear-icon.svg' />
           </div>
         </div>
-        <div id='header-controls-bottom'>
+        <div id='header-controls-bottom' class='no-highlight'>
           <div id='pose-display-container'>
             <div class='settings-label'>Display</div>
             <select id='pose-display-select'>

@@ -541,7 +541,7 @@ Layout.prototype.showHideIcons = function() {
 
 Layout.prototype.selectActiveIcon = function() {
   // remove the active class from all icons
-  var icons = this.elems.icons.querySelectorAll('img');
+  var icons = this.elems.icons.querySelectorAll('.layout-icon');
   for (var i=0; i<icons.length; i++) {
     icons[i].classList.remove('active');
   }
@@ -612,9 +612,11 @@ Layout.prototype.set = function(layout, enableDelay) {
       }
       // set the target locations of lines
       if (lines.mesh) {
-        var lineGeometry = lines.getGeometry('targetPosition');
-        lines.mesh.geometry.attributes.targetPosition.array = lineGeometry.attributes.position.array.slice(0);
+        var lineAttributes = lines.getAttributes('targetPosition');
+        lines.mesh.geometry.attributes.targetPosition.array = lineAttributes.positions.array.slice(0);
         lines.mesh.geometry.attributes.targetPosition.needsUpdate = true;
+        lines.mesh.geometry.attributes.targetMidpoint.array = lineAttributes.midpoints.array;
+        lines.mesh.geometry.attributes.targetMidpoint.needsUpdate = true;
         // begin accumulating a list of elements to animate
         var animatable = [lines.mesh.material.uniforms.transitionPercent];
       } else {
@@ -647,7 +649,9 @@ Layout.prototype.setPointScalar = function() {
   if (l == 'date') size = config.size.points.date;
   if (size) {
     world.elems.pointSize.value = size;
-    world.setUniform('scaleTarget', world.getPointScale());
+    var scale = world.getPointScale();
+    world.setUniform('targetScale', scale);
+    if (lines.mesh) lines.mesh.material.uniforms.targetScale.value = scale;
   }
 }
 
@@ -690,7 +694,9 @@ Layout.prototype.onTransitionComplete = function() {
   // update the buffers for the lines
   if (lines.mesh) {
     lines.mesh.geometry.attributes.position.array = lines.mesh.geometry.attributes.targetPosition.array.slice(0);
+    lines.mesh.geometry.attributes.midpoint.array = lines.mesh.geometry.attributes.targetMidpoint.array.slice(0);
     lines.mesh.geometry.attributes.position.needsUpdate = true;
+    lines.mesh.geometry.attributes.midpoint.needsUpdate = true;
     lines.mesh.material.uniforms.transitionPercent = {type: 'f', value: 0};
   }
   // pass each updated position buffer to the gpu
@@ -701,7 +707,7 @@ Layout.prototype.onTransitionComplete = function() {
   // indicate the world is no longer transitioning
   world.state.transitioning = false;
   // set the current point scale value
-  world.setUniform('scale', world.getPointScale());
+  world.setScaleUniforms();
   // reindex cells in LOD given new positions
   lod.indexCells();
 }
@@ -858,18 +864,15 @@ World.prototype.handleResize = function() {
   this.renderer.setSize(w, h, false);
   this.controls.handleResize();
   picker.tex.setSize(w, h);
-  this.setPointScalar();
+  this.setScaleUniforms();
 }
 
-/**
-* Set the point size scalar as a uniform on all meshes
-**/
-
-World.prototype.setPointScalar = function() {
-  // handle case of drag before scene renders
+World.prototype.setScaleUniforms = function() {
+    // handle case of drag before scene renders
   if (!this.state.displayed) return;
-  // update the displayed and selector meshes
-  this.setUniform('scale', this.getPointScale())
+  var scale = world.getPointScale();
+  world.setUniform('scale', scale);
+  if (lines.mesh) lines.mesh.material.uniforms.scale.value = scale;
 }
 
 /**
@@ -877,8 +880,8 @@ World.prototype.setPointScalar = function() {
 **/
 
 World.prototype.addScalarChangeListener = function() {
-  this.elems.pointSize.addEventListener('change', this.setPointScalar.bind(this));
-  this.elems.pointSize.addEventListener('input', this.setPointScalar.bind(this));
+  this.elems.pointSize.addEventListener('change', this.setScaleUniforms.bind(this));
+  this.elems.pointSize.addEventListener('input', this.setScaleUniforms.bind(this));
 }
 
 /**
@@ -1169,7 +1172,7 @@ World.prototype.getShaderMaterial = function(obj) {
         type: 'f',
         value: this.getPointScale(),
       },
-      scaleTarget: {
+      targetScale: {
         type: 'f',
         value: this.getPointScale(),
       },
@@ -2333,12 +2336,18 @@ Lines.prototype.plot = function() {
       vertexShader: document.querySelector('#line-vertex-shader').textContent,
       fragmentShader: document.querySelector('#line-fragment-shader').textContent,
       uniforms: {
-        transitionPercent: { type: 'f', value: 0.0 },
-        display: { type: 'f', value: 0.0 },
+        transitionPercent: {type: 'f', value: 0.0},
+        display: {type: 'f', value: 0.0},
+        scale: {type: 'f', value: 0.0},
+        targetScale: {type: 'f', value: 0.0},
       },
     })
-    var geometry = this.getGeometry('position');
-    geometry.setAttribute('targetPosition', geometry.attributes.position.clone(), 3);
+    var geometry = new THREE.BufferGeometry();
+    var attributes = this.getAttributes('position');
+    geometry.setAttribute('position', attributes.positions);
+    geometry.setAttribute('targetPosition', attributes.positions.clone());
+    geometry.setAttribute('midpoint', attributes.midpoints);
+    geometry.setAttribute('targetMidpoint', attributes.midpoints.clone());
     this.mesh = new THREE.LineSegments(geometry, material);
     world.scene.add(this.mesh);
     // make the poses displayable
@@ -2347,10 +2356,13 @@ Lines.prototype.plot = function() {
   }.bind(this))
 }
 
-Lines.prototype.getGeometry = function(vertexType) {
-  var threshold = 0.1; // confidence threshold needed to render vertex
-  var positions = [];
-  var pairs = [
+Lines.prototype.getAttributes = function(vertexType) {
+  var threshold = 0.1, // confidence threshold needed to render vertex
+      positions = [],
+      midpoints = [],
+      positionsIdx = 0,
+      midpointsIdx = 0,
+      pairs = [
     [10, 9], // right leg
     [9, 8],
     [11, 12], // left leg
@@ -2365,36 +2377,28 @@ Lines.prototype.getGeometry = function(vertexType) {
     [8, 11],
   ];
   this.json.forEach(function(body, bodyIdx) {
-    // find the mean of x and y positions in skeleton to center the skeleton
-    var sums = {
-      x: 0,
-      y: 0,
-      score: 0,
-    };
+    // find the domain of vertices for height normalization
     var domains = {
       x: [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY],
       y: [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY],
       score: [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY],
-    }
+    };
     // set the domain and sum of x, y, and score for this body
     body.forEach(function(vert) {
-      sums.x += vert[0];
-      sums.y += vert[1];
-      sums.score += vert[2];
       if (vert[0] < domains.x[0]) domains.x[0] = vert[0];
       if (vert[0] > domains.x[1]) domains.x[1] = vert[0];
       if (vert[1] < domains.y[0]) domains.y[0] = vert[1];
       if (vert[1] > domains.y[1]) domains.y[1] = vert[1];
       if (vert[2] < domains.score[0]) domains.score[0] = vert[2];
       if (vert[2] > domains.score[1]) domains.score[1] = vert[2];
-    })
+    });
     // get midpoint position along each axis
-    var midpoints = {
+    var midpoint = {
       x: (domains.x[0] + domains.x[1])/2,
       y: 1 - ((domains.y[0] + domains.y[1])/2),
-    }
+    };
     // set the size scalar
-    var scalar = (0.05 / (domains.y[1] - domains.y[0]));
+    var scalar = (0.005 / (domains.y[1] - domains.y[0]));
     // identify the body vertices
     var vertices = [];
     body.forEach(function(vert, vertIdx) {
@@ -2404,21 +2408,46 @@ Lines.prototype.getGeometry = function(vertexType) {
         ? {x: 'x', y: 'y'}
         : {x: 'tx', y: 'ty'}
       vertices.push({
-        x: data.cells[bodyIdx][keys.x] + (scalar * (x-midpoints.x)),
-        y: data.cells[bodyIdx][keys.y] + (scalar * (y-midpoints.y)),
+        x: data.cells[bodyIdx][keys.x] + (scalar * (x-midpoint.x)),
+        y: data.cells[bodyIdx][keys.y] + (scalar * (y-midpoint.y)),
         score: vert[2],
       })
     })
+    // find the mean of all vertices in each dimension
+    var sums = {
+      x: 0,
+      y: 0,
+    };
+    vertices.forEach(function(vertex) {
+      if (vertex.score >= threshold) {
+        sums.x += vertex.x;
+        sums.y += vertex.y;
+      }
+    })
+    // determine the number of retained vertices
+    var n = vertices.filter(function(v) { return v.score >= threshold }).length;
     // add the lines between the vertices
     for (var i=0; i<pairs.length; i++) {
       var a = vertices[pairs[i][0]];
       var b = vertices[pairs[i][1]];
       if (a.score < threshold || b.score < threshold) continue;
-      positions.push(new THREE.Vector3(a.x, a.y, 0));
-      positions.push(new THREE.Vector3(b.x, b.y, 0));
+      positions[positionsIdx++] = a.x;
+      positions[positionsIdx++] = a.y;
+      positions[positionsIdx++] = 0;
+      positions[positionsIdx++] = b.x;
+      positions[positionsIdx++] = b.y;
+      positions[positionsIdx++] = 0;
+      // todo: reconfigure body as instanced buffer geometry
+      midpoints[midpointsIdx++] = sums.x / n;
+      midpoints[midpointsIdx++] = sums.y / n;
+      midpoints[midpointsIdx++] = sums.x / n;
+      midpoints[midpointsIdx++] = sums.y / n;
     }
   })
-  return new THREE.BufferGeometry().setFromPoints(positions);
+  return {
+    positions: new THREE.BufferAttribute(new Float32Array(positions), 3),
+    midpoints: new THREE.BufferAttribute(new Float32Array(midpoints), 2),
+  }
 }
 
 Lines.prototype.toggleLineDisplay = function() {
@@ -2913,13 +2942,11 @@ function Settings() {
   this.elems = {
     tray: document.querySelector('#header-controls-bottom'),
     icon: document.querySelector('#settings-icon'),
-    canvas: document.querySelector('#pixplot-canvas'),
   }
   this.state = {
     open: false,
   }
   this.elems.icon.addEventListener('click', this.toggleOpen.bind(this));
-  this.elems.canvas.addEventListener('click', this.close.bind(this));
 }
 
 Settings.prototype.open = function() {
