@@ -44,6 +44,7 @@ setup(
     'Cython>=0.29.21',
     'glob2>=0.6',
     'hdbscan>=0.8.24',
+    'h5py==2.10.0',
     'iiif-downloader>=0.0.6',
     'Keras<=2.3.0',
     'matplotlib==3.0.3',
