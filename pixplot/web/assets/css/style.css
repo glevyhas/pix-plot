@@ -516,10 +516,11 @@ input[type=range]::-ms-thumb {
 #jitter-container {
   display: inline-block;
   margin: 0 57px;
+  display: none;
 }
 
 #jitter-container.visible {
-  opacity: 1;
+  display: inline-block;
 }
 
 #jitter-container.disabled {

@@ -514,7 +514,7 @@ Layout.prototype.init = function(options) {
   this.selected = data.json.initial_layout || Object.keys(options)[0];
   this.elems = {
     input: document.querySelector('#jitter-input'),
-    container: document.querySelector('#jitter-container'),
+    jitter: document.querySelector('#jitter-container'),
     icons: document.querySelector('#icons'),
     layoutCategorical: document.querySelector('#layout-categorical'),
     layoutDate: document.querySelector('#layout-date'),
@@ -560,14 +560,14 @@ Layout.prototype.addEventListeners = function() {
     this.set(e.target.id.replace('layout-', ''), true);
   }.bind(this));
   // allow clicks on jitter container to update jitter state
-  this.elems.container.addEventListener('click', function(e) {
+  this.elems.jitter.addEventListener('click', function(e) {
     if (e.target.tagName != 'INPUT') {
       if (this.elems.input.checked) {
         this.elems.input.checked = false;
-        this.elems.container.classList.remove('visible');
+        this.elems.jitter.classList.remove('visible');
       } else {
         this.elems.input.checked = true;
-        this.elems.container.classList.add('visible');
+        this.elems.jitter.classList.add('visible');
       }
     }
     this.set(this.selected, false);
@@ -660,9 +660,9 @@ Layout.prototype.showHideJitter = function() {
   var jitterable = 'jittered' in data.layouts[this.selected];
   jitterable
     ? world.state.transitioning
-      ? this.elems.container.classList.add('visible', 'disabled')
-      : this.elems.container.classList.add('visible')
-    : this.elems.container.classList.remove('visible')
+      ? this.elems.jitter.classList.add('visible', 'disabled')
+      : this.elems.jitter.classList.add('visible')
+    : this.elems.jitter.classList.remove('visible')
   return jitterable && this.elems.input.checked;
 }
 
@@ -681,7 +681,7 @@ Layout.prototype.setText = function() {
 // reset cell state, mesh buffers, and transition uniforms
 Layout.prototype.onTransitionComplete = function() {
   // re-enable interactions with the jitter button
-  this.elems.container.classList.remove('disabled');
+  this.elems.jitter.classList.remove('disabled');
   // show/hide the hotspots
   data.hotspots.showHide();
   // update the state and buffers for each cell
@@ -3321,6 +3321,10 @@ function Tooltip() {
     {
       elem: document.querySelector('#layout-categorical'),
       text: 'Arrange images into metadata groups',
+    },
+    {
+      elem: document.querySelector('#layout-pose'),
+      text: 'Cluster poses via UMAP dimensionality reduction',
     },
     {
       elem: document.querySelector('#settings-icon'),
