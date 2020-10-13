@@ -487,7 +487,6 @@ def get_layouts(**kwargs):
   umap_jittered = get_pointgrid_layout(umap, 'umap', **kwargs)
   grid = get_rasterfairy_layout(umap=umap, **kwargs)
   pose = get_pose_layout(**kwargs)
-  pose_jittered = get_pointgrid_layout(pose, 'pose', **kwargs)
   alphabetic = get_alphabetic_layout(**kwargs)
   categorical = get_categorical_layout(**kwargs)
   date = get_date_layout(**kwargs)
@@ -502,10 +501,7 @@ def get_layouts(**kwargs):
     'grid': {
       'layout': grid,
     },
-    'pose': {
-      'layout': pose,
-      'jittered': pose_jittered,
-    },
+    'pose': pose,
     'categorical': categorical,
     'date': date,
   }
@@ -649,6 +645,7 @@ def get_pointgrid_layout(path, label, **kwargs):
 
 def get_pose_layout(**kwargs):
   '''Return the path to JSON with openpose embeddings'''
+  if not kwargs['extract_poses']: return False
   out_path = get_path('layouts', 'pose', **kwargs)
   if os.path.exists(out_path) and kwargs['use_cache']: return out_path
   # generate a new pose layout
@@ -668,7 +665,11 @@ def get_pose_layout(**kwargs):
     min_dist=kwargs['min_distance'],
     metric=kwargs['metric'])
   z = model.fit(vecs).embedding_
-  return write_layout(out_path, z, **kwargs)
+  pose_layout_path = write_layout(out_path, z, **kwargs)
+  return {
+    'layout': pose_layout_path,
+    'jittered': get_pointgrid_layout(pose_layout_path, 'pose', **kwargs),
+  }
 
 
 def get_openpose_vector(human):
