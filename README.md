@@ -6,7 +6,14 @@ This repository contains code that can be used to visualize tens of thousands of
 
 ## Dependencies
 
-To install the Python dependencies, you can run (ideally in a virtual environment):
+To install the Python dependencies, we recommend you [install Anaconda](https://www.anaconda.com/products/individual#Downloads) and then create a conda environment with a Python 3.7 runtime:
+
+```bash
+conda create --name=3.7 python=3.7
+source activate 3.7
+```
+
+Then you can install the dependencies by running:
 
 ```bash
 pip install pixplot -U
@@ -132,8 +139,6 @@ One could then specify these images as input by running `pixplot --images manife
 | ---------- | -------- | --------------- | ------------ | ------------ |
 | [NewsPlot: 1910-1912](http://pixplot.yale.edu/v2/loc/) | 24,026 | [George Grantham Bain Collection](https://www.loc.gov/pictures/collection/ggbain/) | [News in the 1910s](https://www.flickr.com/photos/library_of_congress/albums/72157603624867509/with/2163445674/) | [Images](http://pixplot.yale.edu/datasets/bain/photos.tar), [Metadata](http://pixplot.yale.edu/datasets/bain/metadata.csv) |
 | [Bildefelt i Oslo](http://pixplot.yale.edu/v2/oslo/) | 31,097 | [oslobilder](http://oslobilder.no) | [Advanced search, 1860-1924](http://oslobilder.no/search?advanced_search=1&query=&place=&from_year=1860&to_year=1924&id=&name=&title=&owner_filter=&producer=&depicted_person=&material=&technique=&event_desc=) | [Images](http://pixplot.yale.edu/datasets/oslo/photos.tar), [Metadata](http://pixplot.yale.edu/datasets/oslo/metadata.csv) |
-
-
 
 ## Acknowledgements
 
