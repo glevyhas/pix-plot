@@ -145,6 +145,7 @@ def filter_images(**kwargs):
       Image filenames should be unique, but the following filenames are duplicated\n
       {}
       '''.format('\n'.join(duplicates)))
+  image_paths = sorted(image_paths)
   # if the user requested pose detection, subdivide images
   if kwargs['extract_poses']:
     # copy the uncropped input images
@@ -198,7 +199,7 @@ def filter_images(**kwargs):
   for i in filtered_image_paths:
     if clean_filename(i, trim_idx=True) in meta_present:
       images.append(i)
-      metadata.append(d[clean_filename(i, trim_idx=True)])
+      metadata.append(copy.deepcopy(d[clean_filename(i, trim_idx=True)]))
   kwargs['metadata'] = metadata
   write_metadata(**kwargs)
   return [images, metadata]
@@ -229,7 +230,7 @@ def get_image_paths(**kwargs):
   # optionally shuffle the image_paths
   if kwargs['shuffle']:
     print(' * shuffling input images')
-    random.Random(kwargs['seed']).shuffle(image_paths)
+    random.Random(kwargs['seed']).shuffle(sorted(image_paths))
   # optionally limit the number of images in image_paths
   if kwargs.get('max_images', False):
     image_paths = image_paths[:kwargs['max_images']]
@@ -253,7 +254,7 @@ def clean_filename(s, trim_idx=False):
   s = unquote(os.path.basename(s))
   if trim_idx:
     extension = s.split('.')[-1]
-    s = '-'.join(s.split('-')[:-1]) + extension
+    s = '-'.join(s.split('-')[:-1]) + '.' + extension
   return s
 
 
@@ -715,7 +716,7 @@ def subdivide_images_with_openpose(**kwargs):
   vectors_path = os.path.join(kwargs['out_dir'], 'image-vectors', 'openpose', 'vectors.json')
   # load d[original_image_path] = [{daughter_image_path: [vert confidence array]}]
   parsed_dict = json.load(open(parsed_path)) if os.path.exists(parsed_path) else None
-  if not parsed_dict: parsed_dict = defaultdict(list)
+  if not parsed_dict: parsed_dict = defaultdict(lambda: defaultdict())
   # create the directories where output files will be stored
   vector_dir = os.path.join(kwargs['out_dir'], 'image-vectors', 'openpose')
   if not os.path.exists(vector_dir): os.makedirs(vector_dir)
@@ -732,18 +733,22 @@ def subdivide_images_with_openpose(**kwargs):
     file_extension = i.path.split('.')[-1]
     file_basename = '.'.join(os.path.basename(i.path).split('.')[:-1])
     # load all relevant daughter image in the parsed dict
-    if parsed_dict.get(i.path, False):
-      for pose_path, pose_vector in parsed_dict[i.path].items():
+    cache_filename = os.path.basename(i.path)
+    # existential check will return false for true negatives, which have {}
+    if parsed_dict.get(cache_filename, 'missing') != 'missing':
+      for pose_path, pose_vector in parsed_dict[cache_filename].items():
         pose_vector = np.array(pose_vector).reshape(18, 3)
         if pose_vector_is_valid(pose_vector, **kwargs):
           pose_image_paths.append(pose_path)
-          vectors_list.append(pose_vector)
+          vectors_list.append(pose_vector.tolist())
       continue
     # parse the new image
     im = common.read_imgfile(i.path, None, None)
     im = im[:, :, [2, 1, 0]] # swap color channels to rgb
     humans = estimator.inference(im, resize_to_default=True, upsample_size=4.0)
     for hdx, human in enumerate(humans):
+      # add image to cache (loaded json does not autovivify)
+      if file_basename not in parsed_dict: parsed_dict[cache_filename] = {}
       # vector shape = 18, 3 (n_verts, x, y, confidence)
       vector = get_openpose_vector(human)
       # filter if the point with lowest confidence is too low
@@ -758,10 +763,12 @@ def subdivide_images_with_openpose(**kwargs):
       img_path = os.path.join(image_dir, file_basename + '-' + str(hdx) + '.' + file_extension)
       save_img(img_path, cropped_im)
       pose_image_paths.append(img_path)
-      parsed_dict[i.path].append({img_path: vector.tolist()})
+      # add the new records to the parsed dict
+      parsed_dict[cache_filename][img_path] = vector.tolist()
   # store the images we processed
   write_json(parsed_path, parsed_dict)
   write_json(vectors_path, vectors_list)
+  print(' * extracted', len(pose_image_paths), 'pose images')
   return pose_image_paths
 
 
