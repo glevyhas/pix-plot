@@ -19,7 +19,6 @@ from sklearn.decomposition import PCA
 from scipy.spatial import ConvexHull
 from iiif_downloader import Manifest
 from rasterfairy import coonswarp
-import matplotlib.pyplot as plt
 from keras.models import Model
 from scipy.stats import kde
 from hdbscan import HDBSCAN
@@ -147,7 +146,7 @@ def filter_images(**kwargs):
       '''.format('\n'.join(duplicates)))
   image_paths = sorted(image_paths)
   # if the user requested pose detection, subdivide images
-  if kwargs['extract_poses']:
+  if kwargs.get('extract_poses', False):
     # copy the uncropped input images
     if not os.path.exists(os.path.join(kwargs['out_dir'], 'uncropped')):
       os.makedirs(os.path.join(kwargs['out_dir'], 'uncropped'))
@@ -183,7 +182,7 @@ def filter_images(**kwargs):
   # handle user metadata: retain only records with image and metadata
   l = get_metadata_list(**kwargs)
   meta_bn = set([clean_filename(i.get('filename', '')) for i in l])
-  img_bn = set([clean_filename(i, trim_idx=True) for i in filtered_image_paths])
+  img_bn = set([clean_filename(i, **kwargs) for i in filtered_image_paths])
   # identify images with metadata and those without metadata
   meta_present = img_bn.intersection(meta_bn)
   meta_missing = list(img_bn - meta_bn)
@@ -197,9 +196,9 @@ def filter_images(**kwargs):
   images = []
   metadata = []
   for i in filtered_image_paths:
-    if clean_filename(i, trim_idx=True) in meta_present:
+    if clean_filename(i, **kwargs) in meta_present:
       images.append(i)
-      metadata.append(copy.deepcopy(d[clean_filename(i, trim_idx=True)]))
+      metadata.append(copy.deepcopy(d[clean_filename(i, **kwargs)]))
   kwargs['metadata'] = metadata
   write_metadata(**kwargs)
   return [images, metadata]
@@ -249,10 +248,10 @@ def stream_images(**kwargs):
       print(' * image', i, 'could not be processed --', exc)
 
 
-def clean_filename(s, trim_idx=False):
+def clean_filename(s, **kwargs):
   '''Given a string that points to a filename, return a clean filename'''
   s = unquote(os.path.basename(s))
-  if trim_idx:
+  if kwargs.get('extract_poses', False):
     extension = s.split('.')[-1]
     s = '-'.join(s.split('-')[:-1]) + '.' + extension
   return s
@@ -646,7 +645,7 @@ def get_pointgrid_layout(path, label, **kwargs):
 
 def get_pose_layout(**kwargs):
   '''Return the path to JSON with openpose embeddings'''
-  if not kwargs['extract_poses']: return False
+  if not kwargs.get('extract_poses', False): return False
   out_path = get_path('layouts', 'pose', **kwargs)
   if os.path.exists(out_path) and kwargs['use_cache']: return out_path
   # generate a new pose layout
@@ -1136,6 +1135,7 @@ def get_hotspots(**kwargs):
 
 def get_heightmap(path, label, **kwargs):
   '''Create a heightmap using the distribution of points stored at `path`'''
+  import matplotlib.pyplot as plt
   X = read_json(path, **kwargs)
   if 'positions' in X: X = X['positions']
   X = np.array(X)
