@@ -526,9 +526,18 @@
               <span id='image-date'><%- meta.date ? '(' + meta.date + ')' : '' %></span>
             </div>
             <div class='modal-text-right'>
-              <% if (meta.category) { %>
+              <% if (meta.category || meta.tags) { %>
                 <div id='meta-category-container'>
-                  <div class='meta-category'><%- meta.category %></div>
+                  <% if (meta.category) { %>
+                    <div class='meta-category'><%- meta.category %></div>
+                  <% }; %>
+                  <% if (meta.tags) { %>
+                    <% _.forEach(meta.tags, function(tag) { %>
+                      <% if (tag != meta.category) { %>
+                        <div class='meta-tag'><%- meta.tag %></div>
+                      <% } %>
+                    <% }) %>
+                  <% } %>
                 </div>
               <% } %>
             </div>

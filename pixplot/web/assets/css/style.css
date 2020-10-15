@@ -293,7 +293,7 @@ select:disabled {
   text-align: left;
   color: #fff;
   cursor: pointer;
-  padding: 15px 40px;
+  padding: 6px 40px;
   margin: 0 20px;
 }
 
@@ -504,9 +504,12 @@ input[type=range]::-ms-thumb {
   display: none;
 }
 
-#settings-icon.active {
-  transform: rotate(180deg);
+#settings-icon {
   transition: transform 0.3s;
+}
+
+#settings-icon.active {
+  transform: rotate(-360deg);
 }
 
 /**
