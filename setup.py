@@ -28,7 +28,7 @@ for i in dirs:
 
 setup(
   name='pixplot',
-  version='0.0.97',
+  version='0.0.98',
   packages=['pixplot'],
   package_data={
     'pixplot': web,
@@ -43,7 +43,7 @@ setup(
     'cmake>=3.15.3',
     'Cython>=0.29.21',
     'glob2>=0.6',
-    'hdbscan>=0.8.24',
+    'hdbscan==0.8.24',
     'h5py==2.10.0',
     'iiif-downloader>=0.0.6',
     'Keras<=2.3.0',
