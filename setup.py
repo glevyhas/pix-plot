@@ -47,7 +47,7 @@ setup(
     'h5py==2.10.0',
     'iiif-downloader>=0.0.6',
     'Keras<=2.3.0',
-    'matplotlib==3.0.3',
+    'matplotlib>=2.2.2',
     'numpy>=1.19.0',
     'Pillow>=6.1.0',
     'pointgrid>=0.0.2',
