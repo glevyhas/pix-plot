@@ -1,1 +1,21 @@
-<svg height="20.5" viewBox="0 0 25 20.5" width="25" xmlns="http://www.w3.org/2000/svg"><g fill="#555"><rect height="4" rx=".5" width="4" x="5"/><rect height="4" rx=".5" width="4" x="6" y="5"/><rect height="4" rx=".5" width="4" y="7"/></g><rect fill="#eee" height="4" rx=".5" width="4" x="16" y="13.5"/><rect fill="#eee" height="4" rx=".5" width="4" x="8.5" y="16.5"/><rect fill="#eee" height="4" rx=".5" width="4" x="11" y="10.5"/><rect fill="#999" height="4" rx=".5" width="4" x="21" y="1"/><rect fill="#999" height="4" rx=".5" width="4" x="18" y="6"/><rect fill="#999" height="4" rx=".5" width="4" x="13" y="4"/></svg>
+<svg xmlns='http://www.w3.org/2000/svg' width='25' height='17' viewBox='0 0 25 17'>
+  <g id='Group_343' data-name='Group 343' transform='translate(-106 -510)'>
+    <g id='Group_340' data-name='Group 340'>
+      <g id='Group_338' data-name='Group 338' transform='translate(-20 39)'>
+        <rect id='Rectangle_414' data-name='Rectangle 414' width='4' height='4' rx='1' transform='translate(130 471)' fill='#fff'/>
+        <rect id='Rectangle_417' data-name='Rectangle 417' width='4' height='4' rx='1' transform='translate(131 476)' fill='#fff'/>
+        <rect id='Rectangle_425' data-name='Rectangle 425' width='4' height='4' rx='1' transform='translate(126 478)' fill='#fff'/>
+      </g>
+      <g id='Group_337' data-name='Group 337' transform='translate(-21.5 39)'>
+        <rect id='Rectangle_420' data-name='Rectangle 420' width='4' height='4' transform='translate(143 482)' fill='#fff'/>
+        <rect id='Rectangle_426' data-name='Rectangle 426' width='4' height='4' transform='translate(135.5 484)' fill='#fff'/>
+        <rect id='Rectangle_421' data-name='Rectangle 421' width='4' height='4' transform='translate(138 479)' fill='#fff'/>
+      </g>
+      <g id='Group_339' data-name='Group 339' transform='translate(-21 39)'>
+        <rect id='Rectangle_424' data-name='Rectangle 424' width='4' height='4' rx='2' transform='translate(140 471)' fill='#fff'/>
+        <rect id='Rectangle_423' data-name='Rectangle 423' width='4' height='4' rx='2' transform='translate(143 476)' fill='#fff'/>
+        <rect id='Rectangle_418' data-name='Rectangle 418' width='4' height='4' rx='2' transform='translate(148 474)' fill='#fff'/>
+      </g>
+    </g>
+  </g>
+</svg>
