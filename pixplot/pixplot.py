@@ -151,7 +151,9 @@ def filter_images(**kwargs):
     if not os.path.exists(os.path.join(kwargs['out_dir'], 'uncropped')):
       os.makedirs(os.path.join(kwargs['out_dir'], 'uncropped'))
     for i in image_paths:
-      shutil.copy(i, os.path.join(kwargs['out_dir'], 'uncropped', os.path.basename(i)))
+      target_path = os.path.join(kwargs['out_dir'], 'uncropped', os.path.basename(i))
+      if not os.path.exists(target_path):
+        shutil.copy(i, target_path)
     image_paths = subdivide_images_with_openpose(image_paths=image_paths, **kwargs)
   # process and filter the images
   filtered_image_paths = []
@@ -1164,7 +1166,8 @@ def write_images(**kwargs):
     out_dir = join(kwargs['out_dir'], 'originals')
     if not exists(out_dir): os.makedirs(out_dir)
     out_path = join(out_dir, filename)
-    shutil.copy(i.path, out_path)
+    if not os.path.exists(out_path):
+      shutil.copy(i.path, out_path)
     # copy thumb for lod texture
     out_dir = join(kwargs['out_dir'], 'thumbs')
     if not exists(out_dir): os.makedirs(out_dir)
