@@ -13,4 +13,5 @@ output
 datasets
 iiif-downloads
 .ipynb_checkpoints
+models
 !pixplot/web/assets/vendor/dist/

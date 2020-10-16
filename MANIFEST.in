@@ -1,2 +1,2 @@
-recursive-include web/*
-recursive-include web/assets/*
+graft web
+graft models

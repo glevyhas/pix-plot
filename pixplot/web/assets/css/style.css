@@ -38,11 +38,11 @@ select {
   user-select: none;
   cursor: pointer;
   border: none;
-  color: #333131;
+  color: #ccc;
   font-size: 13px;
-  padding: 3px 6px;
+  padding: 2px 8px;
   border-radius: 5px;
-  background-color: #c3c3c3;
+  background-color: #444;
   background-image: url(../images/icons/caret-icon.png);
   background-size: 20px;
   background-repeat: no-repeat;
@@ -126,7 +126,7 @@ select:disabled {
 
 #stats {
   position: absolute;
-  top: 60px;
+  top: 55px;
   left: 106px;
   width: 80px;
 }
@@ -277,6 +277,7 @@ select:disabled {
   color: #999;
   font-weight: 600;
   display: inline-block;
+  margin: 10px 5px;
 }
 
 #filters {
@@ -292,7 +293,7 @@ select:disabled {
   text-align: left;
   color: #fff;
   cursor: pointer;
-  padding: 15px 40px;
+  padding: 6px 40px;
   margin: 0 20px;
 }
 
@@ -402,11 +403,6 @@ input[type=range]::-ms-thumb {
   display: inline-block;
 }
 
-#range-slider .settings-label {
-  margin-top: 10px;
-  margin-right: 5px;
-}
-
 #pointsize-range-input {
   margin-top: 6px;
 }
@@ -487,7 +483,7 @@ input[type=range]::-ms-thumb {
 
 #icons img {
   height: 19px;
-  margin: 0 20px;
+  margin: 0 30px;
   opacity: 0.2;
   cursor: pointer;
   vertical-align: top;
@@ -503,13 +499,17 @@ input[type=range]::-ms-thumb {
 }
 
 #layout-date,
-#layout-categorical {
+#layout-categorical,
+#layout-pose {
   display: none;
 }
 
-#settings-icon.active {
-  transform: rotate(180deg);
+#settings-icon {
   transition: transform 0.3s;
+}
+
+#settings-icon.active {
+  transform: rotate(-360deg);
 }
 
 /**
@@ -519,10 +519,11 @@ input[type=range]::-ms-thumb {
 #jitter-container {
   display: inline-block;
   margin: 0 57px;
+  display: none;
 }
 
 #jitter-container.visible {
-  opacity: 1;
+  display: inline-block;
 }
 
 #jitter-container.disabled {
@@ -542,7 +543,15 @@ input[type=range]::-ms-thumb {
 }
 
 /**
-* Nav
+* Pose display select
+**/
+
+#pose-display-container {
+  display: none;
+}
+
+/**
+* Hotspots
 **/
 
 nav {
@@ -638,7 +647,7 @@ nav h2 {
   cursor: pointer;
   padding: 1px;
   font-size: 8px;
-  line-height: 12px;
+  line-height: 13px;
   border-radius: 2px;
 }
 
@@ -1535,6 +1544,8 @@ input[type=text] {
   border-radius: 3px;
   color: #333;
   opacity: 0.97;
+  position: absolute;
+  top: -10000px;
 }
 
 #tooltip::after {

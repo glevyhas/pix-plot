@@ -1,17 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="17.25" height="16" viewBox="0 0 17.25 16">
-  <g id="Group_321" data-name="Group 321" transform="translate(-109.75 -313)">
-    <g id="Group_315" data-name="Group 315" transform="translate(-5)">
-      <rect id="Rectangle_394" data-name="Rectangle 394" width="4" height="4" rx="0.5" transform="translate(122 313)" fill="#eee"/>
-      <rect id="Rectangle_388" data-name="Rectangle 388" width="4" height="4" rx="0.5" transform="translate(122 319)" fill="#999"/>
-      <rect id="Rectangle_382" data-name="Rectangle 382" width="4" height="4" rx="0.5" transform="translate(122 325)" fill="#555"/>
-      <rect id="Rectangle_397" data-name="Rectangle 397" width="4" height="4" rx="0.5" transform="translate(128 313)" fill="#555"/>
-      <rect id="Rectangle_391" data-name="Rectangle 391" width="4" height="4" rx="0.5" transform="translate(128 319)" fill="#eee"/>
-      <rect id="Rectangle_384" data-name="Rectangle 384" width="4" height="4" rx="0.5" transform="translate(128 325)" fill="#999"/>
-      <g id="Group_310" data-name="Group 310" transform="translate(0 57)">
-        <text id="A_Z" data-name="A
-Z" transform="translate(114.75 257)" fill="#999" font-size="5" font-family="OpenSans-Bold, Open Sans" font-weight="700"><tspan x="1.775" y="5">A</tspan><tspan x="2.052" y="10">Z</tspan></text>
-        <path id="Path_159" data-name="Path 159" d="M675.574,3716.936h-.858V3715h-.858v1.936H673l1.287,1.107Z" transform="translate(-556 -3447)" fill="#999"/>
-      </g>
+<svg xmlns='http://www.w3.org/2000/svg' width='16' height='22' viewBox='0 0 16 22'>
+  <g id='Group_341' data-name='Group 341' transform='translate(-52 -507)'>
+    <g id='Group_336' data-name='Group 336' transform='translate(11)'>
+      <text id='A_Z' data-name='A_Z' transform='translate(47 507)' fill='#fff' font-size='9' font-family='OpenSans-Extrabold, Open Sans' font-weight='800'><tspan x='1.385' y='10'>A</tspan><tspan x='1.904' y='18'>Z</tspan></text>
+      <path id='Path_163' data-name='Path 163' d='M660.7,278.536V268.5h-1.481v10.036L657,276.314v2.223l2.964,2.964,2.964-2.964v-2.223Z' transform='translate(-616 243)' fill='#fff'/>
     </g>
   </g>
 </svg>

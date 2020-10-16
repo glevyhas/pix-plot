@@ -63,11 +63,11 @@ function Config() {
   }
   this.transitions = {
     duration: 2.0,
-    delay: 0.5,
+    delay: 0.0,
   }
   this.transitions.ease = {
-    value: 1.0 + this.transitions.delay,
-    ease: Power3.easeOut,
+    value: 1,
+    ease: Power1.easeOut,
   }
   this.pickerMaxZ = 0.4; // max z value of camera to trigger picker modal
   this.atlasesPerTex = (this.size.texture/this.size.atlas)**2;
@@ -472,18 +472,18 @@ Cell.prototype.setBuffer = function(attr) {
       attrs.offset.array[(idxInDrawCall * 2) + 1] = this.dy;
       return;
 
-    case 'pos0':
+    case 'position':
       // set the cell's translation
-      attrs.pos0.array[(idxInDrawCall * 3)] = this.x;
-      attrs.pos0.array[(idxInDrawCall * 3) + 1] = this.y;
-      attrs.pos0.array[(idxInDrawCall * 3) + 2] = this.z;
+      attrs.position.array[(idxInDrawCall * 3)] = this.x;
+      attrs.position.array[(idxInDrawCall * 3) + 1] = this.y;
+      attrs.position.array[(idxInDrawCall * 3) + 2] = this.z;
       return;
 
-    case 'pos1':
+    case 'targetPosition':
       // set the cell's translation
-      attrs.pos1.array[(idxInDrawCall * 3)] = this.tx;
-      attrs.pos1.array[(idxInDrawCall * 3) + 1] = this.ty;
-      attrs.pos1.array[(idxInDrawCall * 3) + 2] = this.tz;
+      attrs.targetPosition.array[(idxInDrawCall * 3)] = this.tx;
+      attrs.targetPosition.array[(idxInDrawCall * 3) + 1] = this.ty;
+      attrs.targetPosition.array[(idxInDrawCall * 3) + 2] = this.tz;
       return;
   }
 }
@@ -514,10 +514,11 @@ Layout.prototype.init = function(options) {
   this.selected = data.json.initial_layout || Object.keys(options)[0];
   this.elems = {
     input: document.querySelector('#jitter-input'),
-    container: document.querySelector('#jitter-container'),
+    jitter: document.querySelector('#jitter-container'),
     icons: document.querySelector('#icons'),
     layoutCategorical: document.querySelector('#layout-categorical'),
     layoutDate: document.querySelector('#layout-date'),
+    layoutPose: document.querySelector('#layout-pose'),
   }
   this.showHideIcons();
   this.addEventListeners();
@@ -533,11 +534,14 @@ Layout.prototype.showHideIcons = function() {
   if (data.layouts.date) {
     this.elems.layoutDate.style.display = 'inline-block';
   }
+  if (data.layouts.pose) {
+    this.elems.layoutPose.style.display = 'inline-block';
+  }
 }
 
 Layout.prototype.selectActiveIcon = function() {
   // remove the active class from all icons
-  var icons = this.elems.icons.querySelectorAll('img');
+  var icons = this.elems.icons.querySelectorAll('.layout-icon');
   for (var i=0; i<icons.length; i++) {
     icons[i].classList.remove('active');
   }
@@ -556,14 +560,14 @@ Layout.prototype.addEventListeners = function() {
     this.set(e.target.id.replace('layout-', ''), true);
   }.bind(this));
   // allow clicks on jitter container to update jitter state
-  this.elems.container.addEventListener('click', function(e) {
+  this.elems.jitter.addEventListener('click', function(e) {
     if (e.target.tagName != 'INPUT') {
       if (this.elems.input.checked) {
         this.elems.input.checked = false;
-        this.elems.container.classList.remove('visible');
+        this.elems.jitter.classList.remove('visible');
       } else {
         this.elems.input.checked = true;
-        this.elems.container.classList.add('visible');
+        this.elems.jitter.classList.add('visible');
       }
     }
     this.set(this.selected, false);
@@ -587,7 +591,7 @@ Layout.prototype.set = function(layout, enableDelay) {
   // add any labels to the plot
   this.setText();
   // zoom the user out if they're zoomed in
-  var delay = this.recenterCamera(enableDelay);
+  var delay = world.recenterCamera(enableDelay);
   // enable the jitter button if this layout has a jittered option
   var jitter = this.showHideJitter();
   // determine the path to the json to display
@@ -604,41 +608,50 @@ Layout.prototype.set = function(layout, enableDelay) {
         data.cells[i].tx = pos[i][0];
         data.cells[i].ty = pos[i][1];
         data.cells[i].tz = pos[i][2] || data.cells[i].getZ(pos[i][0], pos[i][1]);
-        data.cells[i].setBuffer('pos1');
+        data.cells[i].setBuffer('targetPosition');
       }
-      // update the transition uniforms and pos1 buffers on each mesh
+      // set the target locations of lines
+      if (lines.mesh) {
+        var lineAttributes = lines.getAttributes('targetPosition');
+        lines.mesh.geometry.attributes.targetPosition.array = lineAttributes.positions.array.slice(0);
+        lines.mesh.geometry.attributes.targetPosition.needsUpdate = true;
+        lines.mesh.geometry.attributes.targetMidpoint.array = lineAttributes.midpoints.array;
+        lines.mesh.geometry.attributes.targetMidpoint.needsUpdate = true;
+        // begin accumulating a list of elements to animate
+        var animatable = [lines.mesh.material.uniforms.transitionPercent];
+      } else {
+        var animatable = [];
+      }
+      // update the transition uniforms and targetPosition buffers on each mesh
       for (var i=0; i<world.group.children.length; i++) {
-        world.group.children[i].geometry.attributes.pos1.needsUpdate = true;
-        TweenLite.to(world.group.children[i].material.uniforms.transitionPercent,
-          config.transitions.duration, config.transitions.ease);
+        world.group.children[i].geometry.attributes.targetPosition.needsUpdate = true;
+        animatable.push(world.group.children[i].material.uniforms.transitionPercent);
       }
+      // begin the animation
+      TweenMax.to(
+        animatable,
+        config.transitions.duration,
+        config.transitions.ease,
+      );
       // prepare to update all the cell buffers once transition completes
       setTimeout(this.onTransitionComplete.bind(this), config.transitions.duration * 1000);
     }.bind(this))
   }.bind(this), delay);
 }
 
-// return the camera to its starting position
-Layout.prototype.recenterCamera = function(enableDelay) {
-  var initialCameraPosition = world.getInitialLocation();
-  if ((world.camera.position.z < initialCameraPosition.z) && enableDelay) {
-    world.flyTo(initialCameraPosition);
-    return config.transitions.duration * 1000;
-  }
-  return 0;
-}
-
 // set the point size as a function of the current layout
 Layout.prototype.setPointScalar = function() {
   var size = false, // size for points
       l = this.selected; // selected layout
-  if (l == 'tsne' || l == 'umap') size = config.size.points.scatter;
+  if (l == 'tsne' || l == 'umap' || l == 'pose') size = config.size.points.scatter;
   if (l == 'alphabetic' || l == 'grid') size = config.size.points.grid;
-  if (l == 'categorical') size = config.size.points.grid * 0.7;
+  if (l == 'categorical') size = config.size.points.categorical;
   if (l == 'date') size = config.size.points.date;
   if (size) {
     world.elems.pointSize.value = size;
-    world.setUniform('scaleTarget', world.getPointScale());
+    var scale = world.getPointScale();
+    world.setUniform('targetScale', scale);
+    if (lines.mesh) lines.mesh.material.uniforms.targetScale.value = scale;
   }
 }
 
@@ -647,9 +660,9 @@ Layout.prototype.showHideJitter = function() {
   var jitterable = 'jittered' in data.layouts[this.selected];
   jitterable
     ? world.state.transitioning
-      ? this.elems.container.classList.add('visible', 'disabled')
-      : this.elems.container.classList.add('visible')
-    : this.elems.container.classList.remove('visible')
+      ? this.elems.jitter.classList.add('visible', 'disabled')
+      : this.elems.jitter.classList.add('visible')
+    : this.elems.jitter.classList.remove('visible')
   return jitterable && this.elems.input.checked;
 }
 
@@ -668,7 +681,7 @@ Layout.prototype.setText = function() {
 // reset cell state, mesh buffers, and transition uniforms
 Layout.prototype.onTransitionComplete = function() {
   // re-enable interactions with the jitter button
-  this.elems.container.classList.remove('disabled');
+  this.elems.jitter.classList.remove('disabled');
   // show/hide the hotspots
   data.hotspots.showHide();
   // update the state and buffers for each cell
@@ -676,17 +689,25 @@ Layout.prototype.onTransitionComplete = function() {
     cell.x = cell.tx;
     cell.y = cell.ty;
     cell.z = cell.tz;
-    cell.setBuffer('pos0');
+    cell.setBuffer('position');
   });
-  // pass each updated pos0 buffer to the gpu
+  // update the buffers for the lines
+  if (lines.mesh) {
+    lines.mesh.geometry.attributes.position.array = lines.mesh.geometry.attributes.targetPosition.array.slice(0);
+    lines.mesh.geometry.attributes.midpoint.array = lines.mesh.geometry.attributes.targetMidpoint.array.slice(0);
+    lines.mesh.geometry.attributes.position.needsUpdate = true;
+    lines.mesh.geometry.attributes.midpoint.needsUpdate = true;
+    lines.mesh.material.uniforms.transitionPercent = {type: 'f', value: 0};
+  }
+  // pass each updated position buffer to the gpu
   for (var i=0; i<world.group.children.length; i++) {
-    world.group.children[i].geometry.attributes.pos0.needsUpdate = true;
-    world.group.children[i].material.uniforms.transitionPercent = { type: 'f', value: 0 };
+    world.group.children[i].geometry.attributes.position.needsUpdate = true;
+    world.group.children[i].material.uniforms.transitionPercent = {type: 'f', value: 0};
   }
   // indicate the world is no longer transitioning
   world.state.transitioning = false;
   // set the current point scale value
-  world.setUniform('scale', world.getPointScale());
+  world.setScaleUniforms();
   // reindex cells in LOD given new positions
   lod.indexCells();
 }
@@ -843,18 +864,15 @@ World.prototype.handleResize = function() {
   this.renderer.setSize(w, h, false);
   this.controls.handleResize();
   picker.tex.setSize(w, h);
-  this.setPointScalar();
+  this.setScaleUniforms();
 }
 
-/**
-* Set the point size scalar as a uniform on all meshes
-**/
-
-World.prototype.setPointScalar = function() {
-  // handle case of drag before scene renders
+World.prototype.setScaleUniforms = function() {
+    // handle case of drag before scene renders
   if (!this.state.displayed) return;
-  // update the displayed and selector meshes
-  this.setUniform('scale', this.getPointScale())
+  var scale = world.getPointScale();
+  world.setUniform('scale', scale);
+  if (lines.mesh) lines.mesh.material.uniforms.scale.value = scale;
 }
 
 /**
@@ -862,8 +880,8 @@ World.prototype.setPointScalar = function() {
 **/
 
 World.prototype.addScalarChangeListener = function() {
-  this.elems.pointSize.addEventListener('change', this.setPointScalar.bind(this));
-  this.elems.pointSize.addEventListener('input', this.setPointScalar.bind(this));
+  this.elems.pointSize.addEventListener('change', this.setScaleUniforms.bind(this));
+  this.elems.pointSize.addEventListener('input', this.setScaleUniforms.bind(this));
 }
 
 /**
@@ -914,10 +932,24 @@ World.prototype.setCenter = function() {
 }
 
 /**
+* Recenter the camera
+**/
+
+// return the camera to its starting position
+World.prototype.recenterCamera = function(enableDelay) {
+  var initialCameraPosition = this.getInitialLocation();
+  if ((this.camera.position.z < initialCameraPosition.z) && enableDelay) {
+    this.flyTo(initialCameraPosition);
+    return config.transitions.duration * 1000;
+  }
+  return 0;
+}
+
+/**
 * Draw each of the vertices
 **/
 
-World.prototype.plot = function() {
+World.prototype.plotPoints = function() {
   // add the cells for each draw call
   var drawCallToCells = this.getDrawCallToCells();
   this.group = new THREE.Group();
@@ -925,8 +957,8 @@ World.prototype.plot = function() {
     var meshCells = drawCallToCells[drawCallIdx],
         attrs = this.getGroupAttributes(meshCells),
         geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('pos0', attrs.pos0);
-    geometry.setAttribute('pos1', attrs.pos1);
+    geometry.setAttribute('position', attrs.position);
+    geometry.setAttribute('targetPosition', attrs.targetPosition);
     geometry.setAttribute('color', attrs.color);
     geometry.setAttribute('width', attrs.width);
     geometry.setAttribute('height', attrs.height);
@@ -973,12 +1005,12 @@ World.prototype.getGroupAttributes = function(cells) {
     var cell = cells[i];
     var rgb = this.color.setHex(cells[i].idx + 1); // use 1-based ids for colors
     it.texIndex[it.texIndexIterator++] = cell.texIdx; // index of texture among all textures -1 means LOD texture
-    it.pos0[it.pos0Iterator++] = cell.x; // current position.x
-    it.pos0[it.pos0Iterator++] = cell.y; // current position.y
-    it.pos0[it.pos0Iterator++] = cell.z; // current position.z
-    it.pos1[it.pos1Iterator++] = cell.tx; // target position.x
-    it.pos1[it.pos1Iterator++] = cell.ty; // target position.y
-    it.pos1[it.pos1Iterator++] = cell.tz; // target position.z
+    it.position[it.positionIterator++] = cell.x; // current position.x
+    it.position[it.positionIterator++] = cell.y; // current position.y
+    it.position[it.positionIterator++] = cell.z; // current position.z
+    it.targetPosition[it.targetPositionIterator++] = cell.tx; // target position.x
+    it.targetPosition[it.targetPositionIterator++] = cell.ty; // target position.y
+    it.targetPosition[it.targetPositionIterator++] = cell.tz; // target position.z
     it.color[it.colorIterator++] = rgb.r; // could be single float
     it.color[it.colorIterator++] = rgb.g; // unique color for GPU picking
     it.color[it.colorIterator++] = rgb.b; // unique color for GPU picking
@@ -991,8 +1023,8 @@ World.prototype.getGroupAttributes = function(cells) {
   }
 
   // format the arrays into THREE attributes
-  var pos0 = new THREE.BufferAttribute(it.pos0, 3, true, 1),
-      pos1 = new THREE.BufferAttribute(it.pos1, 3, true, 1),
+  var position = new THREE.BufferAttribute(it.position, 3, true, 1),
+      targetPosition = new THREE.BufferAttribute(it.targetPosition, 3, true, 1),
       color = new THREE.BufferAttribute(it.color, 3, true, 1),
       opacity = new THREE.BufferAttribute(it.opacity, 1, true, 1),
       selected = new THREE.Uint8BufferAttribute(it.selected, 1, false, 1),
@@ -1001,15 +1033,15 @@ World.prototype.getGroupAttributes = function(cells) {
       height = new THREE.Uint8BufferAttribute(it.height, 1, false, 1),
       offset = new THREE.Uint16BufferAttribute(it.offset, 2, false, 1);
   texIndex.usage = THREE.DynamicDrawUsage;
-  pos0.usage = THREE.DynamicDrawUsage;
-  pos1.usage = THREE.DynamicDrawUsage;
+  position.usage = THREE.DynamicDrawUsage;
+  targetPosition.usage = THREE.DynamicDrawUsage;
   opacity.usage = THREE.DynamicDrawUsage;
   selected.usage = THREE.DynamicDrawUsage;
   offset.usage = THREE.DynamicDrawUsage;
   var texIndices = this.getTexIndices(cells);
   return {
-    pos0: pos0,
-    pos1: pos1,
+    position: position,
+    targetPosition: targetPosition,
     color: color,
     width: width,
     height: height,
@@ -1032,8 +1064,8 @@ World.prototype.getGroupAttributes = function(cells) {
 
 World.prototype.getCellIterators = function(n) {
   return {
-    pos0: new Float32Array(n * 3),
-    pos1: new Float32Array(n * 3),
+    position: new Float32Array(n * 3),
+    targetPosition: new Float32Array(n * 3),
     color: new Float32Array(n * 3),
     width: new Uint8Array(n),
     height: new Uint8Array(n),
@@ -1041,8 +1073,8 @@ World.prototype.getCellIterators = function(n) {
     opacity: new Float32Array(n),
     selected: new Uint8Array(n),
     texIndex: new Int8Array(n),
-    pos0Iterator: 0,
-    pos1Iterator: 0,
+    positionIterator: 0,
+    targetPositionIterator: 0,
     colorIterator: 0,
     widthIterator: 0,
     heightIterator: 0,
@@ -1140,7 +1172,7 @@ World.prototype.getShaderMaterial = function(obj) {
         type: 'f',
         value: this.getPointScale(),
       },
-      scaleTarget: {
+      targetScale: {
         type: 'f',
         value: this.getPointScale(),
       },
@@ -1172,9 +1204,9 @@ World.prototype.getShaderMaterial = function(obj) {
         type: 'vec3',
         value: new Float32Array([234/255, 183/255, 85/255]),
       },
-      delay: {
+      display: {
         type: 'f',
-        value: config.transitions.delay,
+        value: 1.0,
       }
     },
     vertexShader: vertex,
@@ -1398,8 +1430,10 @@ World.prototype.init = function() {
   var loc = this.getInitialLocation();
   this.camera.position.set(loc.x, loc.y, loc.z);
   this.camera.lookAt(loc.x, loc.y, loc.z);
-  // draw the points and start the render loop
-  this.plot();
+  // draw points and start the render loop
+  this.plotPoints();
+  // draw lines
+  lines.plot();
   //resize the canvas and scale rendered assets
   this.handleResize();
   // initialize the first frame
@@ -1825,10 +1859,12 @@ function ConvexHullGrahamScan() {
 
 ConvexHullGrahamScan.prototype = {
   constructor: ConvexHullGrahamScan,
+
   Point: function (x, y) {
     this.x = x;
     this.y = y;
   },
+
   _findPolarAngle: function (a, b) {
     var ONE_RADIAN = 57.295779513082;
     var deltaX, deltaY;
@@ -1845,6 +1881,7 @@ ConvexHullGrahamScan.prototype = {
     }
     return angle;
   },
+
   addPoint: function (x, y) {
     // check for a new anchor
     var newAnchor =
@@ -2279,6 +2316,160 @@ Text.prototype.formatText = function(json) {
 }
 
 /**
+* Draw lines to represent poses
+**/
+
+function Lines() {
+  this.elems = {
+    container: document.querySelector('#pose-display-container'),
+    select: document.querySelector('#pose-display-select'),
+  }
+}
+
+Lines.prototype.plot = function() {
+  if (!data.layouts.pose) return;
+  // json is a 3d array [[[x, y, score]]]
+  get(getPath('data/image-vectors/openpose/vectors.json'), function(json) {
+    this.json = json;
+    // draw lines
+    var material = new THREE.RawShaderMaterial({
+      vertexShader: document.querySelector('#line-vertex-shader').textContent,
+      fragmentShader: document.querySelector('#line-fragment-shader').textContent,
+      uniforms: {
+        transitionPercent: {type: 'f', value: 0.0},
+        display: {type: 'f', value: 0.0},
+        scale: {type: 'f', value: 0.0},
+        targetScale: {type: 'f', value: 0.0},
+      },
+    })
+    var geometry = new THREE.BufferGeometry();
+    var attributes = this.getAttributes('position');
+    geometry.setAttribute('position', attributes.positions);
+    geometry.setAttribute('targetPosition', attributes.positions.clone());
+    geometry.setAttribute('midpoint', attributes.midpoints);
+    geometry.setAttribute('targetMidpoint', attributes.midpoints.clone());
+    this.mesh = new THREE.LineSegments(geometry, material);
+    world.scene.add(this.mesh);
+    // make the poses displayable
+    this.elems.container.style.display = 'inline-block';
+    this.elems.select.addEventListener('change', this.toggleLineDisplay.bind(this));
+  }.bind(this))
+}
+
+Lines.prototype.getAttributes = function(vertexType) {
+  var threshold = 0.1, // confidence threshold needed to render vertex
+      positions = [],
+      midpoints = [],
+      positionsIdx = 0,
+      midpointsIdx = 0,
+      pairs = [
+    [10, 9], // right leg
+    [9, 8],
+    [11, 12], // left leg
+    [12, 13],
+    [2, 3], // right arm
+    [3, 4],
+    [5, 6], // left arm
+    [6, 7],
+    [11, 5], // torso
+    [5, 2],
+    [2, 8],
+    [8, 11],
+  ];
+  this.json.forEach(function(body, bodyIdx) {
+    // find the domain of vertices for height normalization
+    var domains = {
+      x: [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY],
+      y: [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY],
+      score: [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY],
+    };
+    // set the domain and sum of x, y, and score for this body
+    body.forEach(function(vert) {
+      if (vert[0] < domains.x[0]) domains.x[0] = vert[0];
+      if (vert[0] > domains.x[1]) domains.x[1] = vert[0];
+      if (vert[1] < domains.y[0]) domains.y[0] = vert[1];
+      if (vert[1] > domains.y[1]) domains.y[1] = vert[1];
+      if (vert[2] < domains.score[0]) domains.score[0] = vert[2];
+      if (vert[2] > domains.score[1]) domains.score[1] = vert[2];
+    });
+    // get midpoint position along each axis
+    var midpoint = {
+      x: (domains.x[0] + domains.x[1])/2,
+      y: 1 - ((domains.y[0] + domains.y[1])/2),
+    };
+    // set the size scalar
+    var scalar = (0.005 / (domains.y[1] - domains.y[0]));
+    // identify the body vertices
+    var vertices = [];
+    body.forEach(function(vert, vertIdx) {
+      var x = vert[0];
+      var y = 1-vert[1];
+      var keys = vertexType == 'position'
+        ? {x: 'x', y: 'y'}
+        : {x: 'tx', y: 'ty'}
+      vertices.push({
+        x: data.cells[bodyIdx][keys.x] + (scalar * (x-midpoint.x)),
+        y: data.cells[bodyIdx][keys.y] + (scalar * (y-midpoint.y)),
+        score: vert[2],
+      })
+    })
+    // find the mean of all vertices in each dimension
+    var sums = {
+      x: 0,
+      y: 0,
+    };
+    vertices.forEach(function(vertex) {
+      if (vertex.score >= threshold) {
+        sums.x += vertex.x;
+        sums.y += vertex.y;
+      }
+    })
+    // determine the number of retained vertices
+    var n = vertices.filter(function(v) { return v.score >= threshold }).length;
+    // add the lines between the vertices
+    for (var i=0; i<pairs.length; i++) {
+      var a = vertices[pairs[i][0]];
+      var b = vertices[pairs[i][1]];
+      if (a.score < threshold || b.score < threshold) continue;
+      positions[positionsIdx++] = a.x;
+      positions[positionsIdx++] = a.y;
+      positions[positionsIdx++] = 0;
+      positions[positionsIdx++] = b.x;
+      positions[positionsIdx++] = b.y;
+      positions[positionsIdx++] = 0;
+      // todo: reconfigure body as instanced buffer geometry
+      midpoints[midpointsIdx++] = sums.x / n;
+      midpoints[midpointsIdx++] = sums.y / n;
+      midpoints[midpointsIdx++] = sums.x / n;
+      midpoints[midpointsIdx++] = sums.y / n;
+    }
+  })
+  return {
+    positions: new THREE.BufferAttribute(new Float32Array(positions), 3),
+    midpoints: new THREE.BufferAttribute(new Float32Array(midpoints), 2),
+  }
+}
+
+Lines.prototype.toggleLineDisplay = function() {
+  this.setDisplay(this.elems.select.value);
+}
+
+// selected must be 'lines' or 'images'
+Lines.prototype.setDisplay = function(selected) {
+  if (selected == 'poses') {
+    for (var i=0; i<world.group.children.length; i++) {
+      world.group.children[i].material.uniforms.display.value = 0.0;
+    }
+    lines.mesh.material.uniforms.display.value = 1.0;
+  } else {
+    for (var i=0; i<world.group.children.length; i++) {
+      world.group.children[i].material.uniforms.display.value = 1.0;
+    }
+    lines.mesh.material.uniforms.display.value = 0.0;
+  }
+}
+
+/**
 * Create a modal for larger image viewing
 **/
 
@@ -2296,7 +2487,12 @@ Modal.prototype.showCells = function(cellIndices, cellIdx) {
   // parse data attributes
   var multiImage = self.cellIndices.length > 1;
   var filename = data.json.images[self.cellIndices[self.cellIdx]];
-  var src = config.data.dir + '/originals/' + filename;
+  // conditionalize the path to the image
+  var suffix = filename.split('.')[ filename.split('.').length - 1 ];
+  var split = filename.split('-');
+  var src = data.json.images_cropped
+    ? config.data.dir + '/uncropped/' + split.slice(0, split.length-1).join('-') + '.' + suffix
+    : config.data.dir + '/originals/' + filename;
   // define function to show the modal
   function showModal(json) {
     var json = json || {};
@@ -2746,13 +2942,11 @@ function Settings() {
   this.elems = {
     tray: document.querySelector('#header-controls-bottom'),
     icon: document.querySelector('#settings-icon'),
-    canvas: document.querySelector('#pixplot-canvas'),
   }
   this.state = {
     open: false,
   }
   this.elems.icon.addEventListener('click', this.toggleOpen.bind(this));
-  this.elems.canvas.addEventListener('click', this.close.bind(this));
 }
 
 Settings.prototype.open = function() {
@@ -2812,6 +3006,7 @@ Hotspots.prototype.initialize = function() {
 }
 
 Hotspots.prototype.handleJson = function(json) {
+  if (json.length == 0) this.elems.nav.style.display = 'none';
   this.json = json;
   this.render();
 }
@@ -3126,6 +3321,10 @@ function Tooltip() {
     {
       elem: document.querySelector('#layout-categorical'),
       text: 'Arrange images into metadata groups',
+    },
+    {
+      elem: document.querySelector('#layout-pose'),
+      text: 'Cluster poses via UMAP dimensionality reduction',
     },
     {
       elem: document.querySelector('#settings-icon'),
@@ -3578,7 +3777,6 @@ var welcome = new Welcome();
 var webgl = new Webgl();
 var config = new Config();
 var filters = new Filters();
-var search = new Search();
 var picker = new Picker();
 var modal = new Modal();
 var keyboard = new Keyboard();
@@ -3587,6 +3785,7 @@ var layout = new Layout();
 var world = new World();
 var text = new Text();
 var dates = new Dates();
+var lines = new Lines();
 var lod = new LOD();
 var settings = new Settings();
 var tooltip = new Tooltip();

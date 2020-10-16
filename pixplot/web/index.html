@@ -45,29 +45,28 @@
     uniform mat4 projectionMatrix;
     uniform vec3 cameraPosition;
     uniform float scale;
-    uniform float scaleTarget;
+    uniform float targetScale;
     uniform float transitionPercent;
     uniform float scaleTransitionPercent;
     uniform float borderWidth;
-    uniform float delay;
 
-    attribute vec3 pos0;          // x y z position offsets for an instance
-    attribute vec3 pos1;          // x y z position to which we're transitioning
-    attribute vec3 color;         // unique color for cell; used for raycasting
-    attribute float width;        // px width of cell in lod texture
-    attribute float height;       // px height of cell in lod texture
-    attribute vec2 offset;        // px offset in tex from left, top
-    attribute float opacity;      // opacity value for cell
-    attribute float selected;     // 1 if the cell is selected else 0
-    attribute float textureIndex; // index of an instance's texture among all textures
+    attribute vec3 position;       // x y z position offsets for an instance
+    attribute vec3 targetPosition; // x y z position to which we're transitioning
+    attribute vec3 color;          // unique color for cell; used for raycasting
+    attribute float width;         // px width of cell in lod texture
+    attribute float height;        // px height of cell in lod texture
+    attribute vec2 offset;         // px offset in tex from left, top
+    attribute float opacity;       // opacity value for cell
+    attribute float selected;      // 1 if the cell is selected else 0
+    attribute float textureIndex;  // index of instance's texture among all textures
 
-    varying vec3 vColor;          // cell color
-    varying vec2 vOffset;         // px of cell offset left, top in texture
-    varying float vWidth;         // px width of cell in lod texture
-    varying float vHeight;        // px height of cell in lod texture
-    varying float vOpacity;       // cell opacity
-    varying float vSelected;      // 1 if this cell is selected else 0
-    varying float vTextureIndex;  // cell texture idx (varyings can't be int)
+    varying vec3 vColor;           // cell color
+    varying vec2 vOffset;          // px of cell offset left, top in texture
+    varying float vWidth;          // px width of cell in lod texture
+    varying float vHeight;         // px height of cell in lod texture
+    varying float vOpacity;        // cell opacity
+    varying float vSelected;       // 1 if this cell is selected else 0
+    varying float vTextureIndex;   // cell texture idx (varyings can't be int)
 
     void main() {
       // pass varyings to fragment shader
@@ -79,21 +78,15 @@
       vOpacity = opacity;
       vSelected = selected;
 
-      // determine how far this point has proceeded in its transition
-      float delayX = (pos1.x + 1.0) / 2.0;
-      float delayY = (pos0.y + 1.0) / 2.0;
-      // pos0 has domains -1:1, so the delay sum above is <= 2.0
-      float d = ((delayX + delayY) / 2.0) * delay;
-
-      float percent = clamp(transitionPercent - d, 0.0, 1.0);
+      float percent = clamp(transitionPercent, 0.0, 1.0);
 
       // set point position as a mixture between the position + target
-      vec3 pos = mix(pos0, pos1, smoothstep(0., 1., percent));
+      vec3 pos = mix(position, targetPosition, percent);
       vec4 world = modelViewMatrix * vec4(pos, 1.0);
       gl_Position = projectionMatrix * world;
 
       // use the unscaled point position and camera position to set point size
-      float s = mix(scale, scaleTarget, percent);
+      float s = mix(scale, targetScale, percent);
       float pointSize = s / -world.z;
 
       if (selected > 0.5) {
@@ -129,6 +122,7 @@
     uniform float lodPxHeight;
     uniform float borderWidth;
     uniform vec3 borderColor;
+    uniform float display;
 
     varying vec3 vColor;         // cell's color (for gpu picking)
     varying vec2 vOffset;        // cell's offset in px from left, top of tex
@@ -144,70 +138,74 @@
     #endif
 
     void main() {
-      // is this cell a LOD cell?
-      bool isLod = vTextureIndex < -0.5;
+      if (display < 0.5) {
+        discard;
+      } else {
+        // is this cell a LOD cell?
+        bool isLod = vTextureIndex < -0.5;
 
-      // get the width of the border on each side of the cell
-      float borderW = borderWidth / 2.0;
+        // get the width of the border on each side of the cell
+        float borderW = borderWidth / 2.0;
 
-      // find the width and height of this cell in its texture (in px)
-      float w = isLod ? vWidth : vWidth/vHeight*cellPxHeight;
-      float h = isLod ? vHeight : cellPxHeight;
+        // find the width and height of this cell in its texture (in px)
+        float w = isLod ? vWidth : vWidth/vHeight*cellPxHeight;
+        float h = isLod ? vHeight : cellPxHeight;
 
-      // find the length of the cell in its longest dimension (in px)
-      float big = max(w, h);
+        // find the length of the cell in its longest dimension (in px)
+        float big = max(w, h);
 
-      // set boolean indicating whether to center cells
-      bool center = true;
+        // set boolean indicating whether to center cells
+        bool center = true;
 
-      // find min, max vals of 0:1 scaled x axis to be textured
-      float x0 = center ? (big-w)/2.0/big : 0.0;
-      float x1 = center ? (w/big)+x0 : w / big;
+        // find min, max vals of 0:1 scaled x axis to be textured
+        float x0 = center ? (big-w)/2.0/big : 0.0;
+        float x1 = center ? (w/big)+x0 : w / big;
 
-      // find min, max vals of 0:1 scaled y axis to be textured
-      float y0 = center ? (big-h)/2.0/big : 0.0;
-      float y1 = center ? (h/big)+y0 : h / big;
+        // find min, max vals of 0:1 scaled y axis to be textured
+        float y0 = center ? (big-h)/2.0/big : 0.0;
+        float y1 = center ? (h/big)+y0 : h / big;
 
-      // clip the cell to center the texture on the x axis
-      if (h > w && (gl_PointCoord.x < x0 || gl_PointCoord.x > x1)) discard;
+        // clip the cell to center the texture on the x axis
+        if (h > w && (gl_PointCoord.x < x0 || gl_PointCoord.x > x1)) discard;
 
-      // if this cell's image is landscape clip bottom margin
-      else if (w > h && gl_PointCoord.y < y0 || gl_PointCoord.y > y1) discard;
+        // if this cell's image is landscape clip bottom margin
+        else if (w > h && gl_PointCoord.y < y0 || gl_PointCoord.y > y1) discard;
 
-      // if this shader is using vColor attributes skip texture processing
-      if (int(useColor) == 1) gl_FragColor = vec4(vColor, 1.0);
+        // if this shader is using vColor attributes skip texture processing
+        if (int(useColor) == 1) gl_FragColor = vec4(vColor, 1.0);
 
-      // this cell should be textured
-      else {
+        // this cell should be textured
+        else {
 
-        // check if the current pointcoord position is within the border
-        if (vSelected > 0.5 &&
-           (gl_PointCoord.x < x0 + borderW ||
-            gl_PointCoord.x > x1 - borderW ||
-            gl_PointCoord.y < y0 + borderW ||
-            gl_PointCoord.y > y1 - borderW)) {
-          gl_FragColor = vec4(borderColor, 1.0);
+          // check if the current pointcoord position is within the border
+          if (vSelected > 0.5 &&
+             (gl_PointCoord.x < x0 + borderW ||
+              gl_PointCoord.x > x1 - borderW ||
+              gl_PointCoord.y < y0 + borderW ||
+              gl_PointCoord.y > y1 - borderW)) {
+            gl_FragColor = vec4(borderColor, 1.0);
 
-        } else {
+          } else {
 
-          // get the x and y positions to sample for this cell's texture
-          float x = center ? gl_PointCoord.x - x0 : gl_PointCoord.x;
-          float y = center ? gl_PointCoord.y - y0 : gl_PointCoord.y;
+            // get the x and y positions to sample for this cell's texture
+            float x = center ? gl_PointCoord.x - x0 : gl_PointCoord.x;
+            float y = center ? gl_PointCoord.y - y0 : gl_PointCoord.y;
 
-          // scale the x and y positions to the size of the texture
-          vec2 uv = vOffset + vec2(x, y) * big;
+            // scale the x and y positions to the size of the texture
+            vec2 uv = vOffset + vec2(x, y) * big;
 
-          // set variables consumed by fragment tree below
-          vec2 scaledUv = isLod ? uv/lodAtlasPxPerSide : uv/cellAtlasPxPerSide;
-          int textureIndex = isLod ? -1 : int(vTextureIndex);
+            // set variables consumed by fragment tree below
+            vec2 scaledUv = isLod ? uv/lodAtlasPxPerSide : uv/cellAtlasPxPerSide;
+            int textureIndex = isLod ? -1 : int(vTextureIndex);
 
-          // target to be replaced by texture tree
-          TEXTURE_LOOKUP_TREE
+            // target to be replaced by texture tree
+            TEXTURE_LOOKUP_TREE
 
-          gl_FragColor = mix(gl_FragColor, vec4(0.0), 1.0-vOpacity);
-          gl_FragColor.a = 1.0;
+            gl_FragColor = mix(gl_FragColor, vec4(0.0), 1.0-vOpacity);
+            gl_FragColor.a = 1.0;
 
-          if (vSelected > 0.5) gl_FragColor = mix(gl_FragColor, vec4(borderColor, 1.0), 0.15);
+            if (vSelected > 0.5) gl_FragColor = mix(gl_FragColor, vec4(borderColor, 1.0), 0.15);
+          }
         }
       }
     }
@@ -291,6 +289,49 @@
     }
     </script>
 
+    <script type='x-shader/x-vertex' id='line-vertex-shader'>
+    precision highp float;
+
+    uniform mat4 modelViewMatrix;
+    uniform mat4 projectionMatrix;
+    uniform float transitionPercent;
+    uniform vec3 cameraPosition;
+    uniform float scale;
+    uniform float targetScale;
+
+    attribute vec3 position;
+    attribute vec3 targetPosition;
+    attribute vec2 midpoint;
+    attribute vec2 targetMidpoint;
+
+    void main() {
+      float percent = clamp(transitionPercent, 0.0, 1.0);
+      vec3 positionC = mix(position, targetPosition, percent);
+      vec2 midpointC = mix(midpoint, targetMidpoint, percent);
+      float scaleC = mix(scale, targetScale, percent);
+
+      // scale the pos
+      positionC.x -= ((midpointC.x - positionC.x) * scaleC * 0.2);
+      positionC.y -= ((midpointC.y - positionC.y) * scaleC * 0.2);
+
+      vec4 mvPos = modelViewMatrix * vec4(positionC, 1.0);
+      gl_Position = projectionMatrix * mvPos;
+    }
+    </script>
+
+    <script type='x-shader/x-fragment' id='line-fragment-shader'>
+    precision highp float;
+    uniform float display;
+
+    void main() {
+      if (display < 0.5) {
+        discard;
+      } else {
+        gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+      }
+    }
+    </script>
+
     <!-- Worker -->
     <script type='script/worker' id='worker'>
     self.onmessage = function(event) {
@@ -355,7 +396,7 @@
       </header>
 
       <div id='header-controls'>
-        <div id='header-controls-top'>
+        <div id='header-controls-top' class='no-highlight'>
           <div id='image-search-container'>
             <input id='image-search' type='text' placeholder='Search for an image'></input>
             <img id='image-search-icon' src='assets/images/icons/search-icon.svg'>
@@ -367,15 +408,23 @@
           </div>
           <div id='filters'></div>
           <div id='icons'>
-            <img id='layout-alphabetic' src='assets/images/icons/az-layout.svg' />
-            <img id='layout-umap' src='assets/images/icons/scatter-layout.svg' />
-            <img id='layout-grid' src='assets/images/icons/grid-layout.svg' />
-            <img id='layout-date' src='assets/images/icons/date-layout.svg' />
-            <img id='layout-categorical' src='assets/images/icons/categorical-layout.svg' />
+            <img class='layout-icon' id='layout-alphabetic' src='assets/images/icons/az-layout.svg' />
+            <img class='layout-icon' id='layout-umap' src='assets/images/icons/scatter-layout.svg' />
+            <img class='layout-icon' id='layout-grid' src='assets/images/icons/grid-layout.svg' />
+            <img class='layout-icon' id='layout-date' src='assets/images/icons/date-layout.svg' />
+            <img class='layout-icon' id='layout-categorical' src='assets/images/icons/categorical-layout.svg' />
+            <img class='layout-icon' id='layout-pose' src='assets/images/icons/pose-layout.svg' />
             <img id='settings-icon' src='assets/images/icons/gear-icon.svg' />
           </div>
         </div>
-        <div id='header-controls-bottom'>
+        <div id='header-controls-bottom' class='no-highlight'>
+          <div id='pose-display-container'>
+            <div class='settings-label'>Display</div>
+            <select id='pose-display-select'>
+              <option default value='images'>Images</option>
+              <option value='poses'>Poses</option>
+            </select>
+          </div>
           <div id='jitter-container'>
             <div class='settings-label'>Jitter</div>
             <input type='checkbox' id='jitter-input'>
@@ -459,7 +508,7 @@
               <a target='_blank' id='eye-icon' href='<%- meta.permalink || "#" %>'>
                 <img src='assets/images/icons/eye-icon.png' alt='eye icon' />
               </a>
-              <a id='download-icon' href='#'>
+              <a id='download-icon' href='<%- meta.src || "#" %>'>
                 <img src='assets/images/icons/download-icon.png' alt='download icon' />
               </a>
             </div>
@@ -477,9 +526,20 @@
               <span id='image-date'><%- meta.date ? '(' + meta.date + ')' : '' %></span>
             </div>
             <div class='modal-text-right'>
-              <div id='meta-category-container'>
-                <div class='meta-category'><%- meta.category %></div>
-              </div>
+              <% if (meta.category || meta.tags) { %>
+                <div id='meta-category-container'>
+                  <% if (meta.category) { %>
+                    <div class='meta-category'><%- meta.category %></div>
+                  <% }; %>
+                  <% if (meta.tags) { %>
+                    <% _.forEach(meta.tags, function(tag) { %>
+                      <% if (tag != meta.category) { %>
+                        <div class='meta-tag'><%- meta.tag %></div>
+                      <% } %>
+                    <% }) %>
+                  <% } %>
+                </div>
+              <% } %>
             </div>
           </div>
         </div>
@@ -555,7 +615,7 @@
     <script type='text/javascript' src='assets/vendor/dist/three.min.js'></script>
     <script type='text/javascript' src='assets/vendor/dist/lodash.min.js'></script>
     <script type='text/javascript' src='assets/js/object-assign-polyfill.js'></script>
-    <script type='text/javascript' src='assets/vendor/dist/tweenlite.min.js'></script>
+    <script type='text/javascript' src='assets/vendor/dist/gsap.min.js'></script>
     <script type='text/javascript' src='assets/vendor/dist/trackball-controls.min.js'></script>
     <script type='text/javascript' src='assets/vendor/dist/stats.min.js'></script>
     <script type='text/javascript' src='assets/vendor/dist/gunzip.min.js'></script>
