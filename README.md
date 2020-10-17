@@ -16,10 +16,11 @@ source activate 3.7
 Then you can install the dependencies by running:
 
 ```bash
-pip install pixplot -U
+pip uninstall pixplot
+pip install pip install https://github.com/yaledhlab/pix-plot/archive/master.zip
 ```
 
-The HTML viewer requires a WebGL-enabled browser.
+Please note that you will need to use Python 3.6 or Python 3.7 to install and use this package. The HTML viewer also requires a WebGL-enabled browser.
 
 ## Quickstart
 
