@@ -538,9 +538,7 @@ def get_umap_layout(**kwargs):
   print(' * creating UMAP layout')
   out_path = get_path('layouts', 'umap', **kwargs)
   if os.path.exists(out_path) and kwargs['use_cache']: return out_path
-  model = UMAP(n_neighbors=kwargs['n_neighbors'],
-    min_dist=kwargs['min_distance'],
-    metric=kwargs['metric'])
+  model = get_umap_model(**kwargs)
   # run PCA to reduce dimensionality of image vectors
   w = PCA(n_components=min(100, len(vecs))).fit_transform(vecs)
   # fetch categorical labels for images (if provided)
@@ -557,6 +555,14 @@ def get_umap_layout(**kwargs):
   # project the PCA space down to 2d for visualization
   z = model.fit(w, y=y if np.any(y) else None).embedding_
   return write_layout(out_path, z, **kwargs)
+
+
+def get_umap_model(**kwargs):
+  return UMAP(n_neighbors=kwargs['n_neighbors'],
+    min_dist=kwargs['min_distance'],
+    metric=kwargs['metric'],
+    random_state=kwargs['seed'],
+    transform_seed=kwargs['seed'])
 
 
 def get_tsne_layout(**kwargs):
@@ -663,9 +669,7 @@ def get_pose_layout(**kwargs):
     vecs.append(vec.flatten())
   vecs = np.array(vecs)
   # create lower-dimensional embedding of pose vectors
-  model = UMAP(n_neighbors=kwargs['n_neighbors'],
-    min_dist=kwargs['min_distance'],
-    metric=kwargs['metric'])
+  model = get_umap_model(**kwargs)
   z = model.fit(vecs).embedding_
   pose_layout_path = write_layout(out_path, z, **kwargs)
   return {
