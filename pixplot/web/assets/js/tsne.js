@@ -2945,7 +2945,7 @@ function Settings() {
     icon: document.querySelector('#settings-icon'),
   }
   this.state = {
-    open: true,
+    open: false,
   }
   this.elems.icon.addEventListener('click', this.toggleOpen.bind(this));
 }
