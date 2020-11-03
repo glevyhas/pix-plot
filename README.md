@@ -134,6 +134,20 @@ https://manifests.britishart.yale.edu/manifest/40009
 
 One could then specify these images as input by running `pixplot --images manifest.txt --n_clusters 2`
 
+## Plotting Poses
+
+In addition to the Inception-based image vectors, one can generate Mobilenet-based pose vectors for input images by installing an additional dependency:
+
+```bash
+pip install tf-pose==0.11.0
+```
+
+Then, when building a plot, one can pass the `--extract_poses` flag to the pixplot call:
+
+```bash
+pixplot --images "datasets/oslo/*.jpg" --extract_poses
+```
+
 ## Demonstrations (Developed with PixPlot 2.0 codebase)
 
 | Link | Image Count | Collection Info | Browse Images | Download for PixPlot

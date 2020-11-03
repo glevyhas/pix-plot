@@ -73,7 +73,8 @@ function Config() {
   this.atlasesPerTex = (this.size.texture/this.size.atlas)**2;
   this.isLocalhost = window.location.hostname.includes('localhost') ||
     window.location.hostname.includes('127.0.0.1') ||
-    window.location.hostname.includes('0.0.0.0');
+    window.location.hostname.includes('0.0.0.0') ||
+    window.location.hostname.includes('[::]');
 }
 
 /**
