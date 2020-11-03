@@ -54,7 +54,6 @@ setup(
     'scikit-learn==0.21.3',
     'scipy==1.4.0',
     'tensorflow==1.14.0',
-    'tf-pose==0.11.0',
     'umap-learn>=0.4.0',
     'yale-dhlab-rasterfairy>=1.0.3',
     'yale-dhlab-keras-preprocessing>=1.1.1',
