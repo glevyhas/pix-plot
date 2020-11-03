@@ -86,7 +86,7 @@ config = {
   'extract_poses': False,
   'min_size': 100,
   'min_score': 0.3,
-  'min_vertices': 14,
+  'min_vertices': 18,
   'plot_id': str(uuid.uuid1()),
   'seed': 24,
 }
