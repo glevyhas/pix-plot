@@ -709,6 +709,7 @@ nav h2 {
   border: 2px solid #ccc;
   display: none;
   margin-top: 8px;
+  background: #111;
 }
 
 #create-hotspot:hover {
