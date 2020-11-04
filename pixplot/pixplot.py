@@ -6,12 +6,10 @@ from keras.applications.inception_v3 import preprocess_input
 from keras.applications import InceptionV3, imagenet_utils
 from sklearn.metrics import pairwise_distances_argmin_min
 from keras.backend.tensorflow_backend import set_session
-from tf_pose.networks import get_graph_path, model_wh
 from collections import defaultdict, namedtuple
 from dateutil.parser import parse as parse_date
 from sklearn.preprocessing import minmax_scale
 from keras_preprocessing.image import load_img
-from tf_pose.estimator import TfPoseEstimator
 from pointgrid import align_points_to_grid
 from scipy.spatial.distance import cdist
 from distutils.dir_util import copy_tree
@@ -23,7 +21,6 @@ from keras.models import Model
 from scipy.stats import kde
 from hdbscan import HDBSCAN
 import keras.backend as K
-from tf_pose import common
 import tensorflow as tf
 import multiprocessing
 from umap import UMAP
@@ -54,6 +51,13 @@ try:
   from urllib.parse import unquote # python 3
 except:
   from urllib import unquote # python 2
+
+try:
+  from tf_pose.networks import get_graph_path, model_wh
+  from tf_pose.estimator import TfPoseEstimator
+  from tf_pose import common
+except:
+  pass
 
 # handle dynamic GPU memory allocation
 tf_config = tf.compat.v1.ConfigProto()
