@@ -257,6 +257,8 @@ def stream_images(**kwargs):
 def clean_filename(s, **kwargs):
   '''Given a string that points to a filename, return a clean filename'''
   s = unquote(os.path.basename(s))
+  invalid_chars = '<>:;,"/\\|?*[]'
+  for i in invalid_chars: s = s.replace(i, '')
   if kwargs.get('extract_poses', False):
     extension = s.split('.')[-1]
     s = '-'.join(s.split('-')[:-1]) + '.' + extension
