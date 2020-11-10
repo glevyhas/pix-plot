@@ -1,6 +1,6 @@
 from os.path import join, exists, dirname, realpath
 from setuptools import setup
-import os
+import os, sys
 
 try:
   # python 2
@@ -8,6 +8,10 @@ try:
 except:
   # python 3
   from urllib.request import retrieve as download_function
+
+# validate python version
+if sys.version_info < (3,6):
+  sys.exit('Sorry, PixPlot requires Python 3.6 or later')
 
 # before installing the base package, download the model
 print(' * downoading cmu model')
