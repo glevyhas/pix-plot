@@ -34,7 +34,7 @@
 *   atlas: height & width of each small atlas (in px)
 *   texture: height & width of each texture (in px)
 *   lodTexture: height & width of the large (detail) texture
- transition:
+* transition:
 *   duration: number of seconds each layout transition should take
 *   ease: TweenLite ease config values for transitions
 * atlasesPerTex: number of atlases to include in each texture
@@ -2489,10 +2489,8 @@ Modal.prototype.showCells = function(cellIndices, cellIdx) {
   var multiImage = self.cellIndices.length > 1;
   var filename = data.json.images[self.cellIndices[self.cellIdx]];
   // conditionalize the path to the image
-  var suffix = filename.split('.')[ filename.split('.').length - 1 ];
-  var split = filename.split('-');
   var src = data.json.images_cropped
-    ? config.data.dir + '/uncropped/' + split.slice(0, split.length-1).join('-') + '.' + suffix
+    ? config.data.dir + '/uncropped/' + trimFilenameSuffix(filename)
     : config.data.dir + '/originals/' + filename;
   // define function to show the modal
   function showModal(json) {
@@ -2928,7 +2926,9 @@ Filter.prototype.onChange = function(e) {
         return obj;
       }, {})
       this.imageSelected = function(image) {
-        return image in vals;
+        return data.json.images_cropped
+          ? trimFilenameSuffix(image) in vals
+          : image in vals
       }
       filters.filterImages();
     }.bind(this))
@@ -3585,7 +3585,7 @@ function getCanvasSize() {
 }
 
 /**
-* Get the user's current url route
+* Filename and path helpers
 **/
 
 function getPath(path) {
@@ -3593,6 +3593,12 @@ function getPath(path) {
   base += window.location.pathname.replace('index.html', '');
   base += path.replace('output/', '');
   return base;
+}
+
+function trimFilenameSuffix(filename) {
+  var suffix = filename.split('.')[ filename.split('.').length - 1 ];
+  var split = filename.split('-');
+  return split.slice(0, split.length-1).join('-') + '.' + suffix;
 }
 
 /**
