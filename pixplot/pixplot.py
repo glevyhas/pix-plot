@@ -53,6 +53,11 @@ except:
   from urllib import unquote # python 2
 
 try:
+  from urllib.request import retrieve as download_function # python 3
+except:
+  from urllib.request import urlretrieve as download_function # python 2
+
+try:
   from tf_pose.networks import get_graph_path, model_wh
   from tf_pose.estimator import TfPoseEstimator
   from tf_pose import common
@@ -257,6 +262,8 @@ def stream_images(**kwargs):
 def clean_filename(s, **kwargs):
   '''Given a string that points to a filename, return a clean filename'''
   s = unquote(os.path.basename(s))
+  invalid_chars = '<>:;,"/\\|?*[]'
+  for i in invalid_chars: s = s.replace(i, '')
   if kwargs.get('extract_poses', False):
     extension = s.split('.')[-1]
     s = '-'.join(s.split('-')[:-1]) + '.' + extension
@@ -720,6 +727,7 @@ def crop_openpose_figure(im, vec, margin=0.4):
 def subdivide_images_with_openpose(**kwargs):
   '''Cut each input image into single-pose subimages and save vectors for each'''
   print(' * subdividing images with OpenPose model')
+  download_cmu_model()
   # determine the subset of input images for which we've already parsed pose vectors
   parsed_path = os.path.join(kwargs['out_dir'], 'image-vectors', 'openpose', 'parsed.json')
   vectors_path = os.path.join(kwargs['out_dir'], 'image-vectors', 'openpose', 'vectors.json')
@@ -732,7 +740,7 @@ def subdivide_images_with_openpose(**kwargs):
   image_dir = os.path.join(kwargs['out_dir'], 'poses')
   if not os.path.exists(image_dir): os.makedirs(image_dir)
   # subdivde images
-  graph_path = os.path.join(dirname(realpath(__file__)), 'models', 'graph', 'cmu', 'graph_opt.pb')
+  graph_path = get_cmu_graph_path()
   estimator = TfPoseEstimator(graph_path, target_size=(432, 368))
   pose_image_paths = []
   vectors_list = []
@@ -798,6 +806,20 @@ def normalize_2d_vector(arr):
     y-np.mean(y),
   ]).T
 
+
+def download_cmu_model():
+  '''Download the pretrained openpose model to be used'''
+  url = 'https://lab-apps.s3-us-west-2.amazonaws.com/pixplot-assets/tf-pose/graph_opt.pb'
+  out_path = get_cmu_graph_path()
+  print(' * downoading cmu model to ' + out_path)
+  out_dir = os.path.split(out_path)[0]
+  if not exists(out_dir): os.makedirs(out_dir)
+  if not exists(out_path): download_function(url, out_path)
+
+
+def get_cmu_graph_path():
+  '''Return the path to the location where the CMU graph will be stored'''
+  return os.path.join(dirname(realpath(__file__)), 'models', 'cmu', 'graph_opt.pb')
 
 ##
 # Date Layout

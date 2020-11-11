@@ -1,21 +1,10 @@
 from os.path import join, exists, dirname, realpath
 from setuptools import setup
-import os
+import os, sys
 
-try:
-  # python 2
-  from urllib.request import urlretrieve as download_function
-except:
-  # python 3
-  from urllib.request import retrieve as download_function
-
-# before installing the base package, download the model
-print(' * downoading cmu model')
-url = 'https://lab-apps.s3-us-west-2.amazonaws.com/pixplot-assets/tf-pose/graph_opt.pb'
-out_dir = join(dirname(realpath(__file__)), 'pixplot', 'models', 'graph', 'cmu')
-if not exists(out_dir): os.makedirs(out_dir)
-out_path = join(out_dir, 'graph_opt.pb')
-if not exists(out_path): download_function(url, out_path)
+# validate python version
+if sys.version_info < (3,6):
+  sys.exit('Sorry, PixPlot requires Python 3.6 or later')
 
 # populate list of all paths in `./pixplot/web`
 web = []
@@ -28,7 +17,7 @@ for i in dirs:
 
 setup(
   name='pixplot',
-  version='0.0.101',
+  version='0.0.102',
   packages=['pixplot'],
   package_data={
     'pixplot': web,
