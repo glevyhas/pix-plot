@@ -503,12 +503,28 @@
       <div class='modal-content'>
         <div class='modal-x'>✕</div>
         <div class='modal-top'>
-          <div class='modal-top-content' id='selected-image-parent'>
+          <div id='selected-image-parent' class='modal-top-content'>
+            <svg id='selected-image-svg' x='0' y='0' preserveAspectRatio='xMidYMid meet'>
+              <defs>
+                <filter id='blur-filter'>
+                  <feGaussianBlur stdDeviation='0.25' />
+                </filter>
+                <mask id='blur-mask'></mask>
+              </defs>
+              <rect x='0' y='0' width='100%' height='100%' fill='#000'></rect>
+              <image id='svg-image-filtered' x='0' y='0' width='100%' height='100%'></image>
+              <image id='svg-image-unfiltered' x='0' y='0' width='100%' height='100%'></image>
+            </svg>
             <div class='icons'>
-              <a target='_blank' id='eye-icon' href='<%- meta.permalink || "#" %>'>
+              <% if (hasPose) { %>
+                <div id='pose-highlight-icon'>
+                  <img src='assets/images/icons/pose-icon.svg' alt='eye icon' />
+                </div>
+              <% } %>
+              <a target='_blank' id='eye-icon' href='<%- meta.permalink || meta.src %>'>
                 <img src='assets/images/icons/eye-icon.png' alt='eye icon' />
               </a>
-              <a id='download-icon' href='<%- meta.src || "#" %>'>
+              <a id='download-icon' href='<%- meta.src || "#" %>' download>
                 <img src='assets/images/icons/download-icon.png' alt='download icon' />
               </a>
             </div>
@@ -622,6 +638,7 @@
     <script type='text/javascript' src='assets/vendor/dist/papaparse.min.js'></script>
     <script type='text/javascript' src='assets/vendor/dist/no-ui-slider.min.js'></script>
     <script type='text/javascript' src='assets/vendor/dist/jszip.min.js'></script>
+    <script type='text/javascript' src='https://cdnjs.cloudflare.com/ajax/libs/d3/6.2.0/d3.min.js'></script>
     <script type='text/javascript' src='assets/js/tsne.js'></script>
     <script>
       (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){

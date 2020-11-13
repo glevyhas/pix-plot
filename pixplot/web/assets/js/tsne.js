@@ -2478,6 +2478,9 @@ function Modal() {
   this.cellIdx = null;
   this.cellIndices = [];
   this.addEventListeners();
+  this.state = {
+    highlightPose: false,
+  }
 }
 
 Modal.prototype.showCells = function(cellIndices, cellIdx) {
@@ -2486,7 +2489,6 @@ Modal.prototype.showCells = function(cellIndices, cellIdx) {
   self.cellIndices = Object.assign([], cellIndices);
   self.cellIdx = !isNaN(parseInt(cellIdx)) ? parseInt(cellIdx) : 0;
   // parse data attributes
-  var multiImage = self.cellIndices.length > 1;
   var filename = data.json.images[self.cellIndices[self.cellIdx]];
   // conditionalize the path to the image
   var src = data.json.images_cropped
@@ -2497,15 +2499,25 @@ Modal.prototype.showCells = function(cellIndices, cellIdx) {
     var json = json || {};
     var template = document.querySelector('#selected-image-template').textContent;
     var target = document.querySelector('#selected-image-target');
+    var hasPose = 'pose' in data.json.layouts && data.json.layouts['pose'];
     var templateData = {
-      multiImage: multiImage,
+      hasPose: hasPose,
+      multiImage: self.cellIndices.length > 1,
       meta: Object.assign({}, json || {}, {
         src: src,
         filename: json.filename || filename,
       })
     }
-    target.innerHTML = _.template(template)(templateData)
+    target.innerHTML = _.template(template)(templateData);
     target.style.display = 'block';
+    // add the image to the svg
+    document.querySelector('#svg-image-filtered').setAttribute('href', json.image.src);
+    document.querySelector('#svg-image-unfiltered').setAttribute('href', json.image.src);
+    // add the click listener to the pose icon if relevant
+    if (hasPose) {
+      document.querySelector('#pose-highlight-icon').addEventListener('click', self.togglePoseHighlight.bind(self))
+      window.addEventListener('resize', self.resizePoseHighlight.bind(self));
+    }
     // inject the loaded image into the DOM
     document.querySelector('#selected-image-parent').appendChild(json.image);
   }
@@ -2524,6 +2536,7 @@ Modal.prototype.showCells = function(cellIndices, cellIdx) {
 Modal.prototype.close = function() {
   window.location.href = '#';
   document.querySelector('#selected-image-target').style.display = 'none';
+  window.removeEventListener('resize', self.resizePoseHighlight);
   this.cellIndices = [];
   this.cellIdx = null;
   this.displayed = false;
@@ -2552,6 +2565,105 @@ Modal.prototype.showNextCell = function() {
     ? this.cellIdx + 1
     : 0;
   this.showCells(this.cellIndices, cellIdx);
+}
+
+Modal.prototype.togglePoseHighlight = function() {
+  var highlightPose = !this.state.highlightPose;
+  if (highlightPose) {
+    document.querySelector('#pose-highlight-icon').classList.add('active');
+    this.applyGaussianFilter();
+  } else {
+    document.querySelector('#pose-highlight-icon').classList.remove('active');
+    this.removeGaussianFilter();
+  }
+  this.state.highlightPose = highlightPose;
+}
+
+Modal.prototype.applyGaussianFilter = function() {
+  // remove the extant ellipse if any
+  var elem = document.querySelector('#blur-ellipse');
+  if (elem) elem.parentNode.removeChild(elem);
+  // identify the svg to which the ellipse will be added
+  var elem = document.querySelector('#selected-image-svg');
+  var box = elem.getBoundingClientRect();
+  // get the padding of the svg / image elements
+  var padding = {};
+  ['top', 'right', 'bottom', 'left'].forEach(function(i) {
+    var s = getComputedStyle(elem, null).getPropertyValue('padding-' + i);
+    padding[i] = parseInt(s.replace('px', ''));
+  })
+  // w,h of the svg / image elements
+  var w = box.width - padding.left - padding.right;
+  var h = box.height - padding.top - padding.bottom;
+  // get the vertex data
+  var threshold = 0.1;
+  var lineData = lines.json[modal.cellIndices[modal.cellIdx]];
+  var vertices = [];
+  for (var i=0; i<lineData.length; i++) {
+    var score = lineData[i][2];
+    if (score >= threshold) {
+      vertices.push({
+        x: lineData[i][0] * w,
+        y: lineData[i][1] * h,
+        score: score,
+      })
+    }
+  }
+  var sums = {
+    x: 0,
+    y: 0,
+  };
+  var domains = {
+    x: [
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+    ],
+    y: [
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+    ],
+  }
+  vertices.forEach(function(v) {
+    sums.x += v.x;
+    sums.y += v.y;
+    if (v.x < domains.x[0]) domains.x[0] = v.x;
+    if (v.x > domains.x[1]) domains.x[1] = v.x;
+    if (v.y < domains.y[0]) domains.y[0] = v.y;
+    if (v.y > domains.y[1]) domains.y[1] = v.y;
+  })
+  // raw pixel position of ellipse for current screen size
+  var raw = {
+    'cx': sums.x / vertices.length,
+    'cy': (sums.y * 1.1) / vertices.length,
+    'rx': (domains.x[1] - domains.x[0]) * 0.7,
+    'ry': (domains.y[1] - domains.y[0]) * 0.7,
+  }
+  var normalized = {
+    'cx': (raw.cx / w) * 100 + '%',
+    'cy': (raw.cy / h) * 100 + '%',
+    'rx': (raw.rx / w) * 100 + '%',
+    'ry': (raw.ry / h) * 100 + '%',
+  }
+  var ellipse = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+  ellipse.setAttribute('cx', raw.cx);
+  ellipse.setAttribute('cy', raw.cy);
+  ellipse.setAttribute('rx', raw.rx);
+  ellipse.setAttribute('ry', raw.ry);
+  ellipse.setAttribute('fill', '#ffffff');
+  ellipse.setAttribute('filter', 'url(#blur-filter)');
+  ellipse.setAttribute('id', 'blur-ellipse');
+  document.querySelector('#blur-mask').appendChild(ellipse);
+  // hide the original image
+  document.querySelector('#selected-image').style.opacity = 0;
+  document.querySelector('#svg-image-filtered').style.opacity = 0.25;
+}
+
+Modal.prototype.removeGaussianFilter = function() {
+  document.querySelector('#svg-image-filtered').style.opacity = 1;
+}
+
+Modal.prototype.resizePoseHighlight = function() {
+  if (this.state.highlightPose) this.applyGaussianFilter();
 }
 
 /**
