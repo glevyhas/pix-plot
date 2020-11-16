@@ -83,6 +83,7 @@ config = {
   'use_cache': True,
   'encoding': 'utf8',
   'min_cluster_size': 20,
+  'max_clusters': 10,
   'atlas_size': 2048,
   'cell_size': 32,
   'lod_cell_height': 128,
@@ -1160,6 +1161,8 @@ def get_hotspots(**kwargs):
   clusters = sorted(clusters, key=lambda i: len(i['images']), reverse=True)
   for idx, i in enumerate(clusters):
     i['label'] = 'Cluster {}'.format(idx+1)
+  # slice off the first `max_clusters`
+  clusters = clusters[:kwargs['max_clusters']]
   # save the hotspots to disk and return the path to the saved json
   print(' * found', len(clusters), 'hotspots')
   return write_json(get_path('hotspots', 'hotspot', **kwargs), clusters, **kwargs)
@@ -1266,6 +1269,7 @@ def parse():
   parser.add_argument('--use_cache', type=bool, default=config['use_cache'], help='given inputs identical to prior inputs, load outputs from cache', required=False)
   parser.add_argument('--encoding', type=str, default=config['encoding'], help='the encoding of input metadata', required=False)
   parser.add_argument('--min_cluster_size', type=int, default=config['min_cluster_size'], help='the minimum number of images in a cluster', required=False)
+  parser.add_argument('--max_clusters', type=int, default=config['max_clusters'], help='the maximum number of clusters to return', required=False)
   parser.add_argument('--out_dir', type=str, default=config['out_dir'], help='the directory to which outputs will be saved', required=False)
   parser.add_argument('--cell_size', type=int, default=config['cell_size'], help='the size of atlas cells in px', required=False)
   parser.add_argument('--n_neighbors', type=int, default=config['n_neighbors'], help='the n_neighbors argument for UMAP')
