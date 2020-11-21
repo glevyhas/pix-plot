@@ -13,7 +13,7 @@ for i in dirs:
   for root, subdirs, files in os.walk(i):
     if not files: continue
     for file in files:
-      web.append(join(root.replace('pixplot/', ''), file))
+      web.append(join(root.replace('pixplot/', '').replace('pixplot\\',''), file))
 
 setup(
   name='pixplot',
