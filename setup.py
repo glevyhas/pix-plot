@@ -46,6 +46,7 @@ setup(
     'umap-learn==0.4.0',
     'yale-dhlab-rasterfairy>=1.0.3',
     'yale-dhlab-keras-preprocessing>=1.1.1',
+    'matplotlib'
   ],
   entry_points={
     'console_scripts': [
