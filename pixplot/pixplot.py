@@ -19,7 +19,6 @@ from iiif_downloader import Manifest
 from rasterfairy import coonswarp
 from keras.models import Model
 from scipy.stats import kde
-from hdbscan import HDBSCAN
 import keras.backend as K
 import tensorflow as tf
 import multiprocessing
@@ -64,6 +63,13 @@ try:
 except:
   pass
 
+try:
+  from hdbscan import HDBSCAN
+  cluster_method = 'hdbscan'
+except:
+  from sklearn.cluster import KMeans
+  cluster_method = 'kmeans'
+
 # handle dynamic GPU memory allocation
 tf_config = tf.compat.v1.ConfigProto()
 tf_config.gpu_options.allow_growth = True
@@ -98,6 +104,7 @@ config = {
   'min_vertices': 18,
   'plot_id': str(uuid.uuid1()),
   'seed': 24,
+  'n_clusters': 12,
 }
 
 
@@ -1113,16 +1120,10 @@ def read_json(path, **kwargs):
 
 def get_hotspots(**kwargs):
   '''Return the stable clusters from the condensed tree of connected components from the density graph'''
-  print(' * HDBSCAN clustering data with ' + str(multiprocessing.cpu_count()) + ' cores...')
-  config = {
-    'core_dist_n_jobs': multiprocessing.cpu_count(),
-    'min_cluster_size': kwargs['min_cluster_size'],
-    'cluster_selection_epsilon': 0.01,
-    'min_samples': 1,
-    'approx_min_span_tree': False,
-  }
+  print(' * Clustering data with {}'.format(cluster_method))
+  model = get_cluster_model(**kwargs)
   v = kwargs['vecs']
-  z = HDBSCAN(**config).fit(v)
+  z = model.fit(v)
   # create a map from cluster label to image indices in cluster
   d = defaultdict(lambda: defaultdict(list))
   for idx, i in enumerate(z.labels_):
@@ -1163,6 +1164,21 @@ def get_hotspots(**kwargs):
   # save the hotspots to disk and return the path to the saved json
   print(' * found', len(clusters), 'hotspots')
   return write_json(get_path('hotspots', 'hotspot', **kwargs), clusters, **kwargs)
+
+
+def get_cluster_model(**kwargs):
+  '''Return a model with .fit() method that can be used to cluster input vectors'''
+  if cluster_method == 'hdbscan':
+    config = {
+      'core_dist_n_jobs': multiprocessing.cpu_count(),
+      'min_cluster_size': kwargs['min_cluster_size'],
+      'cluster_selection_epsilon': 0.01,
+      'min_samples': 1,
+      'approx_min_span_tree': False,
+    }
+    return HDBSCAN(**config)
+  else:
+    return KMeans(n_clusters=kwargs['n_clusters'], random_state=kwargs['seed'])
 
 
 def get_heightmap(path, label, **kwargs):
@@ -1281,6 +1297,7 @@ def parse():
   parser.add_argument('--shuffle', action='store_true', help='shuffle the input images before data processing begins')
   parser.add_argument('--plot_id', type=str, default=config['plot_id'], help='unique id for a plot; useful for resuming processing on a started plot')
   parser.add_argument('--seed', type=int, default=config['seed'], help='seed for random processes')
+  parser.add_argument('--n_clusters', type=int, default=config['n_clusters'], help='number of clusters to use when clustering with kmeans')
   config.update(vars(parser.parse_args()))
   process_images(**config)
 
