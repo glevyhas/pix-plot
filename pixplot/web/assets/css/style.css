@@ -602,18 +602,16 @@ nav h2 {
 
 #hotspots {
   width: 75px;
-  padding: 0 15px;
 }
 
 .hotspot {
-  padding: 6px 0;
+  padding: 12px 15px 5px;
   display: inline-block;
   text-align: center;
   width: 75px;
   font-size: 12px;
   color: #b3b3b3;
   position: relative;
-  transition: opacity 0.3s;
 }
 
 .hotspot-image {
@@ -625,7 +623,7 @@ nav h2 {
 .hotspot-bar-container {
   height: 5px;
   background: #444;
-  margin: 4px 0;
+  margin: 6px 0 4px;
 }
 
 .hotspot-bar-inner {
@@ -641,23 +639,30 @@ nav h2 {
 
 .hotspot-action {
   position: absolute;
-  top: 1px;
+  top: -6px;
   width: 12px;
   height: 12px;
   vertical-align: top;
-  box-shadow: 0px 0px 3px #000;
   cursor: pointer;
   padding: 1px;
   font-size: 8px;
   line-height: 13px;
   border-radius: 2px;
+  z-index: 1;
+}
+
+.hotspot .remove-hotspot-x,
+.hotspot .refresh-hotspot {
+  top: 6px;
+  box-shadow: 0px 0px 3px #000;
 }
 
 .hotspot .remove-hotspot-x {
-  left: -7px;
+  right: 9px;
   background: #9c1717;
   color: #eee;
   line-height: 12px;
+  display: none;
 }
 
 .hotspot .remove-hotspot-x:hover {
@@ -666,20 +671,18 @@ nav h2 {
 
 .hotspot .drag-hotspot,
 .hotspot .refresh-hotspot {
-  background: #2f2f2f;
   color: #fff;
 }
 
 .hotspot .drag-hotspot {
-  right: -7px;
-  font-size: 11px;
+  left: 6px;
+  font-size: 19px;
   line-height: 12px;
   cursor: grab;
-}
-
-.hotspot .drag-hotspot:hover,
-.hotspot .refresh-hotspot:hover {
-  background: #444;
+  transform: rotate(90deg);
+  top: 50%;
+  margin-top: -14px;
+  display: none;
 }
 
 .hotspot.dragging,
@@ -689,18 +692,47 @@ nav h2 {
 
 .hotspot .refresh-hotspot {
   position: absolute;
-  right: -7px;
-  top: 20px;
-  width: 10px;
-  height: 10px;
+  left: 9px;
   padding: 2px;
+  display: none;
+  background: #414141;
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+}
+
+.hotspot .refresh-hotspot:hover {
+  opacity: 1;
+}
+
+.hotspot:hover {
+  color: #eab755;
+  background: #111;
+}
+
+.hotspot:hover .hotspot-image {
+  outline: 2px solid #fff;
+}
+
+.hotspot:hover .hotspot-label {
+  background: #222;
+}
+
+.hotspot:hover .hotspot-image {
+  opacity: 0.3;
+}
+
+.hotspot:hover .remove-hotspot-x,
+.hotspot:hover .refresh-hotspot,
+.hotspot:hover .drag-hotspot {
+  display: inline-block;
 }
 
 /**
 * Hotspot actions
 **/
 
-#hotspot-actions {
+#hotspot-achotspot-0tions {
   position: absolute;
   left: 115px;
   bottom: 10px;

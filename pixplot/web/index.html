@@ -6,7 +6,7 @@
     <link rel='stylesheet' type='text/css' href='assets/css/style.css'>
     <title>Visualizing Image Fields</title>
     <meta charset='utf-8'/>
-    <meta name='author' content='Douglas Duhaime'>
+    <meta name='author' content='Yale Digital Humanities Lab'>
   </head>
   <body>
     <!-- version: VERSION_NUMBER -->
@@ -473,22 +473,23 @@
         <div id='hotspots'></div>
         <script type='text/html' id='hotspot-template'>
           <% _.forEach(hotspots, function(hotspot, idx) { %>
-            <div class='hotspot' id='hotspot-<%= idx %>'
-                draggable='<%= isLocalhost %>'>
+            <div class='hotspot' id='hotspot-<%= idx %>' draggable='<%= isLocalhost %>'>
               <% if (isLocalhost) { %>
                 <div class='hotspot-action remove-hotspot-x'>✕</div>
-                <div class='hotspot-action drag-hotspot'>⠿</div>
+                <div class='hotspot-action drag-hotspot'>...</div>
                 <img class='hotspot-action refresh-hotspot' src='assets/images/icons/refresh.svg'>
               <% } %>
-              <img class='hotspot-image' src='data/thumbs/<%= hotspot.img %>'>
-              <div class='hotspot-bar-container'>
-                <div class='hotspot-bar-inner'></div>
+              <div class='hotspot-body'>
+                <img class='hotspot-image' src='data/thumbs/<%= hotspot.img %>'>
+                <div class='hotspot-bar-container'>
+                  <div class='hotspot-bar-inner'></div>
+                </div>
+                <% if (isLocalhost) { %>
+                  <div class='hotspot-label' contenteditable='true' ><%= hotspot.label %></div>
+                <% } else { %>
+                  <div class='hotspot-label'><%= hotspot.label %></div>
+                <% } %>
               </div>
-              <% if (isLocalhost) { %>
-                <div class='hotspot-label' contenteditable='true' ><%= hotspot.label %></div>
-              <% } else { %>
-                <div class='hotspot-label'><%= hotspot.label %></div>
-              <% } %>
             </div>
           <% }); %>
         </script>

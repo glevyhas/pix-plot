@@ -3188,10 +3188,6 @@ Hotspots.prototype.render = function() {
       elem.classList.add('dragging');
       e.dataTransfer.setData('text', id);
     })
-    // fade the hotspot in
-    setTimeout(function(i) {
-      hotspots[i].style.opacity = 1;
-    }.bind(this, i), i*100);
   }
 }
 
