@@ -3591,7 +3591,7 @@ function getCanvasSize() {
 function getPath(path) {
   var base = window.location.origin;
   base += window.location.pathname.replace('index.html', '');
-  base += path.replace('output/', '');
+  base += path.replace('\\','/').replace('output/', '');
   return base;
 }
 

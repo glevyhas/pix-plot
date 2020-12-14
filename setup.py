@@ -13,7 +13,7 @@ for i in dirs:
   for root, subdirs, files in os.walk(i):
     if not files: continue
     for file in files:
-      web.append(join(root.replace('pixplot/', ''), file))
+      web.append(join(root.replace('pixplot/', '').replace('pixplot\\',''), file))
 
 setup(
   name='pixplot',
@@ -46,6 +46,7 @@ setup(
     'umap-learn==0.4.0',
     'yale-dhlab-rasterfairy>=1.0.3',
     'yale-dhlab-keras-preprocessing>=1.1.1',
+    'matplotlib'
   ],
   entry_points={
     'console_scripts': [
