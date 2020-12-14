@@ -563,7 +563,7 @@ nav {
   width: 106px;
   height: auto;
   box-sizing: border-box;
-  padding: 60px 0 0;
+  padding: 50px 0 0;
   background: #222;
   box-shadow: 1px 0px 2px rgba(0, 0, 0, 0.7);
   transition: opacity 0.5s;
@@ -591,12 +591,13 @@ nav.disabled #nav-inner {
 }
 
 nav h2 {
-  font-size: 0.9em;
+  font-size: 12px;
+  letter-spacing: 0.05em;
   line-height: 1.05em;
   text-align: center;
   margin: 15px 0 7px;
   text-transform: uppercase;
-  font-weight: 400;
+  font-weight: 800;
 }
 
 #hotspots {
@@ -609,7 +610,8 @@ nav h2 {
   display: inline-block;
   text-align: center;
   width: 75px;
-  font-size: 13px;
+  font-size: 12px;
+  color: #b3b3b3;
   position: relative;
   transition: opacity 0.3s;
 }
@@ -655,6 +657,7 @@ nav h2 {
   left: -7px;
   background: #9c1717;
   color: #eee;
+  line-height: 12px;
 }
 
 .hotspot .remove-hotspot-x:hover {
@@ -967,12 +970,15 @@ button {
   margin: 0 auto;
   font-size: 14px;
   font-weight: 600;
-  opacity: 0.4;
   transition: opacity .3s;
   cursor: pointer;
 }
 
-button.active {
+#enter-button {
+  opacity: 0.4;
+}
+
+#enter-button.active {
   opacity: 1;
 }
 
@@ -1277,13 +1283,14 @@ noscript {
   opacity: 1.0;
 }
 
-#select-tooltip {
+/**
+* Dismissable Tooltips
+**/
+
+.dismissible-tooltip {
   position: absolute;
-  left: -168px;
   z-index: 1;
   color: #fff;
-  bottom: 0px;
-  width: 126px;
   font-size: 12px;
   padding: 13px;
   border: 1px solid #717171;
@@ -1291,44 +1298,66 @@ noscript {
   border-radius: 3px;
 }
 
-#select-tooltip::before {
+.dismissible-tooltip#select-tooltip {
+  left: -168px;
+  bottom: 0px;
+  width: 126px;
+}
+
+.dismissible-tooltip#hotspots-tooltip {
+  left: 120px;
+  top: 100px;
+  width: 150px;
+}
+
+.dismissible-tooltip::before {
   content: '';
   width: 10px;
   height: 10px;
   transform: rotate(45deg);
   position: absolute;
-  right: -6px;
-  bottom: 14px;
   border-right: 1px solid #717171;
   border-top: 1px solid #717171;
 }
 
-#select-tooltip,
-#select-tooltip::before {
+.dismissible-tooltip#select-tooltip::before {
+  right: -6px;
+  bottom: 14px;
+}
+
+.dismissible-tooltip#hotspots-tooltip::before {
+  left: -6px;
+  top: 23px;
+  transform: rotate(225deg);
+}
+
+.dismissible-tooltip,
+.dismissible-tooltip::before {
   background: #222;
 }
 
-#select-tooltip-heading {
+.dismissible-tooltip b {
   font-weight: 800;
 }
 
-#select-tooltip p {
+.dismissible-tooltip p {
   line-height: 1.4em;
   margin: 5px 0;
 }
 
-#select-tooltip-button {
+.dismissible-tooltip button {
   display: inline-block;
-  border: 2px solid #F2C54A;
+  border: 1px solid #F2C54A;
   padding: 3px 20px;
   margin-top: 4px;
   border-radius: 3px;
   color: #F2C54A;
   font-weight: 800;
   cursor: pointer;
+  background: transparent;
 }
 
-#select-tooltip-button:hover {
+.dismissible-tooltip button:hover {
   background: #F2C54A;
   color: #222;
 }

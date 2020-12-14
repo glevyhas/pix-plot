@@ -494,6 +494,12 @@
         </script>
       </div>
     </nav>
+    <!-- Dismissible Tooltip: Hotspots -->
+    <div class='dismissible-tooltip' id='hotspots-tooltip'>
+      <b>Explore Image Clusters</b>
+      <p>Select a hotspot to explore visually similar clusters.</p>
+      <button id='hotspots-tooltip-button'>Got it</button>
+    </div>
     <div id='hotspot-actions'>
       <div id='save-hotspots' class='button hotspot-button'>Save Hotspots</div>
       <div id='create-hotspot' class='no-highlight button hotspot-button'>Create Hotspot</div>
@@ -550,10 +556,11 @@
     <div id='selection-icons' class='no-highlight'>
       <img id='pan' src='assets/images/icons/pan.svg' class='active' />
       <img id='select' src='assets/images/icons/lasso.png' class='' />
-      <div id='select-tooltip'>
-        <div id='select-tooltip-heading'>Selection Mode</div>
+      <!-- Dismissible Tooltip: Lasso -->
+      <div class='dismissible-tooltip' id='select-tooltip'>
+        <b>Selection Mode</b>
         <p>Lasso to select. Shift + drag to edit selection.</p>
-        <div id='select-tooltip-button'>Got it</div>
+        <button id='select-tooltip-button'>Got it</button>
       </div>
     </div>
     <div id='view-selected-container'>

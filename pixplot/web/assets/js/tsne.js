@@ -2994,6 +2994,8 @@ function Hotspots() {
     template: document.querySelector('#hotspot-template'),
     hotspots: document.querySelector('#hotspots'),
     nav: document.querySelector('nav'),
+    tooltip: document.querySelector('#hotspots-tooltip'),
+    clearTooltip: document.querySelector('#hotspots-tooltip-button'),
   }
   this.addEventListeners();
 }
@@ -3076,6 +3078,16 @@ Hotspots.prototype.addEventListeners = function() {
     this.render();
     // if the dragged item changed positions, allow user to save data
     if (idxA != idxB) this.setEdited(true);
+  }.bind(this))
+  // add tooltip event listener
+  this.elems.nav.addEventListener('mouseenter', function(e) {
+    if (localStorage.getItem('hotspots-tooltip-cleared')) return;
+    this.elems.tooltip.style.display = 'block';
+  }.bind(this))
+  // add tooltip clearing event listener
+  this.elems.clearTooltip.addEventListener('click', function(e) {
+    localStorage.setItem('hotspots-tooltip-cleared', true);
+    this.elems.tooltip.style.display = 'none';
   }.bind(this))
 }
 
