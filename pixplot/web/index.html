@@ -50,23 +50,25 @@
     uniform float scaleTransitionPercent;
     uniform float borderWidth;
 
-    attribute vec3 position;       // x y z position offsets for an instance
-    attribute vec3 targetPosition; // x y z position to which we're transitioning
-    attribute vec3 color;          // unique color for cell; used for raycasting
-    attribute float width;         // px width of cell in lod texture
-    attribute float height;        // px height of cell in lod texture
-    attribute vec2 offset;         // px offset in tex from left, top
-    attribute float opacity;       // opacity value for cell
-    attribute float selected;      // 1 if the cell is selected else 0
-    attribute float textureIndex;  // index of instance's texture among all textures
+    attribute vec3 position;         // x y z position offsets for an instance
+    attribute vec3 targetPosition;   // x y z position to which we're transitioning
+    attribute vec3 color;            // unique color for cell; used for raycasting
+    attribute float width;           // px width of cell in lod texture
+    attribute float height;          // px height of cell in lod texture
+    attribute vec2 offset;           // px offset in tex from left, top
+    attribute float opacity;         // opacity value for cell
+    attribute float selected;        // 1 if the cell is selected else 0
+    attribute float clusterSelected; // 1 if the cell's cluster is selected else 0
+    attribute float textureIndex;    // index of instance's texture among all textures
 
-    varying vec3 vColor;           // cell color
-    varying vec2 vOffset;          // px of cell offset left, top in texture
-    varying float vWidth;          // px width of cell in lod texture
-    varying float vHeight;         // px height of cell in lod texture
-    varying float vOpacity;        // cell opacity
-    varying float vSelected;       // 1 if this cell is selected else 0
-    varying float vTextureIndex;   // cell texture idx (varyings can't be int)
+    varying vec3 vColor;             // cell color
+    varying vec2 vOffset;            // px of cell offset left, top in texture
+    varying float vWidth;            // px width of cell in lod texture
+    varying float vHeight;           // px height of cell in lod texture
+    varying float vOpacity;          // cell opacity
+    varying float vSelected;         // 1 if this cell is selected else 0
+    varying float vClusterSelected;  // 1 if this cell's cluster is selected else 0
+    varying float vTextureIndex;     // cell texture idx (varyings can't be int)
 
     void main() {
       // pass varyings to fragment shader
@@ -77,6 +79,7 @@
       vOffset = offset;
       vOpacity = opacity;
       vSelected = selected;
+      vClusterSelected = clusterSelected;
 
       float percent = clamp(transitionPercent, 0.0, 1.0);
 
@@ -123,18 +126,20 @@
     uniform float borderWidth;
     uniform vec3 borderColor;
     uniform float display;
+    uniform float time;
 
-    varying vec3 vColor;         // cell's color (for gpu picking)
-    varying vec2 vOffset;        // cell's offset in px from left, top of tex
-    varying float vWidth;        // cell's width in lod tex in px
-    varying float vHeight;       // cell's height in lod tex in px
-    varying float vOpacity;      // cell's opacity
-    varying float vSelected;     // cell's presence (>0.5) or absence (<0.5) from selection
-    varying float vTextureIndex; // cell's texture index
+    varying vec3 vColor;                      // cell's color (for gpu picking)
+    varying vec2 vOffset;                     // cell's offset in px from left, top of tex
+    varying float vWidth;                     // cell's width in lod tex in px
+    varying float vHeight;                    // cell's height in lod tex in px
+    varying float vOpacity;                   // cell's opacity
+    varying float vSelected;                  // greater than 0.5 if selected
+    varying float vClusterSelected;           // greater than 0.5 if cluster is selected
+    varying float vTextureIndex;              // cell's texture index
 
     #ifndef SELECTING
       uniform sampler2D textures[N_TEXTURES]; // array of sampler2Ds
-      uniform sampler2D lodTexture; // single sampler2D
+      uniform sampler2D lodTexture;           // single sampler2D
     #endif
 
     void main() {
@@ -172,19 +177,47 @@
         else if (w > h && gl_PointCoord.y < y0 || gl_PointCoord.y > y1) discard;
 
         // if this shader is using vColor attributes skip texture processing
-        if (int(useColor) == 1) gl_FragColor = vec4(vColor, 1.0);
+        if (int(useColor) == 1) {
+          gl_FragColor = vec4(vColor, 1.0);
 
-        // this cell should be textured
-        else {
+        // else this cell should be textured
+        } else {
+
+          // identify whether this pixel is selected, cluster selected, and inside border area
+          bool isSelected = vSelected > 0.5;
+          bool isClusterSelected = vClusterSelected > 0.5;
+          bool isInBorder = gl_PointCoord.x < x0 + borderW ||
+            gl_PointCoord.x > x1 - borderW ||
+            gl_PointCoord.y < y0 + borderW ||
+            gl_PointCoord.y > y1 - borderW;
 
           // check if the current pointcoord position is within the border
-          if (vSelected > 0.5 &&
-             (gl_PointCoord.x < x0 + borderW ||
-              gl_PointCoord.x > x1 - borderW ||
-              gl_PointCoord.y < y0 + borderW ||
-              gl_PointCoord.y > y1 - borderW)) {
-            gl_FragColor = vec4(borderColor, 1.0);
+          if ((isSelected || isClusterSelected) && isInBorder) {
 
+            // configure the cluster selected stripe
+            float stripeRepeatWidth = 8.0 / big;
+            float stripeWidth = 3.0 / big;
+            float stripeSpeed = 1.5;
+            vec4 stripeColor = vec4(1.0, 1.0, 1.0, 1.0);
+            vec4 selectedColor = vec4(borderColor, 1.0);
+            vec4 redColor = vec4(156.0 / 255.0, 23.0 / 255.0, 23.0 / 255.0, 1);
+            vec4 noColor = vec4(0.0, 0.0, 0.0, 0.0);
+
+            // determine whether we're on or off band
+            float pos = gl_PointCoord.x + gl_PointCoord.y;
+            float m = mod(pos + mod(time * stripeSpeed, stripeRepeatWidth), stripeRepeatWidth);
+            bool band = m < stripeWidth;
+
+            // determine border type to use
+            if (isSelected && isClusterSelected) {
+              gl_FragColor = band ? stripeColor : selectedColor;
+            } else if (isSelected) {
+              gl_FragColor = selectedColor;
+            } else if (isClusterSelected) {
+              gl_FragColor = band ? stripeColor : redColor;
+            }
+
+          // pixel is outside the border; paint with the provided texture
           } else {
 
             // get the x and y positions to sample for this cell's texture

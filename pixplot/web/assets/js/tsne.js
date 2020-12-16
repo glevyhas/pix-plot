@@ -34,7 +34,7 @@
 *   atlas: height & width of each small atlas (in px)
 *   texture: height & width of each texture (in px)
 *   lodTexture: height & width of the large (detail) texture
-* transition:
+* transitions:
 *   duration: number of seconds each layout transition should take
 *   ease: TweenLite ease config values for transitions
 * atlasesPerTex: number of atlases to include in each texture
@@ -64,10 +64,10 @@ function Config() {
   this.transitions = {
     duration: 2.0,
     delay: 0.0,
-  }
-  this.transitions.ease = {
-    value: 1,
+    ease: {
+      value: 1,
     ease: Power1.easeOut,
+    }
   }
   this.pickerMaxZ = 0.4; // max z value of camera to trigger picker modal
   this.atlasesPerTex = (this.size.texture/this.size.atlas)**2;
@@ -735,6 +735,8 @@ function World() {
   this.controls = this.getControls();
   this.stats = this.getStats();
   this.color = new THREE.Color();
+  this.clock = new THREE.Clock();
+  this.time = 0;
   this.center = {};
   this.group = {};
   this.state = {
@@ -966,6 +968,7 @@ World.prototype.plotPoints = function() {
     geometry.setAttribute('offset', attrs.offset);
     geometry.setAttribute('opacity', attrs.opacity);
     geometry.setAttribute('selected', attrs.selected);
+    geometry.setAttribute('clusterSelected', attrs.clusterSelected);
     geometry.setAttribute('textureIndex', attrs.textureIndex);
     geometry.setDrawRange(0, meshCells.length); // points not rendered unless draw range is specified
     var material = this.getShaderMaterial({
@@ -1017,6 +1020,7 @@ World.prototype.getGroupAttributes = function(cells) {
     it.color[it.colorIterator++] = rgb.b; // unique color for GPU picking
     it.opacity[it.opacityIterator++] = 1.0; // cell opacity value
     it.selected[it.selectedIterator++] = 0.0; // 1.0 if cell is selected, else 0.0
+    it.clusterSelected[it.clusterSelectedIterator++] = 0.0; // 1.0 if cell's cluster is selected, else 0.0
     it.width[it.widthIterator++] = cell.w; // px width of cell in lod atlas
     it.height[it.heightIterator++] = cell.h; // px height of cell in lod atlas
     it.offset[it.offsetIterator++] = cell.dx; // px offset of cell from left of tex
@@ -1029,6 +1033,7 @@ World.prototype.getGroupAttributes = function(cells) {
       color = new THREE.BufferAttribute(it.color, 3, true, 1),
       opacity = new THREE.BufferAttribute(it.opacity, 1, true, 1),
       selected = new THREE.Uint8BufferAttribute(it.selected, 1, false, 1),
+      clusterSelected = new THREE.Uint8BufferAttribute(it.clusterSelected, 1, false, 1),
       texIndex = new THREE.Int8BufferAttribute(it.texIndex, 1, false, 1),
       width = new THREE.Uint8BufferAttribute(it.width, 1, false, 1),
       height = new THREE.Uint8BufferAttribute(it.height, 1, false, 1),
@@ -1038,6 +1043,7 @@ World.prototype.getGroupAttributes = function(cells) {
   targetPosition.usage = THREE.DynamicDrawUsage;
   opacity.usage = THREE.DynamicDrawUsage;
   selected.usage = THREE.DynamicDrawUsage;
+  clusterSelected.usage = THREE.DynamicDrawUsage;
   offset.usage = THREE.DynamicDrawUsage;
   var texIndices = this.getTexIndices(cells);
   return {
@@ -1049,6 +1055,7 @@ World.prototype.getGroupAttributes = function(cells) {
     offset: offset,
     opacity: opacity,
     selected: selected,
+    clusterSelected: clusterSelected,
     textureIndex: texIndex,
     textures: this.getTextures({
       startIdx: texIndices.first,
@@ -1073,6 +1080,7 @@ World.prototype.getCellIterators = function(n) {
     offset: new Uint16Array(n * 2),
     opacity: new Float32Array(n),
     selected: new Uint8Array(n),
+    clusterSelected: new Uint8Array(n),
     texIndex: new Int8Array(n),
     positionIterator: 0,
     targetPositionIterator: 0,
@@ -1082,6 +1090,7 @@ World.prototype.getCellIterators = function(n) {
     offsetIterator: 0,
     opacityIterator: 0,
     selectedIterator: 0,
+    clusterSelectedIterator: 0,
     texIndexIterator: 0,
   }
 }
@@ -1208,7 +1217,11 @@ World.prototype.getShaderMaterial = function(obj) {
       display: {
         type: 'f',
         value: 1.0,
-      }
+      },
+      time: {
+        type: 'f',
+        value: 0.0,
+      },
     },
     vertexShader: vertex,
     fragmentShader: fragment,
@@ -1419,6 +1432,9 @@ World.prototype.render = function() {
   lod.update();
   // update the dragged lasso
   lasso.update();
+  // update the time uniform
+  this.time += this.clock.getDelta() / 10;
+  this.setUniform('time', this.time);
 }
 
 /**
@@ -1736,11 +1752,11 @@ Lasso.prototype.getMesh = function() {
 
 // get the convex hull of this.points
 Lasso.prototype.getHull = function() {
-  var graham = new ConvexHullGrahamScan();
+  var l = new ConvexHullGrahamScan();
   for (var i=0; i<this.points.length; i++) {
-    graham.addPoint(this.points[i].x, this.points[i].y);
+    l.addPoint(this.points[i].x, this.points[i].y);
   }
-  var hull = graham.getHull();
+  var hull = l.getHull();
   return hull;
 }
 
@@ -2250,10 +2266,6 @@ Text.prototype.createMesh = function() {
       scale: {
         type: 'f',
         value: this.getPointScale(),
-      },
-      render: {
-        type: 'bool',
-        value: false,
       },
       texture: {
         type: 't',
@@ -3229,6 +3241,9 @@ Hotspots.prototype.render = function() {
     }.bind(this, i));
     // show the convex hull of a cluster on mouse enter
     hotspots[i].addEventListener('mouseenter', function(idx) {
+      // update the hover cell buffer
+      this.setHotspotHoverBuffer(this.json[idx].images);
+      // draw the convex hull around the cells in this cluster
       var h = this.json[idx].convex_hull;
       if (!h) return;
       var shape = new THREE.Shape();
@@ -3240,11 +3255,14 @@ Hotspots.prototype.render = function() {
       material.opacity = 0.25;
       var mesh = new THREE.Mesh(geometry, material);
       mesh.position.z = -0.01;
-      world.scene.add(mesh);
+      //world.scene.add(mesh);
       this.mesh = mesh;
     }.bind(this, i))
     // remove the convex hull shape on mouseout
     hotspots[i].addEventListener('mouseleave', function(e) {
+      // update the hover cell buffer
+      this.setHotspotHoverBuffer([]);
+      // remove the mesh
       world.scene.remove(this.mesh);
     }.bind(this))
     // allow users on localhost to delete hotspots
@@ -3346,6 +3364,20 @@ Hotspots.prototype.setCreateHotspotVisibility = function(bool) {
 
 Hotspots.prototype.setSaveHotspotsVisibility = function(bool) {
   this.elems.saveHotspots.style.display = bool ? 'inline-block' : 'none';
+}
+
+Hotspots.prototype.setHotspotHoverBuffer = function(arr) {
+  // arr contains an array of indices of cells currently selected - create dict for fast lookups
+  var d = arr.reduce(function(obj, i) {
+    obj[i] = true;
+    return obj;
+  }, {})
+  // create the buffer to be assigned
+  var arr = new Uint8Array(data.cells.length);
+  for (var i=0; i<arr.length; i++) {
+    arr[i] = d[i] ? 1 : 0;
+  }
+  world.setBuffer('clusterSelected', arr);
 }
 
 /**
