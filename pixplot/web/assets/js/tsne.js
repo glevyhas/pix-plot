@@ -2099,7 +2099,7 @@ function Dates() {}
 Dates.prototype.init = function() {
   // set elems used below
   this.elems = {
-    slider: document.querySelector('#date-container'),
+    slider: document.querySelector('#date-slider'),
   }
   // remove the dom element if there is no date data
   if (!data.json.layouts.date) {
