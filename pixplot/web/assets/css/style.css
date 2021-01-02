@@ -563,7 +563,7 @@ nav {
   width: 106px;
   height: auto;
   box-sizing: border-box;
-  padding: 60px 0 0;
+  padding: 50px 0 0;
   background: #222;
   box-shadow: 1px 0px 2px rgba(0, 0, 0, 0.7);
   transition: opacity 0.5s;
@@ -591,27 +591,27 @@ nav.disabled #nav-inner {
 }
 
 nav h2 {
-  font-size: 0.9em;
+  font-size: 12px;
+  letter-spacing: 0.05em;
   line-height: 1.05em;
   text-align: center;
   margin: 15px 0 7px;
   text-transform: uppercase;
-  font-weight: 400;
+  font-weight: 800;
 }
 
 #hotspots {
   width: 75px;
-  padding: 0 15px;
 }
 
 .hotspot {
-  padding: 6px 0;
+  padding: 12px 15px 5px;
   display: inline-block;
   text-align: center;
   width: 75px;
-  font-size: 13px;
+  font-size: 12px;
+  color: #b3b3b3;
   position: relative;
-  transition: opacity 0.3s;
 }
 
 .hotspot-image {
@@ -623,7 +623,7 @@ nav h2 {
 .hotspot-bar-container {
   height: 5px;
   background: #444;
-  margin: 4px 0;
+  margin: 6px 0 4px;
 }
 
 .hotspot-bar-inner {
@@ -639,22 +639,30 @@ nav h2 {
 
 .hotspot-action {
   position: absolute;
-  top: 1px;
+  top: -6px;
   width: 12px;
   height: 12px;
   vertical-align: top;
-  box-shadow: 0px 0px 3px #000;
   cursor: pointer;
   padding: 1px;
   font-size: 8px;
   line-height: 13px;
   border-radius: 2px;
+  z-index: 1;
+}
+
+.hotspot .remove-hotspot-x,
+.hotspot .refresh-hotspot {
+  top: 6px;
+  box-shadow: 0px 0px 3px #000;
 }
 
 .hotspot .remove-hotspot-x {
-  left: -7px;
+  right: 9px;
   background: #9c1717;
   color: #eee;
+  line-height: 12px;
+  display: none;
 }
 
 .hotspot .remove-hotspot-x:hover {
@@ -663,20 +671,18 @@ nav h2 {
 
 .hotspot .drag-hotspot,
 .hotspot .refresh-hotspot {
-  background: #2f2f2f;
   color: #fff;
 }
 
 .hotspot .drag-hotspot {
-  right: -7px;
-  font-size: 11px;
+  left: 6px;
+  font-size: 19px;
   line-height: 12px;
   cursor: grab;
-}
-
-.hotspot .drag-hotspot:hover,
-.hotspot .refresh-hotspot:hover {
-  background: #444;
+  transform: rotate(90deg);
+  top: 50%;
+  margin-top: -14px;
+  display: none;
 }
 
 .hotspot.dragging,
@@ -686,18 +692,47 @@ nav h2 {
 
 .hotspot .refresh-hotspot {
   position: absolute;
-  right: -7px;
-  top: 20px;
-  width: 10px;
-  height: 10px;
+  left: 9px;
   padding: 2px;
+  display: none;
+  background: #414141;
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+}
+
+.hotspot .refresh-hotspot:hover {
+  opacity: 1;
+}
+
+.hotspot:hover {
+  color: #eab755;
+  background: #111;
+}
+
+.hotspot:hover .hotspot-image {
+  outline: 2px solid #fff;
+}
+
+.hotspot:hover .hotspot-label {
+  background: #222;
+}
+
+.hotspot:hover .hotspot-image {
+  opacity: 0.3;
+}
+
+.hotspot:hover .remove-hotspot-x,
+.hotspot:hover .refresh-hotspot,
+.hotspot:hover .drag-hotspot {
+  display: inline-block;
 }
 
 /**
 * Hotspot actions
 **/
 
-#hotspot-actions {
+#hotspot-achotspot-0tions {
   position: absolute;
   left: 115px;
   bottom: 10px;
@@ -967,12 +1002,15 @@ button {
   margin: 0 auto;
   font-size: 14px;
   font-weight: 600;
-  opacity: 0.4;
   transition: opacity .3s;
   cursor: pointer;
 }
 
-button.active {
+#enter-button {
+  opacity: 0.4;
+}
+
+#enter-button.active {
   opacity: 1;
 }
 
@@ -1155,7 +1193,8 @@ noscript {
   white-space: initial;
 }
 
-.icons a {
+.icons a,
+.icons div {
   height: 32px;
   width: 32px;
   background: #cecbcb;
@@ -1168,6 +1207,36 @@ noscript {
 
 .icons img {
   width: 100%;
+}
+
+#pose-highlight-icon img {
+  opacity: 0.25;
+}
+
+#pose-highlight-icon.active img {
+  opacity: 1;
+}
+
+/**
+* Selected Image SVG
+**/
+
+#selected-image-svg {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  padding: 25px;
+  box-sizing: border-box;
+  z-index: 10;
+  background-color: #333;
+}
+
+#svg-image-unfiltered {
+  mask: url(#blur-mask);
 }
 
 /**
@@ -1277,13 +1346,14 @@ noscript {
   opacity: 1.0;
 }
 
-#select-tooltip {
+/**
+* Dismissable Tooltips
+**/
+
+.dismissible-tooltip {
   position: absolute;
-  left: -168px;
   z-index: 1;
   color: #fff;
-  bottom: 0px;
-  width: 126px;
   font-size: 12px;
   padding: 13px;
   border: 1px solid #717171;
@@ -1291,44 +1361,66 @@ noscript {
   border-radius: 3px;
 }
 
-#select-tooltip::before {
+.dismissible-tooltip#select-tooltip {
+  left: -168px;
+  bottom: 0px;
+  width: 126px;
+}
+
+.dismissible-tooltip#hotspots-tooltip {
+  left: 120px;
+  top: 100px;
+  width: 150px;
+}
+
+.dismissible-tooltip::before {
   content: '';
   width: 10px;
   height: 10px;
   transform: rotate(45deg);
   position: absolute;
-  right: -6px;
-  bottom: 14px;
   border-right: 1px solid #717171;
   border-top: 1px solid #717171;
 }
 
-#select-tooltip,
-#select-tooltip::before {
+.dismissible-tooltip#select-tooltip::before {
+  right: -6px;
+  bottom: 14px;
+}
+
+.dismissible-tooltip#hotspots-tooltip::before {
+  left: -6px;
+  top: 23px;
+  transform: rotate(225deg);
+}
+
+.dismissible-tooltip,
+.dismissible-tooltip::before {
   background: #222;
 }
 
-#select-tooltip-heading {
+.dismissible-tooltip b {
   font-weight: 800;
 }
 
-#select-tooltip p {
+.dismissible-tooltip p {
   line-height: 1.4em;
   margin: 5px 0;
 }
 
-#select-tooltip-button {
+.dismissible-tooltip button {
   display: inline-block;
-  border: 2px solid #F2C54A;
+  border: 1px solid #F2C54A;
   padding: 3px 20px;
   margin-top: 4px;
   border-radius: 3px;
   color: #F2C54A;
   font-weight: 800;
   cursor: pointer;
+  background: transparent;
 }
 
-#select-tooltip-button:hover {
+.dismissible-tooltip button:hover {
   background: #F2C54A;
   color: #222;
 }

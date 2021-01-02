@@ -6,7 +6,7 @@
     <link rel='stylesheet' type='text/css' href='assets/css/style.css'>
     <title>Visualizing Image Fields</title>
     <meta charset='utf-8'/>
-    <meta name='author' content='Douglas Duhaime'>
+    <meta name='author' content='Yale Digital Humanities Lab'>
   </head>
   <body>
     <!-- version: VERSION_NUMBER -->
@@ -50,23 +50,25 @@
     uniform float scaleTransitionPercent;
     uniform float borderWidth;
 
-    attribute vec3 position;       // x y z position offsets for an instance
-    attribute vec3 targetPosition; // x y z position to which we're transitioning
-    attribute vec3 color;          // unique color for cell; used for raycasting
-    attribute float width;         // px width of cell in lod texture
-    attribute float height;        // px height of cell in lod texture
-    attribute vec2 offset;         // px offset in tex from left, top
-    attribute float opacity;       // opacity value for cell
-    attribute float selected;      // 1 if the cell is selected else 0
-    attribute float textureIndex;  // index of instance's texture among all textures
+    attribute vec3 position;         // x y z position offsets for an instance
+    attribute vec3 targetPosition;   // x y z position to which we're transitioning
+    attribute vec3 color;            // unique color for cell; used for raycasting
+    attribute float width;           // px width of cell in lod texture
+    attribute float height;          // px height of cell in lod texture
+    attribute vec2 offset;           // px offset in tex from left, top
+    attribute float opacity;         // opacity value for cell
+    attribute float selected;        // 1 if the cell is selected else 0
+    attribute float clusterSelected; // 1 if the cell's cluster is selected else 0
+    attribute float textureIndex;    // index of instance's texture among all textures
 
-    varying vec3 vColor;           // cell color
-    varying vec2 vOffset;          // px of cell offset left, top in texture
-    varying float vWidth;          // px width of cell in lod texture
-    varying float vHeight;         // px height of cell in lod texture
-    varying float vOpacity;        // cell opacity
-    varying float vSelected;       // 1 if this cell is selected else 0
-    varying float vTextureIndex;   // cell texture idx (varyings can't be int)
+    varying vec3 vColor;             // cell color
+    varying vec2 vOffset;            // px of cell offset left, top in texture
+    varying float vWidth;            // px width of cell in lod texture
+    varying float vHeight;           // px height of cell in lod texture
+    varying float vOpacity;          // cell opacity
+    varying float vSelected;         // 1 if this cell is selected else 0
+    varying float vClusterSelected;  // 1 if this cell's cluster is selected else 0
+    varying float vTextureIndex;     // cell texture idx (varyings can't be int)
 
     void main() {
       // pass varyings to fragment shader
@@ -77,6 +79,7 @@
       vOffset = offset;
       vOpacity = opacity;
       vSelected = selected;
+      vClusterSelected = clusterSelected;
 
       float percent = clamp(transitionPercent, 0.0, 1.0);
 
@@ -123,18 +126,20 @@
     uniform float borderWidth;
     uniform vec3 borderColor;
     uniform float display;
+    uniform float time;
 
-    varying vec3 vColor;         // cell's color (for gpu picking)
-    varying vec2 vOffset;        // cell's offset in px from left, top of tex
-    varying float vWidth;        // cell's width in lod tex in px
-    varying float vHeight;       // cell's height in lod tex in px
-    varying float vOpacity;      // cell's opacity
-    varying float vSelected;     // cell's presence (>0.5) or absence (<0.5) from selection
-    varying float vTextureIndex; // cell's texture index
+    varying vec3 vColor;                      // cell's color (for gpu picking)
+    varying vec2 vOffset;                     // cell's offset in px from left, top of tex
+    varying float vWidth;                     // cell's width in lod tex in px
+    varying float vHeight;                    // cell's height in lod tex in px
+    varying float vOpacity;                   // cell's opacity
+    varying float vSelected;                  // greater than 0.5 if selected
+    varying float vClusterSelected;           // greater than 0.5 if cluster is selected
+    varying float vTextureIndex;              // cell's texture index
 
     #ifndef SELECTING
       uniform sampler2D textures[N_TEXTURES]; // array of sampler2Ds
-      uniform sampler2D lodTexture; // single sampler2D
+      uniform sampler2D lodTexture;           // single sampler2D
     #endif
 
     void main() {
@@ -172,19 +177,47 @@
         else if (w > h && gl_PointCoord.y < y0 || gl_PointCoord.y > y1) discard;
 
         // if this shader is using vColor attributes skip texture processing
-        if (int(useColor) == 1) gl_FragColor = vec4(vColor, 1.0);
+        if (int(useColor) == 1) {
+          gl_FragColor = vec4(vColor, 1.0);
 
-        // this cell should be textured
-        else {
+        // else this cell should be textured
+        } else {
+
+          // identify whether this pixel is selected, cluster selected, and inside border area
+          bool isSelected = vSelected > 0.5;
+          bool isClusterSelected = vClusterSelected > 0.5;
+          bool isInBorder = gl_PointCoord.x < x0 + borderW ||
+            gl_PointCoord.x > x1 - borderW ||
+            gl_PointCoord.y < y0 + borderW ||
+            gl_PointCoord.y > y1 - borderW;
 
           // check if the current pointcoord position is within the border
-          if (vSelected > 0.5 &&
-             (gl_PointCoord.x < x0 + borderW ||
-              gl_PointCoord.x > x1 - borderW ||
-              gl_PointCoord.y < y0 + borderW ||
-              gl_PointCoord.y > y1 - borderW)) {
-            gl_FragColor = vec4(borderColor, 1.0);
+          if ((isSelected || isClusterSelected) && isInBorder) {
 
+            // configure the cluster selected stripe
+            float stripeRepeatWidth = 8.0 / big;
+            float stripeWidth = 3.0 / big;
+            float stripeSpeed = 1.5;
+            vec4 stripeColor = vec4(1.0, 1.0, 1.0, 1.0);
+            vec4 selectedColor = vec4(borderColor, 1.0);
+            vec4 redColor = vec4(156.0 / 255.0, 23.0 / 255.0, 23.0 / 255.0, 1);
+            vec4 noColor = vec4(0.0, 0.0, 0.0, 0.0);
+
+            // determine whether we're on or off band
+            float pos = gl_PointCoord.x + gl_PointCoord.y;
+            float m = mod(pos + mod(time * stripeSpeed, stripeRepeatWidth), stripeRepeatWidth);
+            bool band = m < stripeWidth;
+
+            // determine border type to use
+            if (isSelected && isClusterSelected) {
+              gl_FragColor = band ? stripeColor : selectedColor;
+            } else if (isSelected) {
+              gl_FragColor = selectedColor;
+            } else if (isClusterSelected) {
+              gl_FragColor = band ? stripeColor : redColor;
+            }
+
+          // pixel is outside the border; paint with the provided texture
           } else {
 
             // get the x and y positions to sample for this cell's texture
@@ -473,27 +506,34 @@
         <div id='hotspots'></div>
         <script type='text/html' id='hotspot-template'>
           <% _.forEach(hotspots, function(hotspot, idx) { %>
-            <div class='hotspot' id='hotspot-<%= idx %>'
-                draggable='<%= isLocalhost %>'>
+            <div class='hotspot' id='hotspot-<%= idx %>' draggable='<%= isLocalhost %>'>
               <% if (isLocalhost) { %>
                 <div class='hotspot-action remove-hotspot-x'>✕</div>
-                <div class='hotspot-action drag-hotspot'>⠿</div>
+                <div class='hotspot-action drag-hotspot'>...</div>
                 <img class='hotspot-action refresh-hotspot' src='assets/images/icons/refresh.svg'>
               <% } %>
-              <img class='hotspot-image' src='data/thumbs/<%= hotspot.img %>'>
-              <div class='hotspot-bar-container'>
-                <div class='hotspot-bar-inner'></div>
+              <div class='hotspot-body'>
+                <img class='hotspot-image' src='data/thumbs/<%= hotspot.img %>'>
+                <div class='hotspot-bar-container'>
+                  <div class='hotspot-bar-inner'></div>
+                </div>
+                <% if (isLocalhost) { %>
+                  <div class='hotspot-label' contenteditable='true' ><%= hotspot.label %></div>
+                <% } else { %>
+                  <div class='hotspot-label'><%= hotspot.label %></div>
+                <% } %>
               </div>
-              <% if (isLocalhost) { %>
-                <div class='hotspot-label' contenteditable='true' ><%= hotspot.label %></div>
-              <% } else { %>
-                <div class='hotspot-label'><%= hotspot.label %></div>
-              <% } %>
             </div>
           <% }); %>
         </script>
       </div>
     </nav>
+    <!-- Dismissible Tooltip: Hotspots -->
+    <div class='dismissible-tooltip' id='hotspots-tooltip'>
+      <b>Explore Image Clusters</b>
+      <p>Select a hotspot to explore visually similar clusters.</p>
+      <button id='hotspots-tooltip-button'>Got it</button>
+    </div>
     <div id='hotspot-actions'>
       <div id='save-hotspots' class='button hotspot-button'>Save Hotspots</div>
       <div id='create-hotspot' class='no-highlight button hotspot-button'>Create Hotspot</div>
@@ -503,12 +543,28 @@
       <div class='modal-content'>
         <div class='modal-x'>✕</div>
         <div class='modal-top'>
-          <div class='modal-top-content' id='selected-image-parent'>
+          <div id='selected-image-parent' class='modal-top-content'>
+            <svg id='selected-image-svg' x='0' y='0' preserveAspectRatio='xMidYMid meet'>
+              <defs>
+                <filter id='blur-filter'>
+                  <feGaussianBlur stdDeviation='0.25' />
+                </filter>
+                <mask id='blur-mask'></mask>
+              </defs>
+              <rect x='0' y='0' width='100%' height='100%' fill='#000'></rect>
+              <image id='svg-image-filtered' x='0' y='0' width='100%' height='100%'></image>
+              <image id='svg-image-unfiltered' x='0' y='0' width='100%' height='100%'></image>
+            </svg>
             <div class='icons'>
-              <a target='_blank' id='eye-icon' href='<%- meta.permalink || "#" %>'>
+              <% if (hasPose) { %>
+                <div id='pose-highlight-icon'>
+                  <img src='assets/images/icons/pose-icon.svg' alt='eye icon' />
+                </div>
+              <% } %>
+              <a target='_blank' id='eye-icon' href='<%- meta.permalink || meta.src %>'>
                 <img src='assets/images/icons/eye-icon.png' alt='eye icon' />
               </a>
-              <a id='download-icon' href='<%- meta.src || "#" %>'>
+              <a id='download-icon' href='<%- meta.src || "#" %>' download>
                 <img src='assets/images/icons/download-icon.png' alt='download icon' />
               </a>
             </div>
@@ -550,10 +606,11 @@
     <div id='selection-icons' class='no-highlight'>
       <img id='pan' src='assets/images/icons/pan.svg' class='active' />
       <img id='select' src='assets/images/icons/lasso.png' class='' />
-      <div id='select-tooltip'>
-        <div id='select-tooltip-heading'>Selection Mode</div>
+      <!-- Dismissible Tooltip: Lasso -->
+      <div class='dismissible-tooltip' id='select-tooltip'>
+        <b>Selection Mode</b>
         <p>Lasso to select. Shift + drag to edit selection.</p>
-        <div id='select-tooltip-button'>Got it</div>
+        <button id='select-tooltip-button'>Got it</button>
       </div>
     </div>
     <div id='view-selected-container'>
@@ -622,6 +679,7 @@
     <script type='text/javascript' src='assets/vendor/dist/papaparse.min.js'></script>
     <script type='text/javascript' src='assets/vendor/dist/no-ui-slider.min.js'></script>
     <script type='text/javascript' src='assets/vendor/dist/jszip.min.js'></script>
+    <script type='text/javascript' src='https://cdnjs.cloudflare.com/ajax/libs/d3/6.2.0/d3.min.js'></script>
     <script type='text/javascript' src='assets/js/tsne.js'></script>
     <script>
       (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){

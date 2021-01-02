@@ -34,7 +34,7 @@
 *   atlas: height & width of each small atlas (in px)
 *   texture: height & width of each texture (in px)
 *   lodTexture: height & width of the large (detail) texture
-* transition:
+* transitions:
 *   duration: number of seconds each layout transition should take
 *   ease: TweenLite ease config values for transitions
 * atlasesPerTex: number of atlases to include in each texture
@@ -64,10 +64,10 @@ function Config() {
   this.transitions = {
     duration: 2.0,
     delay: 0.0,
-  }
-  this.transitions.ease = {
-    value: 1,
+    ease: {
+      value: 1,
     ease: Power1.easeOut,
+    }
   }
   this.pickerMaxZ = 0.4; // max z value of camera to trigger picker modal
   this.atlasesPerTex = (this.size.texture/this.size.atlas)**2;
@@ -735,6 +735,8 @@ function World() {
   this.controls = this.getControls();
   this.stats = this.getStats();
   this.color = new THREE.Color();
+  this.clock = new THREE.Clock();
+  this.time = 0;
   this.center = {};
   this.group = {};
   this.state = {
@@ -966,6 +968,7 @@ World.prototype.plotPoints = function() {
     geometry.setAttribute('offset', attrs.offset);
     geometry.setAttribute('opacity', attrs.opacity);
     geometry.setAttribute('selected', attrs.selected);
+    geometry.setAttribute('clusterSelected', attrs.clusterSelected);
     geometry.setAttribute('textureIndex', attrs.textureIndex);
     geometry.setDrawRange(0, meshCells.length); // points not rendered unless draw range is specified
     var material = this.getShaderMaterial({
@@ -1017,6 +1020,7 @@ World.prototype.getGroupAttributes = function(cells) {
     it.color[it.colorIterator++] = rgb.b; // unique color for GPU picking
     it.opacity[it.opacityIterator++] = 1.0; // cell opacity value
     it.selected[it.selectedIterator++] = 0.0; // 1.0 if cell is selected, else 0.0
+    it.clusterSelected[it.clusterSelectedIterator++] = 0.0; // 1.0 if cell's cluster is selected, else 0.0
     it.width[it.widthIterator++] = cell.w; // px width of cell in lod atlas
     it.height[it.heightIterator++] = cell.h; // px height of cell in lod atlas
     it.offset[it.offsetIterator++] = cell.dx; // px offset of cell from left of tex
@@ -1029,6 +1033,7 @@ World.prototype.getGroupAttributes = function(cells) {
       color = new THREE.BufferAttribute(it.color, 3, true, 1),
       opacity = new THREE.BufferAttribute(it.opacity, 1, true, 1),
       selected = new THREE.Uint8BufferAttribute(it.selected, 1, false, 1),
+      clusterSelected = new THREE.Uint8BufferAttribute(it.clusterSelected, 1, false, 1),
       texIndex = new THREE.Int8BufferAttribute(it.texIndex, 1, false, 1),
       width = new THREE.Uint8BufferAttribute(it.width, 1, false, 1),
       height = new THREE.Uint8BufferAttribute(it.height, 1, false, 1),
@@ -1038,6 +1043,7 @@ World.prototype.getGroupAttributes = function(cells) {
   targetPosition.usage = THREE.DynamicDrawUsage;
   opacity.usage = THREE.DynamicDrawUsage;
   selected.usage = THREE.DynamicDrawUsage;
+  clusterSelected.usage = THREE.DynamicDrawUsage;
   offset.usage = THREE.DynamicDrawUsage;
   var texIndices = this.getTexIndices(cells);
   return {
@@ -1049,6 +1055,7 @@ World.prototype.getGroupAttributes = function(cells) {
     offset: offset,
     opacity: opacity,
     selected: selected,
+    clusterSelected: clusterSelected,
     textureIndex: texIndex,
     textures: this.getTextures({
       startIdx: texIndices.first,
@@ -1073,6 +1080,7 @@ World.prototype.getCellIterators = function(n) {
     offset: new Uint16Array(n * 2),
     opacity: new Float32Array(n),
     selected: new Uint8Array(n),
+    clusterSelected: new Uint8Array(n),
     texIndex: new Int8Array(n),
     positionIterator: 0,
     targetPositionIterator: 0,
@@ -1082,6 +1090,7 @@ World.prototype.getCellIterators = function(n) {
     offsetIterator: 0,
     opacityIterator: 0,
     selectedIterator: 0,
+    clusterSelectedIterator: 0,
     texIndexIterator: 0,
   }
 }
@@ -1208,7 +1217,11 @@ World.prototype.getShaderMaterial = function(obj) {
       display: {
         type: 'f',
         value: 1.0,
-      }
+      },
+      time: {
+        type: 'f',
+        value: 0.0,
+      },
     },
     vertexShader: vertex,
     fragmentShader: fragment,
@@ -1419,6 +1432,9 @@ World.prototype.render = function() {
   lod.update();
   // update the dragged lasso
   lasso.update();
+  // update the time uniform
+  this.time += this.clock.getDelta() / 10;
+  this.setUniform('time', this.time);
 }
 
 /**
@@ -1736,11 +1752,11 @@ Lasso.prototype.getMesh = function() {
 
 // get the convex hull of this.points
 Lasso.prototype.getHull = function() {
-  var graham = new ConvexHullGrahamScan();
+  var l = new ConvexHullGrahamScan();
   for (var i=0; i<this.points.length; i++) {
-    graham.addPoint(this.points[i].x, this.points[i].y);
+    l.addPoint(this.points[i].x, this.points[i].y);
   }
-  var hull = graham.getHull();
+  var hull = l.getHull();
   return hull;
 }
 
@@ -2083,7 +2099,7 @@ function Dates() {}
 Dates.prototype.init = function() {
   // set elems used below
   this.elems = {
-    slider: document.querySelector('#date-container'),
+    slider: document.querySelector('#date-slider'),
   }
   // remove the dom element if there is no date data
   if (!data.json.layouts.date) {
@@ -2250,10 +2266,6 @@ Text.prototype.createMesh = function() {
       scale: {
         type: 'f',
         value: this.getPointScale(),
-      },
-      render: {
-        type: 'bool',
-        value: false,
       },
       texture: {
         type: 't',
@@ -2478,6 +2490,9 @@ function Modal() {
   this.cellIdx = null;
   this.cellIndices = [];
   this.addEventListeners();
+  this.state = {
+    highlightPose: false,
+  }
 }
 
 Modal.prototype.showCells = function(cellIndices, cellIdx) {
@@ -2486,7 +2501,6 @@ Modal.prototype.showCells = function(cellIndices, cellIdx) {
   self.cellIndices = Object.assign([], cellIndices);
   self.cellIdx = !isNaN(parseInt(cellIdx)) ? parseInt(cellIdx) : 0;
   // parse data attributes
-  var multiImage = self.cellIndices.length > 1;
   var filename = data.json.images[self.cellIndices[self.cellIdx]];
   // conditionalize the path to the image
   var src = data.json.images_cropped
@@ -2497,15 +2511,25 @@ Modal.prototype.showCells = function(cellIndices, cellIdx) {
     var json = json || {};
     var template = document.querySelector('#selected-image-template').textContent;
     var target = document.querySelector('#selected-image-target');
+    var hasPose = 'pose' in data.json.layouts && data.json.layouts['pose'];
     var templateData = {
-      multiImage: multiImage,
+      hasPose: hasPose,
+      multiImage: self.cellIndices.length > 1,
       meta: Object.assign({}, json || {}, {
         src: src,
         filename: json.filename || filename,
       })
     }
-    target.innerHTML = _.template(template)(templateData)
+    target.innerHTML = _.template(template)(templateData);
     target.style.display = 'block';
+    // add the image to the svg
+    document.querySelector('#svg-image-filtered').setAttribute('href', json.image.src);
+    document.querySelector('#svg-image-unfiltered').setAttribute('href', json.image.src);
+    // add the click listener to the pose icon if relevant
+    if (hasPose) {
+      document.querySelector('#pose-highlight-icon').addEventListener('click', self.togglePoseHighlight.bind(self))
+      window.addEventListener('resize', self.resizePoseHighlight.bind(self));
+    }
     // inject the loaded image into the DOM
     document.querySelector('#selected-image-parent').appendChild(json.image);
   }
@@ -2524,6 +2548,7 @@ Modal.prototype.showCells = function(cellIndices, cellIdx) {
 Modal.prototype.close = function() {
   window.location.href = '#';
   document.querySelector('#selected-image-target').style.display = 'none';
+  window.removeEventListener('resize', self.resizePoseHighlight);
   this.cellIndices = [];
   this.cellIdx = null;
   this.displayed = false;
@@ -2552,6 +2577,105 @@ Modal.prototype.showNextCell = function() {
     ? this.cellIdx + 1
     : 0;
   this.showCells(this.cellIndices, cellIdx);
+}
+
+Modal.prototype.togglePoseHighlight = function() {
+  var highlightPose = !this.state.highlightPose;
+  if (highlightPose) {
+    document.querySelector('#pose-highlight-icon').classList.add('active');
+    this.applyGaussianFilter();
+  } else {
+    document.querySelector('#pose-highlight-icon').classList.remove('active');
+    this.removeGaussianFilter();
+  }
+  this.state.highlightPose = highlightPose;
+}
+
+Modal.prototype.applyGaussianFilter = function() {
+  // remove the extant ellipse if any
+  var elem = document.querySelector('#blur-ellipse');
+  if (elem) elem.parentNode.removeChild(elem);
+  // identify the svg to which the ellipse will be added
+  var elem = document.querySelector('#selected-image-svg');
+  var box = elem.getBoundingClientRect();
+  // get the padding of the svg / image elements
+  var padding = {};
+  ['top', 'right', 'bottom', 'left'].forEach(function(i) {
+    var s = getComputedStyle(elem, null).getPropertyValue('padding-' + i);
+    padding[i] = parseInt(s.replace('px', ''));
+  })
+  // w,h of the svg / image elements
+  var w = box.width - padding.left - padding.right;
+  var h = box.height - padding.top - padding.bottom;
+  // get the vertex data
+  var threshold = 0.1;
+  var lineData = lines.json[modal.cellIndices[modal.cellIdx]];
+  var vertices = [];
+  for (var i=0; i<lineData.length; i++) {
+    var score = lineData[i][2];
+    if (score >= threshold) {
+      vertices.push({
+        x: lineData[i][0] * w,
+        y: lineData[i][1] * h,
+        score: score,
+      })
+    }
+  }
+  var sums = {
+    x: 0,
+    y: 0,
+  };
+  var domains = {
+    x: [
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+    ],
+    y: [
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+    ],
+  }
+  vertices.forEach(function(v) {
+    sums.x += v.x;
+    sums.y += v.y;
+    if (v.x < domains.x[0]) domains.x[0] = v.x;
+    if (v.x > domains.x[1]) domains.x[1] = v.x;
+    if (v.y < domains.y[0]) domains.y[0] = v.y;
+    if (v.y > domains.y[1]) domains.y[1] = v.y;
+  })
+  // raw pixel position of ellipse for current screen size
+  var raw = {
+    'cx': sums.x / vertices.length,
+    'cy': (sums.y * 1.1) / vertices.length,
+    'rx': (domains.x[1] - domains.x[0]) * 0.7,
+    'ry': (domains.y[1] - domains.y[0]) * 0.7,
+  }
+  var normalized = {
+    'cx': (raw.cx / w) * 100 + '%',
+    'cy': (raw.cy / h) * 100 + '%',
+    'rx': (raw.rx / w) * 100 + '%',
+    'ry': (raw.ry / h) * 100 + '%',
+  }
+  var ellipse = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+  ellipse.setAttribute('cx', raw.cx);
+  ellipse.setAttribute('cy', raw.cy);
+  ellipse.setAttribute('rx', raw.rx);
+  ellipse.setAttribute('ry', raw.ry);
+  ellipse.setAttribute('fill', '#ffffff');
+  ellipse.setAttribute('filter', 'url(#blur-filter)');
+  ellipse.setAttribute('id', 'blur-ellipse');
+  document.querySelector('#blur-mask').appendChild(ellipse);
+  // hide the original image
+  document.querySelector('#selected-image').style.opacity = 0;
+  document.querySelector('#svg-image-filtered').style.opacity = 0.25;
+}
+
+Modal.prototype.removeGaussianFilter = function() {
+  document.querySelector('#svg-image-filtered').style.opacity = 1;
+}
+
+Modal.prototype.resizePoseHighlight = function() {
+  if (this.state.highlightPose) this.applyGaussianFilter();
 }
 
 /**
@@ -2994,6 +3118,8 @@ function Hotspots() {
     template: document.querySelector('#hotspot-template'),
     hotspots: document.querySelector('#hotspots'),
     nav: document.querySelector('nav'),
+    tooltip: document.querySelector('#hotspots-tooltip'),
+    clearTooltip: document.querySelector('#hotspots-tooltip-button'),
   }
   this.addEventListeners();
 }
@@ -3077,6 +3203,16 @@ Hotspots.prototype.addEventListeners = function() {
     // if the dragged item changed positions, allow user to save data
     if (idxA != idxB) this.setEdited(true);
   }.bind(this))
+  // add tooltip event listener
+  this.elems.nav.addEventListener('mouseenter', function(e) {
+    if (localStorage.getItem('hotspots-tooltip-cleared')) return;
+    this.elems.tooltip.style.display = 'block';
+  }.bind(this))
+  // add tooltip clearing event listener
+  this.elems.clearTooltip.addEventListener('click', function(e) {
+    localStorage.setItem('hotspots-tooltip-cleared', true);
+    this.elems.tooltip.style.display = 'none';
+  }.bind(this))
 }
 
 Hotspots.prototype.render = function() {
@@ -3105,6 +3241,9 @@ Hotspots.prototype.render = function() {
     }.bind(this, i));
     // show the convex hull of a cluster on mouse enter
     hotspots[i].addEventListener('mouseenter', function(idx) {
+      // update the hover cell buffer
+      this.setHotspotHoverBuffer(this.json[idx].images);
+      // draw the convex hull around the cells in this cluster
       var h = this.json[idx].convex_hull;
       if (!h) return;
       var shape = new THREE.Shape();
@@ -3116,11 +3255,14 @@ Hotspots.prototype.render = function() {
       material.opacity = 0.25;
       var mesh = new THREE.Mesh(geometry, material);
       mesh.position.z = -0.01;
-      world.scene.add(mesh);
+      //world.scene.add(mesh);
       this.mesh = mesh;
     }.bind(this, i))
     // remove the convex hull shape on mouseout
     hotspots[i].addEventListener('mouseleave', function(e) {
+      // update the hover cell buffer
+      this.setHotspotHoverBuffer([]);
+      // remove the mesh
       world.scene.remove(this.mesh);
     }.bind(this))
     // allow users on localhost to delete hotspots
@@ -3176,10 +3318,6 @@ Hotspots.prototype.render = function() {
       elem.classList.add('dragging');
       e.dataTransfer.setData('text', id);
     })
-    // fade the hotspot in
-    setTimeout(function(i) {
-      hotspots[i].style.opacity = 1;
-    }.bind(this, i), i*100);
   }
 }
 
@@ -3226,6 +3364,20 @@ Hotspots.prototype.setCreateHotspotVisibility = function(bool) {
 
 Hotspots.prototype.setSaveHotspotsVisibility = function(bool) {
   this.elems.saveHotspots.style.display = bool ? 'inline-block' : 'none';
+}
+
+Hotspots.prototype.setHotspotHoverBuffer = function(arr) {
+  // arr contains an array of indices of cells currently selected - create dict for fast lookups
+  var d = arr.reduce(function(obj, i) {
+    obj[i] = true;
+    return obj;
+  }, {})
+  // create the buffer to be assigned
+  var arr = new Uint8Array(data.cells.length);
+  for (var i=0; i<arr.length; i++) {
+    arr[i] = d[i] ? 1 : 0;
+  }
+  world.setBuffer('clusterSelected', arr);
 }
 
 /**
