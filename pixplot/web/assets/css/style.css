@@ -637,6 +637,13 @@ nav h2 {
   cursor: text;
 }
 
+#hotspot-actions {
+  position: absolute;
+  bottom: 15px;
+  left: 120px;
+  width: 130px;
+}
+
 .hotspot-action {
   position: absolute;
   top: -6px;
