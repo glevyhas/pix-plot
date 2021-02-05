@@ -412,7 +412,7 @@ input[type=range]::-ms-thumb {
 **/
 
 #date-container {
-  display: inline-block;
+  display: none;
 }
 
 #date-label {
