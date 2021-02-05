@@ -1023,7 +1023,7 @@ def get_categorical_boxes(group_counts, margin=2):
   y = margin
   y_spots = []
   for idx, i in enumerate(boxes):
-    if (y + i.h) < wrap:
+    if (y + i.h) <= wrap:
       y_spots.append(y)
       y += i.h+margin
   y_spot_index = 0

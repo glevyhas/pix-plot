@@ -1720,7 +1720,7 @@ Lasso.prototype.draw = function() {
   world.setBorderedImages(indices);
   // obtain and store a mesh, then add the mesh to the scene
   this.mesh = this.getMesh();
-  world.scene.add( this.mesh );
+  world.scene.add(this.mesh);
 }
 
 // get a mesh that shows the polyline of selected points
@@ -2099,13 +2099,12 @@ function Dates() {}
 Dates.prototype.init = function() {
   // set elems used below
   this.elems = {
+    container: document.querySelector('#date-container'),
     slider: document.querySelector('#date-slider'),
   }
   // remove the dom element if there is no date data
-  if (!data.json.layouts.date) {
-    this.elems.slider.style.display = 'none';
-    return;
-  }
+  if (!data.json.layouts.date) return;
+  this.elems.container.style.display = 'inline-block';
   // dates domain, selected range, and filename to date map
   this.state = {
     data: {},
@@ -3242,7 +3241,7 @@ Hotspots.prototype.render = function() {
     // show the convex hull of a cluster on mouse enter
     hotspots[i].addEventListener('mouseenter', function(idx) {
       // update the hover cell buffer
-      this.setHotspotHoverBuffer(this.json[idx].images);
+      //this.setHotspotHoverBuffer(this.json[idx].images);
       // draw the convex hull around the cells in this cluster
       var h = this.json[idx].convex_hull;
       if (!h) return;
@@ -3255,7 +3254,7 @@ Hotspots.prototype.render = function() {
       material.opacity = 0.25;
       var mesh = new THREE.Mesh(geometry, material);
       mesh.position.z = -0.01;
-      //world.scene.add(mesh);
+      world.scene.add(mesh);
       this.mesh = mesh;
     }.bind(this, i))
     // remove the convex hull shape on mouseout
