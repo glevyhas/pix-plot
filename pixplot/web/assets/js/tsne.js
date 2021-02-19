@@ -106,6 +106,7 @@ function Data() {
     y: { min: Number.POSITIVE_INFINITY, max: Number.NEGATIVE_INFINITY, },
   };
   world.getHeightMap(this.load.bind(this));
+  globe.load();
 }
 
 // Load json data with chart element positions
@@ -520,6 +521,7 @@ Layout.prototype.init = function(options) {
     layoutCategorical: document.querySelector('#layout-categorical'),
     layoutDate: document.querySelector('#layout-date'),
     layoutPose: document.querySelector('#layout-pose'),
+    layoutGeographic: document.querySelector('#layout-geographic'),
   }
   this.showHideIcons();
   this.addEventListeners();
@@ -537,6 +539,9 @@ Layout.prototype.showHideIcons = function() {
   }
   if (data.layouts.pose) {
     this.elems.layoutPose.style.display = 'inline-block';
+  }
+  if (data.layouts.geographic) {
+    this.elems.layoutGeographic.style.display = 'inline-block';
   }
 }
 
@@ -591,6 +596,8 @@ Layout.prototype.set = function(layout, enableDelay) {
   this.setPointScalar();
   // add any labels to the plot
   this.setText();
+  // show or hide any contextual elements (e.g. geographic shapes)
+  this.showHideContext();
   // zoom the user out if they're zoomed in
   var delay = world.recenterCamera(enableDelay);
   // enable the jitter button if this layout has a jittered option
@@ -665,6 +672,13 @@ Layout.prototype.showHideJitter = function() {
       : this.elems.jitter.classList.add('visible')
     : this.elems.jitter.classList.remove('visible')
   return jitterable && this.elems.input.checked;
+}
+
+// show/hide any contextual elements given the new layout
+Layout.prototype.showHideContext = function() {
+  this.selected == 'geographic'
+    ? globe.show()
+    : globe.hide();
 }
 
 // add any required text to the scene
@@ -3380,6 +3394,62 @@ Hotspots.prototype.setHotspotHoverBuffer = function(arr) {
 }
 
 /**
+* Globe: for displaying country shapes
+**/
+
+function Globe() {
+  this.geometry = new THREE.Geometry();
+  this.mesh = null;
+}
+
+Globe.prototype.load = function() {
+  var self = this;
+
+  var xScale = d3.scaleLinear()
+    .domain([-180, 180])
+    .range([-1, 1])
+
+  var yScale = d3.scaleLinear()
+    .domain([-90, 90])
+    .range([-0.5, 0.5])
+
+  function addShape(i) {
+    // 6 points required for shape to generate faces
+    if (!i || i.length < 6) return;
+    var shape = new THREE.Shape();
+    shape.moveTo(xScale(i[0][0]), yScale(i[0][1]))
+    i.map(j => {
+      shape.lineTo(
+        xScale(j[0]),
+        yScale(j[1]),
+      );
+    })
+    shape.lineTo(xScale(i[0][0]), yScale(i[0][1]))
+    var geometry = new THREE.ShapeGeometry(shape);
+    var mesh = new THREE.Mesh(geometry);
+    self.geometry.merge(mesh.geometry, mesh.matrix);
+  }
+
+  get(getPath('assets/json/flat-continents.json'), function(json) {
+    json.forEach(addShape);
+    var material = new THREE.MeshBasicMaterial({
+      color: 0x333333,
+      side: THREE.DoubleSide,
+    })
+    material.transparent = true;
+    self.mesh = new THREE.Mesh(self.geometry, material);
+  })
+}
+
+Globe.prototype.show = function() {
+  world.scene.add(this.mesh);
+}
+
+Globe.prototype.hide = function() {
+  world.scene.remove(this.mesh);
+}
+
+/**
 * Assess WebGL parameters
 **/
 
@@ -3477,6 +3547,10 @@ function Tooltip() {
     {
       elem: document.querySelector('#layout-pose'),
       text: 'Cluster poses via UMAP dimensionality reduction',
+    },
+    {
+      elem: document.querySelector('#layout-geographic'),
+      text: 'Arrange images using lat/lng coordinates',
     },
     {
       elem: document.querySelector('#settings-icon'),
@@ -3947,4 +4021,5 @@ var lines = new Lines();
 var lod = new LOD();
 var settings = new Settings();
 var tooltip = new Tooltip();
+var globe = new Globe();
 var data = new Data();

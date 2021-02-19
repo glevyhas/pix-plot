@@ -500,8 +500,15 @@ input[type=range]::-ms-thumb {
 
 #layout-date,
 #layout-categorical,
-#layout-pose {
+#layout-pose,
+#layout-geographic {
   display: none;
+}
+
+#icons #layout-geographic {
+  height: 32px;
+  position: relative;
+  top: -6px;
 }
 
 #settings-icon {
