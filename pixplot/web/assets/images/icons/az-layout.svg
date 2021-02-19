@@ -1,7 +1,7 @@
 <svg xmlns='http://www.w3.org/2000/svg' width='16' height='22' viewBox='0 0 16 22'>
   <g id='Group_341' data-name='Group 341' transform='translate(-52 -507)'>
     <g id='Group_336' data-name='Group 336' transform='translate(11)'>
-      <text id='A_Z' data-name='A_Z' transform='translate(47 507)' fill='#fff' font-size='9' font-family='OpenSans-Extrabold, Open Sans' font-weight='800'><tspan x='1.385' y='10'>A</tspan><tspan x='1.904' y='18'>Z</tspan></text>
+      <text id='A_Z' data-name='A_Z' transform='translate(47 507)' fill='#fff' font-size='9' style='font-family:Arial' font-weight='800'><tspan x='1.385' y='10'>A</tspan><tspan x='1.904' y='18'>Z</tspan></text>
       <path id='Path_163' data-name='Path 163' d='M660.7,278.536V268.5h-1.481v10.036L657,276.314v2.223l2.964,2.964,2.964-2.964v-2.223Z' transform='translate(-616 243)' fill='#fff'/>
     </g>
   </g>
