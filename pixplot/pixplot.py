@@ -511,6 +511,7 @@ def get_layouts(**kwargs):
   alphabetic = get_alphabetic_layout(**kwargs)
   categorical = get_categorical_layout(**kwargs)
   date = get_date_layout(**kwargs)
+  geographic = get_geographic_layout(**kwargs)
   layouts = {
     'umap': {
       'layout': umap,
@@ -525,6 +526,7 @@ def get_layouts(**kwargs):
     'pose': pose,
     'categorical': categorical,
     'date': date,
+    'geographic': geographic,
   }
   return layouts
 
@@ -829,6 +831,7 @@ def get_cmu_graph_path():
   '''Return the path to the location where the CMU graph will be stored'''
   return os.path.join(dirname(realpath(__file__)), 'models', 'cmu', 'graph_opt.pb')
 
+
 ##
 # Date Layout
 ##
@@ -1070,6 +1073,28 @@ class Box:
 
 
 ##
+# Geographic Layout
+##
+
+
+def get_geographic_layout(*args, **kwargs):
+  '''Return a 2D array of image positions corresponding to lat, lng coordinates'''
+  out_path = get_path('layouts', 'geographic', **kwargs)
+  l = []
+  coords = False
+  for idx, i in enumerate(stream_images(**kwargs)):
+    lat = float(i.metadata.get('lat', 0)) / 180
+    lng = float(i.metadata.get('lng', 0)) / 180 # the plot draws longitude twice as tall as latitude
+    if lat or lng: coords = True
+    l.append([lng, lat])
+  if coords:
+    return {
+      'layout': write_layout(out_path, l, scale=False, **kwargs)
+    }
+  return None
+
+
+##
 # Helpers
 ##
 
@@ -1086,8 +1111,10 @@ def get_path(*args, **kwargs):
 
 def write_layout(path, obj, **kwargs):
   '''Write layout json `obj` to disk and return the path to the saved file'''
-  obj = (minmax_scale(obj)-0.5)*2 # scale -1:1
-  obj = round_floats(obj)
+  if kwargs.get('scale', True) != False:
+    obj = (minmax_scale(obj)-0.5)*2 # scale -1:1
+  if kwargs.get('round', True) != False:
+    obj = round_floats(obj)
   return write_json(path, obj, **kwargs)
 
 
