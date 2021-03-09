@@ -365,69 +365,16 @@
     }
     </script>
 
-    <!-- Worker -->
-    <script type='script/worker' id='worker'>
-    self.onmessage = function(event) {
-      self.workerIndex = event.data.workerIndex;
-      if (event.data.message == 'load') {
-        self.url = event.data.url;
-        self.get(self.url, self.onSuccess, self.onErr)
-      }
-    };
-
-    self.onSuccess = function(data) {
-      // window.caches is a global store of web worker data
-      caches.open(self.url).then(function(cache) {
-        return cache.add(data);
-      })
-
-      self.postMessage({
-        status: 'complete',
-        workerIndex: self.workerIndex,
-        url: self.url,
-      })
-    }
-
-    self.onErr = function() {
-      self.postMessage({
-        status: 'error',
-        workerIndex: self.workerIndex,
-      })
-    }
-
-    self.onProgress = function(e) {
-      self.postMessage({
-        status: 'progress',
-        workerIndex: self.workerIndex,
-        loadPercent: e.loaded/e.total,
-      })
-    }
-
-    self.get = function(url, success, err) {
-      var xmlhttp = new XMLHttpRequest();
-      xmlhttp.onreadystatechange = function() {
-        if (xmlhttp.readyState == XMLHttpRequest.DONE) {
-          xmlhttp.status === 200
-            ? success(xmlhttp.responseText)
-            : err(xmlhttp);
-        };
-      };
-      xmlhttp.onprogress = self.onProgress;
-      xmlhttp.open('GET', url, true);
-      xmlhttp.send();
-    }
-    </script>
-
     <!-- Header -->
     <div id='header-container'>
-      <header id='header' class='no-highlight'>
+      <header id='header' class='no-highlight'></header>
+      <div id='header-brand'>
         <a href='https://dhlab.yale.edu' target='_blank'>
           <img id='logo' src='assets/images/dhlab-logo.svg' alt='DHLab logo' />
         </a>
         <div id='app-name'>PixPlot</div>
         <div class='tagline'>Image Fields in a Local Collection</div>
-      </header>
-
+      </div>
       <div id='header-controls'>
         <div id='header-controls-top' class='no-highlight'>
           <div id='image-search-container'>

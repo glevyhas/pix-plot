@@ -106,6 +106,7 @@ config = {
   'plot_id': str(uuid.uuid1()),
   'seed': 24,
   'n_clusters': 12,
+  'geojson': None,
 }
 
 
@@ -388,6 +389,8 @@ def get_manifest(**kwargs):
   point_sizes['max'] = point_sizes['grid'] * 1.2
   point_sizes['scatter'] = point_sizes['grid'] * .2
   point_sizes['initial'] = point_sizes['scatter']
+  point_sizes['categorical'] = point_sizes['grid'] * 0.6
+  point_sizes['geographic'] = point_sizes['grid'] * 0.025
   # fetch the date distribution data for point sizing
   if 'date' in layouts and layouts['date']:
     date_layout = read_json(layouts['date']['labels'], **kwargs)
@@ -1077,7 +1080,7 @@ class Box:
 ##
 
 
-def get_geographic_layout(*args, **kwargs):
+def get_geographic_layout(**kwargs):
   '''Return a 2D array of image positions corresponding to lat, lng coordinates'''
   out_path = get_path('layouts', 'geographic', **kwargs)
   l = []
@@ -1088,10 +1091,28 @@ def get_geographic_layout(*args, **kwargs):
     if lat or lng: coords = True
     l.append([lng, lat])
   if coords:
+    if kwargs['geojson']:
+      process_geojson(kwargs['geojson'])
     return {
       'layout': write_layout(out_path, l, scale=False, **kwargs)
     }
+  elif kwargs['geojson']:
+    print(' * GeoJSON is only processed if you also provide lat/lng coordinates for your images in a metadata file!')
   return None
+
+
+def process_geojson(geojson_path):
+  '''Given a GeoJSON filepath, write a minimal JSON output in lat lng coordinates'''
+  with open(geojson_path, 'r') as f:
+    geojson = json.load(f)
+  l = []
+  for i in geojson:
+    if isinstance(i, dict):
+      for j in i.get('coordinates', []):
+        for k in j:
+          l.append(k)
+  with open(os.path.join('output', 'assets', 'json', 'geographic-features.json'), 'w') as out:
+    json.dump(l, out)
 
 
 ##
@@ -1261,7 +1282,7 @@ class Image:
   def __init__(self, *args, **kwargs):
     self.path = args[0]
     self.original = load_img(self.path)
-    self.metadata = kwargs['metadata']
+    self.metadata = kwargs['metadata'] if kwargs['metadata'] else {}
 
   def resize_to_max(self, n):
     '''
@@ -1329,6 +1350,7 @@ def parse():
   parser.add_argument('--plot_id', type=str, default=config['plot_id'], help='unique id for a plot; useful for resuming processing on a started plot')
   parser.add_argument('--seed', type=int, default=config['seed'], help='seed for random processes')
   parser.add_argument('--n_clusters', type=int, default=config['n_clusters'], help='number of clusters to use when clustering with kmeans')
+  parser.add_argument('--geojson', type=str, default=config['geojson'], help='path to a GeoJSON file with shapes to be rendered on a map')
   config.update(vars(parser.parse_args()))
   process_images(**config)
 

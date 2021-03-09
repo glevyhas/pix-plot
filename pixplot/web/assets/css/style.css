@@ -135,6 +135,14 @@ select:disabled {
 * Header
 **/
 
+#header-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 48px;
+  width: 100%;
+}
+
 #header {
   height: 48px;
   width: 100%;
@@ -142,6 +150,18 @@ select:disabled {
   top: 0px;
   box-shadow: 0 3px 6px rgba(0, 0, 0, 0.16);
   border-bottom: 1px solid #1f1f1f;
+  font-size: 0;
+}
+
+
+#header-brand {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: inline-block;
+  z-index: 10;
+  height: inherit;
+  overflow: hidden;
   font-size: 0;
 }
 
@@ -399,7 +419,7 @@ input[type=range]::-ms-thumb {
 }
 
 #range-slider {
-  margin-right: 50px;
+  margin-right: 56px;
   display: inline-block;
 }
 

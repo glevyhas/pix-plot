@@ -654,6 +654,7 @@ Layout.prototype.setPointScalar = function() {
   if (l == 'tsne' || l == 'umap' || l == 'pose') size = config.size.points.scatter;
   if (l == 'alphabetic' || l == 'grid') size = config.size.points.grid;
   if (l == 'categorical') size = config.size.points.categorical;
+  if (l == 'geographic') size = config.size.points.geographic;
   if (l == 'date') size = config.size.points.date;
   if (size) {
     world.elems.pointSize.value = size;
@@ -1007,7 +1008,7 @@ World.prototype.getDrawCallToCells = function() {
   for (var i=0; i<data.cells.length; i++) {
     var cell = data.cells[i],
         drawCall = cell.getIndexOfDrawCall();
-    if (!(drawCall in drawCallToCells)) drawCallToCells[drawCall] = [cell]
+    if (!(drawCall in drawCallToCells)) drawCallToCells[drawCall] = [cell];
     else drawCallToCells[drawCall].push(cell);
   }
   return drawCallToCells;
@@ -3398,55 +3399,72 @@ Hotspots.prototype.setHotspotHoverBuffer = function(arr) {
 **/
 
 function Globe() {
-  this.geometry = new THREE.Geometry();
-  this.mesh = null;
+  this.globeGeometry = new THREE.Geometry();
+  this.globeMesh = null;
+  this.featureGeometry = new THREE.Geometry();
+  this.featureMesh = null;
 }
 
 Globe.prototype.load = function() {
   var self = this;
 
-  var xScale = d3.scaleLinear()
+  this.xScale = d3.scaleLinear()
     .domain([-180, 180])
     .range([-1, 1])
 
-  var yScale = d3.scaleLinear()
+  this.yScale = d3.scaleLinear()
     .domain([-90, 90])
     .range([-0.5, 0.5])
 
-  function addShape(i) {
+  function addShape(parentGeometry, i) {
     // 6 points required for shape to generate faces
     if (!i || i.length < 6) return;
     var shape = new THREE.Shape();
-    shape.moveTo(xScale(i[0][0]), yScale(i[0][1]))
+    shape.moveTo(self.xScale(i[0][0]), self.yScale(i[0][1]))
     i.map(j => {
       shape.lineTo(
-        xScale(j[0]),
-        yScale(j[1]),
+        self.xScale(j[0]),
+        self.yScale(j[1]),
       );
     })
-    shape.lineTo(xScale(i[0][0]), yScale(i[0][1]))
+    shape.lineTo(self.xScale(i[0][0]), self.yScale(i[0][1]))
     var geometry = new THREE.ShapeGeometry(shape);
     var mesh = new THREE.Mesh(geometry);
-    self.geometry.merge(mesh.geometry, mesh.matrix);
+    parentGeometry.merge(mesh.geometry, mesh.matrix);
   }
 
   get(getPath('assets/json/flat-continents.json'), function(json) {
-    json.forEach(addShape);
+    json.forEach(addShape.bind(this, self.globeGeometry));
     var material = new THREE.MeshBasicMaterial({
       color: 0x333333,
       side: THREE.DoubleSide,
     })
-    material.transparent = true;
-    self.mesh = new THREE.Mesh(self.geometry, material);
+    self.globeMesh = new THREE.Mesh(self.globeGeometry, material);
+  })
+
+  get(getPath('assets/json/geographic-features.json'), function(json) {
+    json.forEach(addShape.bind(this, self.featureGeometry));
+    var material = new THREE.MeshBasicMaterial({
+      color: 0xff0000,
+      side: THREE.DoubleSide,
+    })
+    self.featureMesh = new THREE.Mesh(self.featureGeometry, material);
   })
 }
 
 Globe.prototype.show = function() {
-  world.scene.add(this.mesh);
+  world.scene.add(this.globeMesh);
+  if (this.featureMesh) {
+    console.log(' * added')
+    world.scene.add(this.featureMesh);
+  }
 }
 
 Globe.prototype.hide = function() {
-  world.scene.remove(this.mesh);
+  world.scene.remove(this.globeMesh);
+  if (this.featureMesh) {
+    world.scene.remove(this.featureMesh);
+  }
 }
 
 /**
