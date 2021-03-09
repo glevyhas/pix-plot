@@ -964,10 +964,9 @@ def get_categorical_layout(null_category='Other', margin=2, **kwargs):
   # determine the out path and return from cache if possible
   out_path = get_path('layouts', 'categorical', **kwargs)
   labels_out_path = get_path('layouts', 'categorical-labels', **kwargs)
-  if os.path.exists(out_path): return out_path
   # accumulate d[category] = [indices of points with category]
   categories = [i.get('category', None) for i in kwargs['metadata']]
-  if not any(categories) or len(set(categories)) == 1: return False
+  if not any(categories) or len(set(categories) - set([None])) == 1: return False
   d = defaultdict(list)
   for idx, i in enumerate(categories): d[i].append(idx)
   # store the number of observations in each group
