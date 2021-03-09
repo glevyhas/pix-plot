@@ -106,6 +106,7 @@ function Data() {
     y: { min: Number.POSITIVE_INFINITY, max: Number.NEGATIVE_INFINITY, },
   };
   world.getHeightMap(this.load.bind(this));
+  globe.load();
 }
 
 // Load json data with chart element positions
@@ -520,6 +521,7 @@ Layout.prototype.init = function(options) {
     layoutCategorical: document.querySelector('#layout-categorical'),
     layoutDate: document.querySelector('#layout-date'),
     layoutPose: document.querySelector('#layout-pose'),
+    layoutGeographic: document.querySelector('#layout-geographic'),
   }
   this.showHideIcons();
   this.addEventListeners();
@@ -537,6 +539,9 @@ Layout.prototype.showHideIcons = function() {
   }
   if (data.layouts.pose) {
     this.elems.layoutPose.style.display = 'inline-block';
+  }
+  if (data.layouts.geographic) {
+    this.elems.layoutGeographic.style.display = 'inline-block';
   }
 }
 
@@ -591,6 +596,8 @@ Layout.prototype.set = function(layout, enableDelay) {
   this.setPointScalar();
   // add any labels to the plot
   this.setText();
+  // show or hide any contextual elements (e.g. geographic shapes)
+  this.showHideContext();
   // zoom the user out if they're zoomed in
   var delay = world.recenterCamera(enableDelay);
   // enable the jitter button if this layout has a jittered option
@@ -647,6 +654,7 @@ Layout.prototype.setPointScalar = function() {
   if (l == 'tsne' || l == 'umap' || l == 'pose') size = config.size.points.scatter;
   if (l == 'alphabetic' || l == 'grid') size = config.size.points.grid;
   if (l == 'categorical') size = config.size.points.categorical;
+  if (l == 'geographic') size = config.size.points.geographic;
   if (l == 'date') size = config.size.points.date;
   if (size) {
     world.elems.pointSize.value = size;
@@ -665,6 +673,13 @@ Layout.prototype.showHideJitter = function() {
       : this.elems.jitter.classList.add('visible')
     : this.elems.jitter.classList.remove('visible')
   return jitterable && this.elems.input.checked;
+}
+
+// show/hide any contextual elements given the new layout
+Layout.prototype.showHideContext = function() {
+  this.selected == 'geographic'
+    ? globe.show()
+    : globe.hide();
 }
 
 // add any required text to the scene
@@ -993,7 +1008,7 @@ World.prototype.getDrawCallToCells = function() {
   for (var i=0; i<data.cells.length; i++) {
     var cell = data.cells[i],
         drawCall = cell.getIndexOfDrawCall();
-    if (!(drawCall in drawCallToCells)) drawCallToCells[drawCall] = [cell]
+    if (!(drawCall in drawCallToCells)) drawCallToCells[drawCall] = [cell];
     else drawCallToCells[drawCall].push(cell);
   }
   return drawCallToCells;
@@ -3380,6 +3395,79 @@ Hotspots.prototype.setHotspotHoverBuffer = function(arr) {
 }
 
 /**
+* Globe: for displaying country shapes
+**/
+
+function Globe() {
+  this.globeGeometry = new THREE.Geometry();
+  this.globeMesh = null;
+  this.featureGeometry = new THREE.Geometry();
+  this.featureMesh = null;
+}
+
+Globe.prototype.load = function() {
+  var self = this;
+
+  this.xScale = d3.scaleLinear()
+    .domain([-180, 180])
+    .range([-1, 1])
+
+  this.yScale = d3.scaleLinear()
+    .domain([-90, 90])
+    .range([-0.5, 0.5])
+
+  function addShape(parentGeometry, i) {
+    // 6 points required for shape to generate faces
+    if (!i || i.length < 6) return;
+    var shape = new THREE.Shape();
+    shape.moveTo(self.xScale(i[0][0]), self.yScale(i[0][1]))
+    i.map(j => {
+      shape.lineTo(
+        self.xScale(j[0]),
+        self.yScale(j[1]),
+      );
+    })
+    shape.lineTo(self.xScale(i[0][0]), self.yScale(i[0][1]))
+    var geometry = new THREE.ShapeGeometry(shape);
+    var mesh = new THREE.Mesh(geometry);
+    parentGeometry.merge(mesh.geometry, mesh.matrix);
+  }
+
+  get(getPath('assets/json/flat-continents.json'), function(json) {
+    json.forEach(addShape.bind(this, self.globeGeometry));
+    var material = new THREE.MeshBasicMaterial({
+      color: 0x333333,
+      side: THREE.DoubleSide,
+    })
+    self.globeMesh = new THREE.Mesh(self.globeGeometry, material);
+  })
+
+  get(getPath('assets/json/geographic-features.json'), function(json) {
+    json.forEach(addShape.bind(this, self.featureGeometry));
+    var material = new THREE.MeshBasicMaterial({
+      color: 0xff0000,
+      side: THREE.DoubleSide,
+    })
+    self.featureMesh = new THREE.Mesh(self.featureGeometry, material);
+  })
+}
+
+Globe.prototype.show = function() {
+  world.scene.add(this.globeMesh);
+  if (this.featureMesh) {
+    console.log(' * added')
+    world.scene.add(this.featureMesh);
+  }
+}
+
+Globe.prototype.hide = function() {
+  world.scene.remove(this.globeMesh);
+  if (this.featureMesh) {
+    world.scene.remove(this.featureMesh);
+  }
+}
+
+/**
 * Assess WebGL parameters
 **/
 
@@ -3477,6 +3565,10 @@ function Tooltip() {
     {
       elem: document.querySelector('#layout-pose'),
       text: 'Cluster poses via UMAP dimensionality reduction',
+    },
+    {
+      elem: document.querySelector('#layout-geographic'),
+      text: 'Arrange images using lat/lng coordinates',
     },
     {
       elem: document.querySelector('#settings-icon'),
@@ -3947,4 +4039,5 @@ var lines = new Lines();
 var lod = new LOD();
 var settings = new Settings();
 var tooltip = new Tooltip();
+var globe = new Globe();
 var data = new Data();

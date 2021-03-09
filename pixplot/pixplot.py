@@ -106,6 +106,7 @@ config = {
   'plot_id': str(uuid.uuid1()),
   'seed': 24,
   'n_clusters': 12,
+  'geojson': None,
 }
 
 
@@ -388,6 +389,8 @@ def get_manifest(**kwargs):
   point_sizes['max'] = point_sizes['grid'] * 1.2
   point_sizes['scatter'] = point_sizes['grid'] * .2
   point_sizes['initial'] = point_sizes['scatter']
+  point_sizes['categorical'] = point_sizes['grid'] * 0.6
+  point_sizes['geographic'] = point_sizes['grid'] * 0.025
   # fetch the date distribution data for point sizing
   if 'date' in layouts and layouts['date']:
     date_layout = read_json(layouts['date']['labels'], **kwargs)
@@ -511,6 +514,7 @@ def get_layouts(**kwargs):
   alphabetic = get_alphabetic_layout(**kwargs)
   categorical = get_categorical_layout(**kwargs)
   date = get_date_layout(**kwargs)
+  geographic = get_geographic_layout(**kwargs)
   layouts = {
     'umap': {
       'layout': umap,
@@ -525,6 +529,7 @@ def get_layouts(**kwargs):
     'pose': pose,
     'categorical': categorical,
     'date': date,
+    'geographic': geographic,
   }
   return layouts
 
@@ -829,6 +834,7 @@ def get_cmu_graph_path():
   '''Return the path to the location where the CMU graph will be stored'''
   return os.path.join(dirname(realpath(__file__)), 'models', 'cmu', 'graph_opt.pb')
 
+
 ##
 # Date Layout
 ##
@@ -958,10 +964,9 @@ def get_categorical_layout(null_category='Other', margin=2, **kwargs):
   # determine the out path and return from cache if possible
   out_path = get_path('layouts', 'categorical', **kwargs)
   labels_out_path = get_path('layouts', 'categorical-labels', **kwargs)
-  if os.path.exists(out_path): return out_path
   # accumulate d[category] = [indices of points with category]
   categories = [i.get('category', None) for i in kwargs['metadata']]
-  if not any(categories) or len(set(categories)) == 1: return False
+  if not any(categories) or len(set(categories) - set([None])) == 1: return False
   d = defaultdict(list)
   for idx, i in enumerate(categories): d[i].append(idx)
   # store the number of observations in each group
@@ -1070,6 +1075,46 @@ class Box:
 
 
 ##
+# Geographic Layout
+##
+
+
+def get_geographic_layout(**kwargs):
+  '''Return a 2D array of image positions corresponding to lat, lng coordinates'''
+  out_path = get_path('layouts', 'geographic', **kwargs)
+  l = []
+  coords = False
+  for idx, i in enumerate(stream_images(**kwargs)):
+    lat = float(i.metadata.get('lat', 0)) / 180
+    lng = float(i.metadata.get('lng', 0)) / 180 # the plot draws longitude twice as tall as latitude
+    if lat or lng: coords = True
+    l.append([lng, lat])
+  if coords:
+    if kwargs['geojson']:
+      process_geojson(kwargs['geojson'])
+    return {
+      'layout': write_layout(out_path, l, scale=False, **kwargs)
+    }
+  elif kwargs['geojson']:
+    print(' * GeoJSON is only processed if you also provide lat/lng coordinates for your images in a metadata file!')
+  return None
+
+
+def process_geojson(geojson_path):
+  '''Given a GeoJSON filepath, write a minimal JSON output in lat lng coordinates'''
+  with open(geojson_path, 'r') as f:
+    geojson = json.load(f)
+  l = []
+  for i in geojson:
+    if isinstance(i, dict):
+      for j in i.get('coordinates', []):
+        for k in j:
+          l.append(k)
+  with open(os.path.join('output', 'assets', 'json', 'geographic-features.json'), 'w') as out:
+    json.dump(l, out)
+
+
+##
 # Helpers
 ##
 
@@ -1086,8 +1131,10 @@ def get_path(*args, **kwargs):
 
 def write_layout(path, obj, **kwargs):
   '''Write layout json `obj` to disk and return the path to the saved file'''
-  obj = (minmax_scale(obj)-0.5)*2 # scale -1:1
-  obj = round_floats(obj)
+  if kwargs.get('scale', True) != False:
+    obj = (minmax_scale(obj)-0.5)*2 # scale -1:1
+  if kwargs.get('round', True) != False:
+    obj = round_floats(obj)
   return write_json(path, obj, **kwargs)
 
 
@@ -1234,7 +1281,7 @@ class Image:
   def __init__(self, *args, **kwargs):
     self.path = args[0]
     self.original = load_img(self.path)
-    self.metadata = kwargs['metadata']
+    self.metadata = kwargs['metadata'] if kwargs['metadata'] else {}
 
   def resize_to_max(self, n):
     '''
@@ -1302,6 +1349,7 @@ def parse():
   parser.add_argument('--plot_id', type=str, default=config['plot_id'], help='unique id for a plot; useful for resuming processing on a started plot')
   parser.add_argument('--seed', type=int, default=config['seed'], help='seed for random processes')
   parser.add_argument('--n_clusters', type=int, default=config['n_clusters'], help='number of clusters to use when clustering with kmeans')
+  parser.add_argument('--geojson', type=str, default=config['geojson'], help='path to a GeoJSON file with shapes to be rendered on a map')
   config.update(vars(parser.parse_args()))
   process_images(**config)
 
