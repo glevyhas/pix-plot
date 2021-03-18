@@ -1503,7 +1503,6 @@ World.prototype.showSelectTooltip = function() {
 World.prototype.hideSelectTooltip = function() {
   localStorage.setItem('select-tooltip-cleared', true);
   this.elems.selectTooltip.style.display = 'none';
-  this.setMode('select');
 }
 
 /**
