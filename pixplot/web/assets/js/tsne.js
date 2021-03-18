@@ -3316,6 +3316,14 @@ Hotspots.prototype.render = function() {
         this.render();
       }.bind(this, i))
     }
+    // prevent newlines when retitling
+    hotspots[i].querySelector('.hotspot-label').addEventListener('keydown', function(i, e) {
+      if (e.keyCode == 13) {
+        e.stopPropagation();
+        e.preventDefault();
+        hotspots[i].querySelector('.hotspot-label').blur()
+      }
+    }.bind(this, i))
     // allow users to retitle hotspots
     hotspots[i].querySelector('.hotspot-label').addEventListener('input', function(i, e) {
       this.setEdited(true);
