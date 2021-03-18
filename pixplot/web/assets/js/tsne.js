@@ -3327,7 +3327,7 @@ Hotspots.prototype.render = function() {
     // allow users to retitle hotspots
     hotspots[i].querySelector('.hotspot-label').addEventListener('input', function(i, e) {
       this.setEdited(true);
-      this.json[i].label = hotspots[i].querySelector('.hotspot-label').textContent;
+      this.json[i].label = this.formatLabel(hotspots[i].querySelector('.hotspot-label').textContent);
     }.bind(this, i))
     // allow users to reorder hotspots
     hotspots[i].addEventListener('dragstart', function(e) {
@@ -3341,6 +3341,13 @@ Hotspots.prototype.render = function() {
       e.dataTransfer.setData('text', id);
     })
   }
+}
+
+// encode unicode entities for proper display
+Hotspots.prototype.formatLabel = function(s) {
+  return s.replace(/[\u00A0-\u9999<>\&]/g, function(i) {
+     return '&#'+i.charCodeAt(0)+';';
+  });
 }
 
 Hotspots.prototype.setEdited = function(bool) {
