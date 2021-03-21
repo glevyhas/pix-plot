@@ -73,6 +73,7 @@ select:disabled {
 [contenteditable] {
   -webkit-user-select: text;
   user-select: text;
+  overflow: auto;
 }
 
 /**
