@@ -19,6 +19,7 @@ from iiif_downloader import Manifest
 from rasterfairy import coonswarp
 from keras.models import Model
 from scipy.stats import kde
+from PIL import ImageFile
 import keras.backend as K
 import tensorflow as tf
 import multiprocessing
@@ -75,6 +76,9 @@ tf_config = tf.compat.v1.ConfigProto()
 tf_config.gpu_options.allow_growth = True
 tf_config.log_device_placement = True
 sess = tf.compat.v1.Session(config=tf_config)
+
+# handle truncated images in PIL (managed by Pillow)
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 '''
 NB: Keras Image class objects return image.size as w,h
@@ -187,6 +191,9 @@ def filter_images(**kwargs):
       resized = i.resize_to_max(kwargs['lod_cell_height'])
     except ValueError:
       print(' * skipping {} because it contains 0 height or width when resized'.format(i.path))
+      continue
+    except OSError:
+      print(' * skipping {} because it could not be resized'.format(i.path))
       continue
     # remove images that are too wide for the atlas
     if (w/h) > (kwargs['atlas_size']/kwargs['cell_size']):
