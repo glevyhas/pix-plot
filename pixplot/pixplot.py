@@ -243,9 +243,13 @@ def get_image_paths(**kwargs):
   if os.path.exists(kwargs['images']):
     with open(kwargs['images']) as f:
       f = [i.strip() for i in f.read().split('\n') if i.strip()]
-      if [i.startswith('http') for i in f]:
-        for i in f: Manifest(url=i).save_images(limit=1)
-        image_paths = sorted(glob2.glob(os.path.join('iiif-downloads', 'images', '*')))
+      for i in f:
+        if i.startswith('http'):
+          try:
+            Manifest(url=i).save_images(limit=1)
+          except:
+            print(' * could not download url ' + i)
+      image_paths = sorted(glob2.glob(os.path.join('iiif-downloads', 'images', '*')))
   # handle case where images flag points to a glob of images
   if not image_paths:
     image_paths = sorted(glob2.glob(kwargs['images']))
