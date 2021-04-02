@@ -1176,6 +1176,11 @@ noscript {
   background-color: #222;
 }
 
+#selected-image {
+  position: relative;
+  z-index: 100;
+}
+
 #previous-image {
   display: none;
 }
@@ -1272,11 +1277,14 @@ noscript {
   padding: 25px;
   box-sizing: border-box;
   z-index: 10;
-  background-color: #333;
 }
 
 #svg-image-unfiltered {
   mask: url(#blur-mask);
+}
+
+#selected-image-svg rect {
+  fill: transparent;
 }
 
 /**
