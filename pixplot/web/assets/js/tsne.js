@@ -801,10 +801,13 @@ World.prototype.getCamera = function() {
 **/
 
 World.prototype.getRenderer = function() {
-  return new THREE.WebGLRenderer({
+  var renderer = new THREE.WebGLRenderer({
     antialias: true,
     canvas: this.canvas,
   });
+  renderer.autoClear = false;
+  renderer.toneMapping = THREE.ReinhardToneMapping;
+  return renderer;
 }
 
 /**
@@ -3255,7 +3258,7 @@ Hotspots.prototype.render = function() {
     // show the convex hull of a cluster on mouse enter
     hotspots[i].addEventListener('mouseenter', function(idx) {
       // update the hover cell buffer
-      //this.setHotspotHoverBuffer(this.json[idx].images);
+      this.setHotspotHoverBuffer(this.json[idx].images);
       // draw the convex hull around the cells in this cluster
       var h = this.json[idx].convex_hull;
       if (!h) return;
@@ -3268,7 +3271,7 @@ Hotspots.prototype.render = function() {
       material.opacity = 0.25;
       var mesh = new THREE.Mesh(geometry, material);
       mesh.position.z = -0.01;
-      world.scene.add(mesh);
+      //world.scene.add(mesh);
       this.mesh = mesh;
     }.bind(this, i))
     // remove the convex hull shape on mouseout
@@ -3459,7 +3462,7 @@ Globe.prototype.load = function() {
   get(getPath('assets/json/geographic-features.json'), function(json) {
     json.forEach(addShape.bind(this, self.featureGeometry));
     var material = new THREE.MeshBasicMaterial({
-      color: 0xff0000,
+      color: 0x222222,
       side: THREE.DoubleSide,
     })
     self.featureMesh = new THREE.Mesh(self.featureGeometry, material);
@@ -3469,7 +3472,6 @@ Globe.prototype.load = function() {
 Globe.prototype.show = function() {
   world.scene.add(this.globeMesh);
   if (this.featureMesh) {
-    console.log(' * added')
     world.scene.add(this.featureMesh);
   }
 }
