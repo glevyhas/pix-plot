@@ -9,7 +9,7 @@ manifest.txt
 missing-metadata.txt
 dist
 build
-output
+output*
 datasets
 iiif-downloads
 .ipynb_checkpoints

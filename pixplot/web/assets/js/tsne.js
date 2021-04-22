@@ -42,7 +42,8 @@
 
 function Config() {
   this.data = {
-    dir: 'data',
+    output_directory: 'output', // user specified out_dir or 'output'
+    dir: 'data', // data folder within the output_directory
     file: 'manifest.json',
     gzipped: false,
   }
@@ -113,6 +114,7 @@ function Data() {
 Data.prototype.load = function() {
   get(getPath(config.data.dir + '/' + config.data.file),
     function(json) {
+      config.data.output_directory = json.output_directory;
       get(getPath(json.imagelist), function(data) {
         this.parseManifest(Object.assign({}, json, data));
       }.bind(this))
@@ -3850,7 +3852,7 @@ function getCanvasSize() {
 function getPath(path) {
   var base = window.location.origin;
   base += window.location.pathname.replace('index.html', '');
-  base += path.replace('\\','/').replace('output/', '');
+  base += path.replace('\\','/').replace(config.data.output_directory + '/', '');
   return base;
 }
 

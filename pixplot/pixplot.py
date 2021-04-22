@@ -61,8 +61,9 @@ try:
   from tf_pose.networks import get_graph_path, model_wh
   from tf_pose.estimator import TfPoseEstimator
   from tf_pose import common
+  pose_ready = True
 except:
-  pass
+  pose_ready = False
 
 try:
   from hdbscan import HDBSCAN
@@ -410,6 +411,7 @@ def get_manifest(**kwargs):
   manifest = {
     'version': get_version(),
     'plot_id': kwargs['plot_id'],
+    'output_directory': os.path.split(kwargs['out_dir'])[0],
     'layouts': layouts,
     'initial_layout': 'umap',
     'point_sizes': point_sizes,
@@ -750,6 +752,9 @@ def crop_openpose_figure(im, vec, margin=0.4):
 
 def subdivide_images_with_openpose(**kwargs):
   '''Cut each input image into single-pose subimages and save vectors for each'''
+  if not pose_ready:
+    print(' * to use --extract_poses, please install tf-pose==0.11.0 and build your plot again')
+    sys.exit()
   print(' * subdividing images with OpenPose model')
   download_cmu_model()
   # determine the subset of input images for which we've already parsed pose vectors
