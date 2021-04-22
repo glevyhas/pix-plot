@@ -411,6 +411,7 @@ def get_manifest(**kwargs):
   manifest = {
     'version': get_version(),
     'plot_id': kwargs['plot_id'],
+    'output_directory': os.path.split(kwargs['out_dir'])[0],
     'layouts': layouts,
     'initial_layout': 'umap',
     'point_sizes': point_sizes,
