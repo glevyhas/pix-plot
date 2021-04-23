@@ -761,6 +761,7 @@ function World() {
   };
   this.elems = {
     pointSize: document.querySelector('#pointsize-range-input'),
+    borderWidth: document.querySelector('#border-width-range-input'),
     selectTooltip: document.querySelector('#select-tooltip'),
     selectTooltipButton: document.querySelector('#select-tooltip-button'),
   };
@@ -863,6 +864,7 @@ World.prototype.addEventListeners = function() {
   this.addResizeListener();
   this.addLostContextListener();
   this.addScalarChangeListener();
+  this.addBorderWidthChangeListener();
   this.addTabChangeListeners();
   this.addModeChangeListeners();
 }
@@ -902,6 +904,19 @@ World.prototype.setScaleUniforms = function() {
 World.prototype.addScalarChangeListener = function() {
   this.elems.pointSize.addEventListener('change', this.setScaleUniforms.bind(this));
   this.elems.pointSize.addEventListener('input', this.setScaleUniforms.bind(this));
+}
+
+/**
+* Update the border width when users change the input slider
+**/
+
+World.prototype.addBorderWidthChangeListener = function() {
+  this.elems.borderWidth.addEventListener('change', this.setBorderWidthUniforms.bind(this));
+  this.elems.borderWidth.addEventListener('input', this.setBorderWidthUniforms.bind(this));
+}
+
+World.prototype.setBorderWidthUniforms = function(e) {
+  world.setUniform('borderWidth', e.target.value);
 }
 
 /**
@@ -1725,10 +1740,8 @@ Lasso.prototype.draw = function() {
     // allow users to see the selected images if desired
     this.elems.viewSelectedContainer.style.display = 'block';
     this.elems.countTarget.textContent = indices.length;
-    // if we're in the umap layout, allow cluster persistence
-    if (layout.selected == 'umap') {
-      data.hotspots.setCreateHotspotVisibility(true);
-    }
+    // allow cluster persistence
+    data.hotspots.setCreateHotspotVisibility(true);
   }
   // indicate the number of cells that are selected
   this.setNSelected(indices.length);
@@ -3161,14 +3174,8 @@ Hotspots.prototype.addEventListeners = function() {
     for (var i=0; i<data.cells.length; i++) {
       if (lasso.selected[ data.json.images[i] ]) indices.push(i);
     }
-    // flatten the user's selection to a 2D array
-    var hull = [];
-    for (var i=0; i<lasso.points.length; i++) {
-      hull.push([lasso.points[i].x, lasso.points[i].y])
-    }
     // augment the hotspots data
     this.json.push({
-      convex_hull: hull,
       label: data.hotspots.getUserClusterName(),
       img: data.json.images[choose(indices)],
       images: indices,
@@ -3242,14 +3249,8 @@ Hotspots.prototype.render = function() {
   // render the hotspots
   var hotspots = document.querySelectorAll('.hotspot');
   for (var i=0; i<hotspots.length; i++) {
-    // show the number of cells in this hotspot's convex hull
-    var polygon = this.json[i].convex_hull;
-    var n = 0;
-    for (var j=0; j<data.json.images.length; j++) {
-      var p = [data.cells[j].x, data.cells[j].y];
-      if (pointInPolygon(p, polygon)) n++;
-    }
-    hotspots[i].querySelector('.hotspot-bar-inner').style.width = (n*100 / data.cells.length) + '%';
+    // show the number of cells in this hotspot's cluster
+    hotspots[i].querySelector('.hotspot-bar-inner').style.width = (this.json[i].images.length / data.cells.length) + '%';
     // add hotspot event listeners each time they are re-rendered
     hotspots[i].querySelector('.hotspot-image').addEventListener('click', function(idx) {
       world.flyToCellImage(this.json[idx].img);
@@ -3258,20 +3259,6 @@ Hotspots.prototype.render = function() {
     hotspots[i].addEventListener('mouseenter', function(idx) {
       // update the hover cell buffer
       this.setHotspotHoverBuffer(this.json[idx].images);
-      // draw the convex hull around the cells in this cluster
-      var h = this.json[idx].convex_hull;
-      if (!h) return;
-      var shape = new THREE.Shape();
-      shape.moveTo(h[0][0], h[0][1]);
-      for (var i=1; i<h.length; i++) shape.lineTo(h[i][0], h[i][1]);
-      var geometry = new THREE.ShapeBufferGeometry(shape);
-      var material = new THREE.MeshBasicMaterial({ color: 0xffffff });
-      material.transparent = true;
-      material.opacity = 0.25;
-      var mesh = new THREE.Mesh(geometry, material);
-      mesh.position.z = -0.01;
-      //world.scene.add(mesh);
-      this.mesh = mesh;
     }.bind(this, i))
     // remove the convex hull shape on mouseout
     hotspots[i].addEventListener('mouseleave', function(e) {
@@ -3300,17 +3287,8 @@ Hotspots.prototype.render = function() {
         // prevent the zoom to image event
         e.preventDefault();
         e.stopPropagation();
-        // find the points inside this cluster's convex hull
-        var polygon = this.json[i].convex_hull;
-        var inside = [];
-        for (var j=0; j<data.json.images.length; j++) {
-          var p = [data.cells[j].x, data.cells[j].y];
-          if (pointInPolygon(p, polygon)) {
-            inside.push(j);
-          }
-        }
         // select a random image from those in this cluster
-        var selected = Math.floor(Math.random() * inside.length);
+        var selected = Math.floor(Math.random() * this.json[i].images.length);
         this.json[i].img = data.json.images[inside[selected]];
         // make the change saveable
         this.setEdited(true);

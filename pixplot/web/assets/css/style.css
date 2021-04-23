@@ -264,6 +264,7 @@ select:disabled {
   transition: transform 0.3s;
   transform: translate(0, -48px);
   box-shadow: 0 3px 2px rgba(0, 0, 0, 0.3);
+  padding-right: 56px;
 }
 
 #header-controls-bottom.open {
@@ -424,8 +425,7 @@ input[type=range]::-ms-thumb {
   margin-top: 19px;
 }
 
-#range-slider {
-  margin-right: 56px;
+.range-slider {
   display: inline-block;
 }
 

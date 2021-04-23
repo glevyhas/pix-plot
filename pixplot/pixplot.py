@@ -14,7 +14,6 @@ from pointgrid import align_points_to_grid
 from scipy.spatial.distance import cdist
 from distutils.dir_util import copy_tree
 from sklearn.decomposition import PCA
-from scipy.spatial import ConvexHull
 from iiif_downloader import Manifest
 from rasterfairy import coonswarp
 from keras.models import Model
@@ -298,7 +297,7 @@ def clean_filename(s, **kwargs):
 
 def get_metadata_list(**kwargs):
   '''Return a list of objects with image metadata'''
-  if not kwargs['metadata']: return []
+  if not kwargs.get('metadata', False): return []
   # handle csv metadata
   l = []
   if kwargs['metadata'].endswith('.csv'):
@@ -1191,14 +1190,8 @@ def get_hotspots(**kwargs):
   # create a map from cluster label to image indices in cluster
   d = defaultdict(lambda: defaultdict(list))
   for idx, i in enumerate(z.labels_):
-    d[i]['images'].append(idx)
-  # find the convex hull for each cluster's points
-  for i in d:
-    positions = np.array([v[j] for j in d[i]['images']])
-    hull = ConvexHull(positions)
-    points = [hull.points[j] for j in hull.vertices]
-    # the last convex hull simplex needs to connect back to the first point
-    d[i]['convex_hull'] = np.vstack([points, points[0]]).tolist()
+    if i != -1:
+      d[i]['images'].append(idx)
   # find the centroids for each cluster
   centroids = []
   for i in d:
@@ -1213,11 +1206,8 @@ def get_hotspots(**kwargs):
   for i in d:
     # find percent of images in cluster
     image_percent = len(d[i]['images']) / len(v)
-    # find percent of plot area in cluster
-    x, y = np.array(d[i]['convex_hull']).T
-    area_percent = 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
     # determine if image or area percent is too large
-    if image_percent > 0.5 or area_percent > 0.3:
+    if image_percent > 0.5:
       deletable.append(i)
   for i in deletable: del d[i]
   # sort the clusers by size and then label the clusters
