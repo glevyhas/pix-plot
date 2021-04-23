@@ -17,7 +17,7 @@ for i in dirs:
 
 setup(
   name='pixplot',
-  version='0.0.106',
+  version='0.0.107',
   packages=['pixplot'],
   package_data={
     'pixplot': web,
