@@ -510,7 +510,7 @@
           <div class='modal-bottom-content'>
             <div class='modal-text-left'>
               <div id='image-title'><%- meta.filename ? decodeURIComponent(meta.filename) : decodeURIComponent(meta.src) %></div>
-              <span id='image-text'><%- meta.description ? decodeURIComponent(meta.description) : '' %></span>
+              <span id='image-text'><%= meta.description ? decodeURIComponent(meta.description) : '' %></span>
               <span id='image-date'><%- meta.date ? '(' + meta.date + ')' : '' %></span>
             </div>
             <div class='modal-text-right'>
@@ -533,7 +533,7 @@
         </div>
       </div>
     </script>
-    <div id='selected-image-target' class='no-highlight'></div>
+    <div id='selected-image-target'></div>
     <!-- Image Selection: multi-image selection -->
     <div id='selection-icons' class='no-highlight'>
       <img id='pan' src='assets/images/icons/pan.svg' class='active' />
