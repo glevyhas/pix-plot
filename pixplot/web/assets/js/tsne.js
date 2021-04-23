@@ -3250,7 +3250,7 @@ Hotspots.prototype.render = function() {
   var hotspots = document.querySelectorAll('.hotspot');
   for (var i=0; i<hotspots.length; i++) {
     // show the number of cells in this hotspot's cluster
-    hotspots[i].querySelector('.hotspot-bar-inner').style.width = (this.json[i].images.length / data.cells.length) + '%';
+    hotspots[i].querySelector('.hotspot-bar-inner').style.width = (100 * this.json[i].images.length / data.cells.length) + '%';
     // add hotspot event listeners each time they are re-rendered
     hotspots[i].querySelector('.hotspot-image').addEventListener('click', function(idx) {
       world.flyToCellImage(this.json[idx].img);
