@@ -528,7 +528,6 @@ Layout.prototype.init = function(options) {
   this.showHideIcons();
   this.addEventListeners();
   this.selectActiveIcon();
-  data.hotspots.showHide();
   this.showHideJitter();
 }
 
@@ -700,8 +699,6 @@ Layout.prototype.setText = function() {
 Layout.prototype.onTransitionComplete = function() {
   // re-enable interactions with the jitter button
   this.elems.jitter.classList.remove('disabled');
-  // show/hide the hotspots
-  data.hotspots.showHide();
   // update the state and buffers for each cell
   data.cells.forEach(function(cell) {
     cell.x = cell.tx;
