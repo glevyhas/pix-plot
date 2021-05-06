@@ -305,7 +305,7 @@ def get_metadata_list(**kwargs):
       reader = csv.reader(f)
       headers = [i.lower() for i in next(reader)]
       for i in reader:
-        l.append({headers[j]: i[j] if i[j] else '' for j, _ in enumerate(headers)})
+        l.append({headers[j]: i[j] if len(i) > j and i[j] else '' for j, _ in enumerate(headers)})
   # handle json metadata
   else:
     for i in glob2.glob(kwargs['metadata']):
