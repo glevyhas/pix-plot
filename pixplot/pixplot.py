@@ -15,6 +15,7 @@ from scipy.spatial.distance import cdist
 from distutils.dir_util import copy_tree
 from sklearn.decomposition import PCA
 from iiif_downloader import Manifest
+from umap import UMAP, AlignedUMAP
 from rasterfairy import coonswarp
 from keras.models import Model
 from scipy.stats import kde
@@ -22,10 +23,10 @@ from PIL import ImageFile
 import keras.backend as K
 import tensorflow as tf
 import multiprocessing
-from umap import UMAP
 import pkg_resources
 import rasterfairy
 import numpy as np
+import itertools
 import datetime
 import operator
 import argparse
@@ -97,8 +98,8 @@ config = {
   'atlas_size': 2048,
   'cell_size': 32,
   'lod_cell_height': 128,
-  'n_neighbors': 15,
-  'min_distance': 0.01,
+  'n_neighbors': [4, 12, 24],
+  'min_distance': [0.01, 0.1, 0.4],
   'metric': 'correlation',
   'pointgrid_fill': 0.05,
   'square_cells': False,
@@ -392,7 +393,7 @@ def get_manifest(**kwargs):
   layouts = get_layouts(**kwargs)
   # create a heightmap for the umap layout
   if 'umap' in layouts and layouts['umap']:
-    get_heightmap(layouts['umap']['layout'], 'umap', **kwargs)
+    get_heightmap(layouts['umap']['variants'][0]['layout'], 'umap', **kwargs)
   # specify point size scalars
   point_sizes = {}
   point_sizes['min'] = 0
@@ -417,7 +418,7 @@ def get_manifest(**kwargs):
     'imagelist': get_path('imagelists', 'imagelist', **kwargs),
     'atlas_dir': kwargs['atlas_dir'],
     'metadata': True if kwargs['metadata'] else False,
-    'default_hotspots': get_hotspots(vecs=read_json(layouts['umap']['layout'], **kwargs), **kwargs),
+    'default_hotspots': get_hotspots(vecs=read_json(layouts['umap']['variants'][0]['layout'], **kwargs), **kwargs),
     'custom_hotspots': get_path('hotspots', 'user_hotspots', add_hash=False, **kwargs),
     'config': {
       'sizes': {
@@ -520,28 +521,18 @@ def save_atlas(atlas, out_dir, n):
 def get_layouts(**kwargs):
   '''Get the image positions in each projection'''
   umap = get_umap_layout(**kwargs)
-  umap_jittered = get_pointgrid_layout(umap, 'umap', **kwargs)
-  grid = get_rasterfairy_layout(umap=umap, **kwargs)
-  pose = get_pose_layout(**kwargs)
-  alphabetic = get_alphabetic_layout(**kwargs)
-  categorical = get_categorical_layout(**kwargs)
-  date = get_date_layout(**kwargs)
-  geographic = get_geographic_layout(**kwargs)
   layouts = {
-    'umap': {
-      'layout': umap,
-      'jittered': umap_jittered,
-    },
+    'umap': umap,
     'alphabetic': {
-      'layout': alphabetic,
+      'layout': get_alphabetic_layout(**kwargs),
     },
     'grid': {
-      'layout': grid,
+      'layout': get_rasterfairy_layout(umap=umap, **kwargs),
     },
-    'pose': pose,
-    'categorical': categorical,
-    'date': date,
-    'geographic': geographic,
+    'pose': get_pose_layout(**kwargs),
+    'categorical': get_categorical_layout(**kwargs),
+    'date': get_date_layout(**kwargs),
+    'geographic': get_geographic_layout(**kwargs),
   }
   return layouts
 
@@ -571,26 +562,36 @@ def get_inception_vectors(**kwargs):
 def get_umap_layout(**kwargs):
   '''Get the x,y positions of images passed through a umap projection'''
   vecs = get_inception_vectors(**kwargs)
-  print(' * creating UMAP layout')
-  out_path = get_path('layouts', 'umap', **kwargs)
-  if os.path.exists(out_path) and kwargs['use_cache']: return out_path
-  model = get_umap_model(**kwargs)
-  # run PCA to reduce dimensionality of image vectors
   w = PCA(n_components=min(100, len(vecs))).fit_transform(vecs)
-  # fetch categorical labels for images (if provided)
-  y = []
-  if kwargs.get('metadata', False):
-    labels = [i.get('label', None) for i in kwargs['metadata']]
-    # if the user provided labels, integerize them
-    if any([i for i in labels]):
-      d = defaultdict(lambda: len(d))
-      for i in labels:
-        if i == None: y.append(-1)
-        else: y.append(d[i])
-      y = np.array(y)
-  # project the PCA space down to 2d for visualization
-  z = model.fit(w, y=y if np.any(y) else None).embedding_
-  return write_layout(out_path, z, **kwargs)
+  print(' * creating UMAP layout')
+  params = [{
+    'n_neighbors': i[0],
+    'min_dist': i[1],
+  } for i in itertools.product(kwargs['n_neighbors'], kwargs['min_distance'])]
+  z = AlignedUMAP(
+    n_neighbors=[i['n_neighbors'] for i in params],
+    min_dist=[i['min_dist'] for i in params],
+    alignment_window_size=2,
+    alignment_regularisation=1e-3,
+  ).fit(
+    [w for _ in range(len(params))],
+    relations=[{i:i for i in range(len(w))} for i in range(len(params)-1)]
+  )
+  # save the layouts
+  l = []
+  for idx, i in enumerate(params):
+    filename = 'umap-n_neighbors_{}-min_dist_{}'.format(i['n_neighbors'], i['min_dist'])
+    out_path = get_path('layouts', filename, **kwargs)
+    json_path = write_layout(out_path, z.embeddings_[idx], **kwargs)
+    l.append({
+      'n_neighbors': i['n_neighbors'],
+      'min_dist': i['min_dist'],
+      'layout':json_path,
+      'jittered': get_pointgrid_layout(json_path, filename, **kwargs)
+    })
+  return {
+    'variants': l,
+  }
 
 
 def get_umap_model(**kwargs):
@@ -616,7 +617,7 @@ def get_rasterfairy_layout(**kwargs):
   print(' * creating rasterfairy layout')
   out_path = get_path('layouts', 'rasterfairy', **kwargs)
   if os.path.exists(out_path) and kwargs['use_cache']: return out_path
-  umap = np.array(read_json(kwargs['umap'], **kwargs))
+  umap = np.array(read_json(kwargs['umap']['variants'][0]['layout'], **kwargs))
   umap = (umap + 1)/2 # scale 0:1
   try:
     umap = coonswarp.rectifyCloud(umap, # stretch the distribution
@@ -638,7 +639,7 @@ def get_lap_layout(**kwargs):
   out_path = get_path('layouts', 'linear-assignment', **kwargs)
   if os.path.exists(out_path) and kwargs['use_cache']: return out_path
   # load the umap layout
-  umap = np.array(read_json(kwargs['umap'], **kwargs))
+  umap = np.array(read_json(kwargs['umap']['variants'][0]['layout'], **kwargs))
   umap = (umap + 1)/2 # scale 0:1
   # determine length of each side in square grid
   side = math.ceil(umap.shape[0]**(1/2))
@@ -1341,8 +1342,8 @@ def parse():
   parser.add_argument('--max_clusters', type=int, default=config['max_clusters'], help='the maximum number of clusters to return', required=False)
   parser.add_argument('--out_dir', type=str, default=config['out_dir'], help='the directory to which outputs will be saved', required=False)
   parser.add_argument('--cell_size', type=int, default=config['cell_size'], help='the size of atlas cells in px', required=False)
-  parser.add_argument('--n_neighbors', type=int, default=config['n_neighbors'], help='the n_neighbors argument for UMAP')
-  parser.add_argument('--min_distance', type=float, default=config['min_distance'], help='the min_distance argument for umap')
+  parser.add_argument('--n_neighbors', type=list, default=config['n_neighbors'], help='the n_neighbors arguments for UMAP')
+  parser.add_argument('--min_distance', type=list, default=config['min_distance'], help='the min_distance arguments for UMAP')
   parser.add_argument('--metric', type=str, default=config['metric'], help='the metric argument for umap')
   parser.add_argument('--pointgrid_fill', type=float, default=config['pointgrid_fill'], help='float 0:1 that determines sparsity of jittered distributions (lower means more sparse)')
   parser.add_argument('--copy_web_only', action='store_true', help='update ./output/assets without reprocessing data')

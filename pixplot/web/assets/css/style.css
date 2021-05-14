@@ -427,10 +427,16 @@ input[type=range]::-ms-thumb {
 
 .range-slider {
   display: inline-block;
+  margin-left: 40px;
 }
 
 #pointsize-range-input {
   margin-top: 6px;
+}
+
+#n-neighbors-range-input-container,
+#min-dist-range-input-container {
+  display: none;
 }
 
 /**

@@ -159,7 +159,8 @@ Data.prototype.parseManifest = function(json) {
     }));
   };
   // add cells to the world
-  get(getPath(this.layouts[layout.selected].layout), function(data) {
+  layout.getLayoutPath.bind(layout);
+  get(getPath(layout.getLayoutPath()), function(data) {
     this.addCells(data);
     this.hotspots.initialize();
   }.bind(this))
@@ -524,11 +525,17 @@ Layout.prototype.init = function(options) {
     layoutDate: document.querySelector('#layout-date'),
     layoutPose: document.querySelector('#layout-pose'),
     layoutGeographic: document.querySelector('#layout-geographic'),
+    minDistInput: document.querySelector('#min-dist-range-input'),
+    nNeighborsInput: document.querySelector('#n-neighbors-range-input'),
+    minDistInputContainer: document.querySelector('#min-dist-range-input-container'),
+    nNeighborsInputContainer: document.querySelector('#n-neighbors-range-input-container'),
   }
+  this.initializeUmapInputs();
   this.showHideIcons();
+  this.showHideJitter();
+  this.showHideUmapInputs();
   this.addEventListeners();
   this.selectActiveIcon();
-  this.showHideJitter();
 }
 
 Layout.prototype.showHideIcons = function() {
@@ -544,6 +551,58 @@ Layout.prototype.showHideIcons = function() {
   if (data.layouts.geographic) {
     this.elems.layoutGeographic.style.display = 'inline-block';
   }
+}
+
+Layout.prototype.initializeUmapInputs = function() {
+  // set the appropriate number of options for the n neighbors and min distance sliders
+  var nNeighborsOptions = this.getNNeighborsOptions();
+  var minDistOptions = this.getMinDistOptions();
+  this.elems.nNeighborsInput.setAttribute('max', nNeighborsOptions.length-1);
+  this.elems.minDistInput.setAttribute('max', minDistOptions.length-1);
+  this.elems.nNeighborsInput.addEventListener('change', function() {
+    this.set('umap', true);
+  }.bind(this));
+  this.elems.minDistInput.addEventListener('change', function() {
+    this.set('umap', true);
+  }.bind(this));
+}
+
+Layout.prototype.showHideUmapInputs = function() {
+  if (this.selected === 'umap' && data.layouts.umap.variants.length > 1) {
+    this.elems.minDistInputContainer.style.display = 'inline-block';
+    this.elems.nNeighborsInputContainer.style.display = 'inline-block';
+  } else {
+    this.elems.minDistInputContainer.style.display = 'none';
+    this.elems.nNeighborsInputContainer.style.display = 'none';
+  }
+}
+
+Layout.prototype.getNNeighborsOptions = function() {
+  var options = data.layouts.umap.variants.reduce(function(obj, i) {
+    obj[i.n_neighbors] = true;
+    return obj;
+  }, {});
+  options = Object.keys(options);
+  options.sort(function(a, b) { return b - a; });
+  return options;
+}
+
+Layout.prototype.getMinDistOptions = function() {
+  var options = data.layouts.umap.variants.reduce(function(obj, i) {
+    obj[i.min_dist] = true;
+    return obj;
+  }, {});
+  options = Object.keys(options);
+  options.sort(function(a, b) { return b - a; });
+  return options;
+}
+
+Layout.prototype.getSelectedNNeighbors = function() {
+  return this.getNNeighborsOptions()[ parseInt(this.elems.nNeighborsInput.value) ];
+}
+
+Layout.prototype.getSelectedMinDist = function() {
+  return this.getMinDistOptions()[ parseInt(this.elems.minDistInput.value) ];
 }
 
 Layout.prototype.selectActiveIcon = function() {
@@ -599,17 +658,17 @@ Layout.prototype.set = function(layout, enableDelay) {
   this.setText();
   // show or hide any contextual elements (e.g. geographic shapes)
   this.showHideContext();
+  // enable the jitter button if this layout has a jittered option
+  this.showHideJitter();
+  // show or hide the umap parameter inputs
+  this.showHideUmapInputs();
   // zoom the user out if they're zoomed in
   var delay = world.recenterCamera(enableDelay);
-  // enable the jitter button if this layout has a jittered option
-  var jitter = this.showHideJitter();
-  // determine the path to the json to display
-  var layoutType = jitter ? 'jittered' : 'layout'
   // hide the create hotspot button
   data.hotspots.setCreateHotspotVisibility(false);
   // begin the new layout transition
   setTimeout(function() {
-    get(getPath(data.layouts[layout][layoutType]), function(pos) {
+    get(getPath(this.getLayoutPath()), function(pos) {
       // clear the LOD mechanism
       lod.clear();
       // set the target locations of each point
@@ -648,6 +707,16 @@ Layout.prototype.set = function(layout, enableDelay) {
   }.bind(this), delay);
 }
 
+Layout.prototype.getLayoutPath = function() {
+  var layoutType = this.getJittered() ? 'jittered' : 'layout';
+  if (this.selected !== 'umap') return getPath(data.layouts[this.selected][layoutType]);
+  var selected = data.layouts[this.selected]['variants'].filter(function(v) {
+    return v.n_neighbors.toString() === this.getSelectedNNeighbors() &&
+           v.min_dist.toString() === this.getSelectedMinDist()
+    }.bind(this))[0];
+  return selected[layoutType];
+}
+
 // set the point size as a function of the current layout
 Layout.prototype.setPointScalar = function() {
   var size = false, // size for points
@@ -667,13 +736,21 @@ Layout.prototype.setPointScalar = function() {
 
 // show/hide the jitter and return a bool whether to jitter the new layout
 Layout.prototype.showHideJitter = function() {
-  var jitterable = 'jittered' in data.layouts[this.selected];
-  jitterable
+  this.getJitterable()
     ? world.state.transitioning
       ? this.elems.jitter.classList.add('visible', 'disabled')
       : this.elems.jitter.classList.add('visible')
     : this.elems.jitter.classList.remove('visible')
-  return jitterable && this.elems.input.checked;
+}
+
+// return a bool indicating if the layout is jittered
+Layout.prototype.getJittered = function() {
+  return this.getJitterable() && this.elems.input.checked;
+}
+
+// return a bool indicating if the selected layout is jitterable
+Layout.prototype.getJitterable = function() {
+  return 'jittered' in data.layouts[this.selected];
 }
 
 // show/hide any contextual elements given the new layout
