@@ -568,12 +568,16 @@ Layout.prototype.initializeUmapInputs = function() {
 }
 
 Layout.prototype.showHideUmapInputs = function() {
-  if (this.selected === 'umap' && data.layouts.umap.variants.length > 1) {
-    this.elems.minDistInputContainer.style.display = 'inline-block';
-    this.elems.nNeighborsInputContainer.style.display = 'inline-block';
-  } else {
+  if (this.selected !== 'umap') {
     this.elems.minDistInputContainer.style.display = 'none';
     this.elems.nNeighborsInputContainer.style.display = 'none';
+  } else {
+    this.elems.nNeighborsInputContainer.style.display = this.getNNeighborsOptions().length > 1
+      ? 'inline-block'
+      : 'none';
+    this.elems.minDistInputContainer.style.display = this.getMinDistOptions().length > 1
+      ? 'inline-block'
+      : 'none';
   }
 }
 
@@ -709,7 +713,7 @@ Layout.prototype.set = function(layout, enableDelay) {
 
 Layout.prototype.getLayoutPath = function() {
   var layoutType = this.getJittered() ? 'jittered' : 'layout';
-  if (this.selected !== 'umap') return getPath(data.layouts[this.selected][layoutType]);
+  if (this.selected !== 'umap') return data.layouts[this.selected][layoutType];
   var selected = data.layouts[this.selected]['variants'].filter(function(v) {
     return v.n_neighbors.toString() === this.getSelectedNNeighbors() &&
            v.min_dist.toString() === this.getSelectedMinDist()
@@ -750,7 +754,9 @@ Layout.prototype.getJittered = function() {
 
 // return a bool indicating if the selected layout is jitterable
 Layout.prototype.getJitterable = function() {
-  return 'jittered' in data.layouts[this.selected];
+  return this.selected === 'umap'
+    ? true
+    : 'jittered' in data.layouts[this.selected];
 }
 
 // show/hide any contextual elements given the new layout
