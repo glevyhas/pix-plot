@@ -159,7 +159,7 @@ Data.prototype.parseManifest = function(json) {
     }));
   };
   // add cells to the world
-  layout.getLayoutPath.bind(layout);
+  layout.getLayoutPath.bind(layout)
   get(getPath(layout.getLayoutPath()), function(data) {
     this.addCells(data);
     this.hotspots.initialize();
@@ -477,18 +477,18 @@ Cell.prototype.setBuffer = function(attr) {
       attrs.offset.array[(idxInDrawCall * 2) + 1] = this.dy;
       return;
 
-    case 'position':
+    case 'translation':
       // set the cell's translation
-      attrs.position.array[(idxInDrawCall * 3)] = this.x;
-      attrs.position.array[(idxInDrawCall * 3) + 1] = this.y;
-      attrs.position.array[(idxInDrawCall * 3) + 2] = this.z;
+      attrs.translation.array[(idxInDrawCall * 3)] = this.x;
+      attrs.translation.array[(idxInDrawCall * 3) + 1] = this.y;
+      attrs.translation.array[(idxInDrawCall * 3) + 2] = this.z;
       return;
 
-    case 'targetPosition':
+    case 'targetTranslation':
       // set the cell's translation
-      attrs.targetPosition.array[(idxInDrawCall * 3)] = this.tx;
-      attrs.targetPosition.array[(idxInDrawCall * 3) + 1] = this.ty;
-      attrs.targetPosition.array[(idxInDrawCall * 3) + 2] = this.tz;
+      attrs.targetTranslation.array[(idxInDrawCall * 3)] = this.tx;
+      attrs.targetTranslation.array[(idxInDrawCall * 3) + 1] = this.ty;
+      attrs.targetTranslation.array[(idxInDrawCall * 3) + 2] = this.tz;
       return;
   }
 }
@@ -680,7 +680,7 @@ Layout.prototype.set = function(layout, enableDelay) {
         data.cells[i].tx = pos[i][0];
         data.cells[i].ty = pos[i][1];
         data.cells[i].tz = pos[i][2] || data.cells[i].getZ(pos[i][0], pos[i][1]);
-        data.cells[i].setBuffer('targetPosition');
+        data.cells[i].setBuffer('targetTranslation');
       }
       // set the target locations of lines
       if (lines.mesh) {
@@ -696,7 +696,7 @@ Layout.prototype.set = function(layout, enableDelay) {
       }
       // update the transition uniforms and targetPosition buffers on each mesh
       for (var i=0; i<world.group.children.length; i++) {
-        world.group.children[i].geometry.attributes.targetPosition.needsUpdate = true;
+        world.group.children[i].geometry.attributes.targetTranslation.needsUpdate = true;
         animatable.push(world.group.children[i].material.uniforms.transitionPercent);
       }
       // begin the animation
@@ -787,7 +787,7 @@ Layout.prototype.onTransitionComplete = function() {
     cell.x = cell.tx;
     cell.y = cell.ty;
     cell.z = cell.tz;
-    cell.setBuffer('position');
+    cell.setBuffer('translation');
   });
   // update the buffers for the lines
   if (lines.mesh) {
@@ -799,7 +799,7 @@ Layout.prototype.onTransitionComplete = function() {
   }
   // pass each updated position buffer to the gpu
   for (var i=0; i<world.group.children.length; i++) {
-    world.group.children[i].geometry.attributes.position.needsUpdate = true;
+    world.group.children[i].geometry.attributes.translation.needsUpdate = true;
     world.group.children[i].material.uniforms.transitionPercent = {type: 'f', value: 0};
   }
   // indicate the world is no longer transitioning
@@ -999,7 +999,7 @@ World.prototype.addBorderWidthChangeListener = function() {
 }
 
 World.prototype.setBorderWidthUniforms = function(e) {
-  world.setUniform('borderWidth', e.target.value);
+  world.setUniform('borderWidth', parseFloat(e.target.value));
 }
 
 /**
@@ -1074,9 +1074,12 @@ World.prototype.plotPoints = function() {
   for (var drawCallIdx in drawCallToCells) {
     var meshCells = drawCallToCells[drawCallIdx],
         attrs = this.getGroupAttributes(meshCells),
-        geometry = new THREE.BufferGeometry();
+        geometry = new THREE.InstancedBufferGeometry();
+    geometry.setIndex([0,1,2, 2,3,0]);
     geometry.setAttribute('position', attrs.position);
-    geometry.setAttribute('targetPosition', attrs.targetPosition);
+    geometry.setAttribute('uv', attrs.uv);
+    geometry.setAttribute('translation', attrs.translation);
+    geometry.setAttribute('targetTranslation', attrs.targetTranslation);
     geometry.setAttribute('color', attrs.color);
     geometry.setAttribute('width', attrs.width);
     geometry.setAttribute('height', attrs.height);
@@ -1092,7 +1095,7 @@ World.prototype.plotPoints = function() {
       useColor: false,
     });
     material.transparent = true;
-    var mesh = new THREE.Points(geometry, material);
+    var mesh = new THREE.Mesh(geometry, material);
     mesh.frustumCulled = false;
     this.group.add(mesh);
   }
@@ -1124,12 +1127,12 @@ World.prototype.getGroupAttributes = function(cells) {
     var cell = cells[i];
     var rgb = this.color.setHex(cells[i].idx + 1); // use 1-based ids for colors
     it.texIndex[it.texIndexIterator++] = cell.texIdx; // index of texture among all textures -1 means LOD texture
-    it.position[it.positionIterator++] = cell.x; // current position.x
-    it.position[it.positionIterator++] = cell.y; // current position.y
-    it.position[it.positionIterator++] = cell.z; // current position.z
-    it.targetPosition[it.targetPositionIterator++] = cell.tx; // target position.x
-    it.targetPosition[it.targetPositionIterator++] = cell.ty; // target position.y
-    it.targetPosition[it.targetPositionIterator++] = cell.tz; // target position.z
+    it.translation[it.translationIterator++] = cell.x; // current position.x
+    it.translation[it.translationIterator++] = cell.y; // current position.y
+    it.translation[it.translationIterator++] = cell.z; // current position.z
+    it.targetTranslation[it.targetTranslationIterator++] = cell.tx; // target position.x
+    it.targetTranslation[it.targetTranslationIterator++] = cell.ty; // target position.y
+    it.targetTranslation[it.targetTranslationIterator++] = cell.tz; // target position.z
     it.color[it.colorIterator++] = rgb.r; // could be single float
     it.color[it.colorIterator++] = rgb.g; // unique color for GPU picking
     it.color[it.colorIterator++] = rgb.b; // unique color for GPU picking
@@ -1142,20 +1145,36 @@ World.prototype.getGroupAttributes = function(cells) {
     it.offset[it.offsetIterator++] = cell.dy; // px offset of cell from top of tex
   }
 
+  var positions = new Float32Array([
+    0, 0, 0,
+    1, 0, 0,
+    1, 1, 0,
+    0, 1, 0,
+  ])
+
+  var uvs = new Float32Array([
+    0.0, 0.0,
+    1.0, 0.0,
+    1.0, 1.0,
+    0.0, 1.0,
+  ])
+
   // format the arrays into THREE attributes
-  var position = new THREE.BufferAttribute(it.position, 3, true, 1),
-      targetPosition = new THREE.BufferAttribute(it.targetPosition, 3, true, 1),
-      color = new THREE.BufferAttribute(it.color, 3, true, 1),
-      opacity = new THREE.BufferAttribute(it.opacity, 1, true, 1),
-      selected = new THREE.Uint8BufferAttribute(it.selected, 1, false, 1),
-      clusterSelected = new THREE.Uint8BufferAttribute(it.clusterSelected, 1, false, 1),
-      texIndex = new THREE.Int8BufferAttribute(it.texIndex, 1, false, 1),
-      width = new THREE.Uint8BufferAttribute(it.width, 1, false, 1),
-      height = new THREE.Uint8BufferAttribute(it.height, 1, false, 1),
-      offset = new THREE.Uint16BufferAttribute(it.offset, 2, false, 1);
+  var position = new THREE.BufferAttribute(positions, 3, true, 1),
+      uv = new THREE.BufferAttribute(uvs, 2, true, 1),
+      translation = new THREE.InstancedBufferAttribute(it.translation, 3, true, 1),
+      targetTranslation = new THREE.InstancedBufferAttribute(it.targetTranslation, 3, true, 1),
+      color = new THREE.InstancedBufferAttribute(it.color, 3, true, 1),
+      opacity = new THREE.InstancedBufferAttribute(it.opacity, 1, true, 1),
+      selected = new THREE.InstancedBufferAttribute(it.selected, 1, false, 1),
+      clusterSelected = new THREE.InstancedBufferAttribute(it.clusterSelected, 1, false, 1),
+      texIndex = new THREE.InstancedBufferAttribute(it.texIndex, 1, false, 1),
+      width = new THREE.InstancedBufferAttribute(it.width, 1, false, 1),
+      height = new THREE.InstancedBufferAttribute(it.height, 1, false, 1),
+      offset = new THREE.InstancedBufferAttribute(it.offset, 2, false, 1);
   texIndex.usage = THREE.DynamicDrawUsage;
-  position.usage = THREE.DynamicDrawUsage;
-  targetPosition.usage = THREE.DynamicDrawUsage;
+  translation.usage = THREE.DynamicDrawUsage;
+  targetTranslation.usage = THREE.DynamicDrawUsage;
   opacity.usage = THREE.DynamicDrawUsage;
   selected.usage = THREE.DynamicDrawUsage;
   clusterSelected.usage = THREE.DynamicDrawUsage;
@@ -1163,7 +1182,9 @@ World.prototype.getGroupAttributes = function(cells) {
   var texIndices = this.getTexIndices(cells);
   return {
     position: position,
-    targetPosition: targetPosition,
+    uv: uv,
+    translation: translation,
+    targetTranslation: targetTranslation,
     color: color,
     width: width,
     height: height,
@@ -1187,8 +1208,8 @@ World.prototype.getGroupAttributes = function(cells) {
 
 World.prototype.getCellIterators = function(n) {
   return {
-    position: new Float32Array(n * 3),
-    targetPosition: new Float32Array(n * 3),
+    translation: new Float32Array(n * 3),
+    targetTranslation: new Float32Array(n * 3),
     color: new Float32Array(n * 3),
     width: new Uint8Array(n),
     height: new Uint8Array(n),
@@ -1197,8 +1218,8 @@ World.prototype.getCellIterators = function(n) {
     selected: new Uint8Array(n),
     clusterSelected: new Uint8Array(n),
     texIndex: new Int8Array(n),
-    positionIterator: 0,
-    targetPositionIterator: 0,
+    translationIterator: 0,
+    targetTranslationIterator: 0,
     colorIterator: 0,
     widthIterator: 0,
     heightIterator: 0,
@@ -1325,7 +1346,7 @@ World.prototype.getShaderMaterial = function(obj) {
         type: 'f',
         value: 0.15,
       },
-      borderColor: {
+      yellowColor: {
         type: 'vec3',
         value: new Float32Array([234/255, 183/255, 85/255]),
       },
