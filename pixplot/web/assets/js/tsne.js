@@ -51,9 +51,9 @@ function Config() {
     cell: 32, // height of each cell in atlas
     lodCell: 128, // height of each cell in LOD
     atlas: 2048, // height of each atlas
-    texture: webgl.limits.textureSize,
-    lodTexture: 2**13,
-    points: {
+    texture: window.innerWidth < 800 ? 2048 : webgl.limits.textureSize,
+    lodTexture: 2048,
+    points: { // the follow values are set by Data()
       min: 0, // min point size
       max: 0, // max point size
       initial: 0, // initial point size
@@ -95,8 +95,8 @@ function Config() {
 **/
 
 function Data() {
-  this.atlasCount = null;
-  this.textureCount = null;
+  this.atlasCount = null; // number of atlases provided in data output
+  this.textureCount = null; // number of textures needed to render all atlases
   this.layouts = [];
   this.cells = [];
   this.textures = [];
@@ -168,7 +168,7 @@ Data.prototype.parseManifest = function(json) {
 
 // When a texture's progress updates, update the aggregate progress
 Data.prototype.onTextureProgress = function(texIdx, progress) {
-  this.textureProgress[texIdx] = progress / this.textures[texIdx].getAtlasCount(texIdx);
+  this.textureProgress[texIdx] = progress / this.textures[texIdx].getAtlasCount();
   welcome.updateProgress();
 }
 
@@ -264,11 +264,13 @@ Texture.prototype.load = function() {
   }
 }
 
-// Get the number of atlases to include in this texture
+// Get the number of atlases to load into this texture
 Texture.prototype.getAtlasCount = function() {
-  return (data.atlasCount / config.atlasesPerTex) > (this.idx + 1)
+  var val = (data.atlasCount / config.atlasesPerTex) > (this.idx + 1)
     ? config.atlasesPerTex
     : data.atlasCount % config.atlasesPerTex;
+  // handle special case of single atlas that's size of single texture
+  return val ? val : 1;
 }
 
 // Store the load progress of each atlas file
@@ -904,6 +906,9 @@ World.prototype.getControls = function() {
   controls.zoomSpeed = 0.4;
   controls.panSpeed = 0.4;
   controls.noRotate = true;
+  controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
+  controls.mouseButtons.MIDDLE = THREE.MOUSE.ZOOM;
+  controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
   return controls;
 }
 
@@ -3597,7 +3602,9 @@ Webgl.prototype.getLimits = function() {
   ['', 'MOZ_', 'WEBKIT_'].forEach(function(ext) {
     if (extensions[ext + 'OES_element_index_uint']) maxIndex = 2**32 - 1;
   })
-  // for stats see e.g. https://webglstats.com/webgl/parameter/MAX_TEXTURE_SIZE
+  // one can fetch stats from https://webglstats.com/webgl/parameter/MAX_TEXTURE_SIZE
+  // N.B. however: the MAX_TEXTURE_SIZE only reflects the largest possible texture that
+  // a device can handle if the device has sufficient GPU RAM for that texture.
   return {
     // max h,w of textures in px
     textureSize: Math.min(this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE), 2**13),
