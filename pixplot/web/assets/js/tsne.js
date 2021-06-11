@@ -531,13 +531,26 @@ Layout.prototype.init = function(options) {
     nNeighborsInput: document.querySelector('#n-neighbors-range-input'),
     minDistInputContainer: document.querySelector('#min-dist-range-input-container'),
     nNeighborsInputContainer: document.querySelector('#n-neighbors-range-input-container'),
+    layoutSelect: document.querySelector('#layout-select'),
   }
+  this.initializeMobileLayoutOptions();
   this.initializeUmapInputs();
   this.showHideIcons();
   this.showHideJitter();
   this.showHideUmapInputs();
   this.addEventListeners();
   this.selectActiveIcon();
+}
+
+Layout.prototype.initializeMobileLayoutOptions = function() {
+  this.options.forEach(function(o) {
+    if (data.layouts[o]) {
+      var option = document.createElement('option');
+      option.value = o;
+      option.textContent = o;
+      this.elems.layoutSelect.appendChild(option);
+    }
+  }.bind(this))
 }
 
 Layout.prototype.showHideIcons = function() {
@@ -623,6 +636,8 @@ Layout.prototype.selectActiveIcon = function() {
   } catch (err) {
     console.warn(' * the requested layout has no icon:', this.selected)
   }
+  // select the active state in the mobile dropdown
+  this.elems.layoutSelect.selected = this.selected;
 }
 
 Layout.prototype.addEventListeners = function() {
@@ -644,6 +659,10 @@ Layout.prototype.addEventListeners = function() {
     }
     this.set(this.selected, false);
   }.bind(this));
+  // change the layout when the mobile select changes
+  this.elems.layoutSelect.addEventListener('change', function(e) {
+    this.set(e.target.value);
+  }.bind(this))
 }
 
 // Transition to a new layout; layout must be an attr on Cell.layouts
@@ -1697,40 +1716,53 @@ function Lasso() {
 }
 
 Lasso.prototype.addMouseEventListeners = function() {
-  window.addEventListener('mousedown', function(e) {
-    if (!this.enabled) return;
-    if (!e.target.id || e.target.id != 'pixplot-canvas') return;
-    if (!keyboard.shiftPressed() && !keyboard.commandPressed()) {
-      this.points = [];
-    }
-    this.mousedownCoords = {x: e.clientX, y: e.clientY};
-    this.setCapturing(true);
-    this.setFrozen(false);
-  }.bind(this));
+  window.addEventListener('mousedown', this.handleMouseDown.bind(this), false);
+  window.addEventListener('touchstart', this.handleMouseDown.bind(this), false);
+  
+  window.addEventListener('mousemove', this.handleMouseMove.bind(this), false);
+  window.addEventListener('touchmove', this.handleMouseMove.bind(this), false);
+  
+  window.addEventListener('mouseup', this.handleMouseUp.bind(this), false);
+  window.addEventListener('touchend', this.handleMouseUp.bind(this), false);
+}
 
-  window.addEventListener('mousemove', function(e) {
-    if (!this.capturing || this.frozen) return;
-    if (!e.target.id || e.target.id != 'pixplot-canvas') return;
-    this.points.push(getEventWorldCoords(e));
-    this.draw();
-  }.bind(this));
+Lasso.prototype.isLassoEvent = function(e) {
+  return e.target.id || e.target.id != 'pixplot-canvas';
+}
 
-  window.addEventListener('mouseup', function(e) {
-    if (!this.enabled) return;
-    // prevent the lasso points from changing
-    this.setFrozen(true);
-    // if the user registered a click, clear the lasso
-    if (e.clientX == this.mousedownCoords.x &&
-        e.clientY == this.mousedownCoords.y &&
-        !keyboard.shiftPressed() &&
-        !keyboard.commandPressed()) {
-      this.clear();
-    }
-    // do not turn off capturing if the user is clicking the lasso symbol
-    if (!e.target.id || e.target.id == 'select') return;
-    // prevent the lasso from updating its points boundary
-    this.setCapturing(false);
-  }.bind(this));
+Lasso.prototype.handleMouseDown = function(e) {
+  if (!this.enabled) return;
+  if (!this.isLassoEvent(e)) return;
+  if (!keyboard.shiftPressed() && !keyboard.commandPressed()) {
+    this.points = [];
+  }
+  this.mousedownCoords = {x: (e.clientX || e.pageX), y: (e.clientY || e.pageY)};
+  this.setCapturing(true);
+  this.setFrozen(false);
+}
+
+Lasso.prototype.handleMouseMove = function(e) {
+  if (!this.capturing || this.frozen) return;
+  if (!this.isLassoEvent(e)) return;
+  this.points.push(getEventWorldCoords(e));
+  this.draw();
+}
+
+Lasso.prototype.handleMouseUp = function(e) {
+  if (!this.enabled) return;
+  // prevent the lasso points from changing
+  this.setFrozen(true);
+  // if the user registered a click, clear the lasso
+  if ((e.clientX || e.pageX) == this.mousedownCoords.x &&
+      (e.clientY || e.pageY) == this.mousedownCoords.y &&
+      !keyboard.shiftPressed() &&
+      !keyboard.commandPressed()) {
+    this.clear();
+  }
+  // do not turn off capturing if the user is clicking the lasso symbol
+  if (!e.target.id || e.target.id == 'select') return;
+  // prevent the lasso from updating its points boundary
+  this.setCapturing(false);
 }
 
 Lasso.prototype.addModalEventListeners = function() {
@@ -4081,8 +4113,8 @@ function pointInPolygon(point, polygon) {
 
 function getEventWorldCoords(e) {
   var rect = e.target.getBoundingClientRect(),
-      dx = e.clientX - rect.left,
-      dy = e.clientY - rect.top;
+      dx = (e.clientX || e.pageX) - rect.left,
+      dy = (e.clientY || e.pageY) - rect.top;
   return screenToWorldCoords({x: dx, y: dy});
 }
 

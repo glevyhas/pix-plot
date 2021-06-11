@@ -1726,7 +1726,11 @@ input[type=text] {
 * Mobile
 **/
 
-@media (max-width: 950px) {
+.mobile-only {
+  display: none;
+}
+
+@media (max-width: 600px) {
   #loader-scene {
     padding: 20px 20px 0;
     padding-top: 20px;
@@ -1750,6 +1754,10 @@ input[type=text] {
     padding: 10px;
   }
 
+  .settings-label {
+    font-size: 14px;
+  }
+
   #icons #settings-icon {
     margin: 0;
   }
@@ -1757,6 +1765,10 @@ input[type=text] {
   .range-slider,
   #jitter-container {
     margin: 0;
+  }
+
+  #layout-select-container {
+    display: block;
   }
 
   /**
