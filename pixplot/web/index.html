@@ -551,7 +551,7 @@
         </div>
       </div>
     </script>
-    <div id='selected-image-target'></div>
+    <div id='selected-image-modal'></div>
     <!-- Image Selection: multi-image selection -->
     <div id='selection-icons' class='no-highlight'>
       <img id='pan' src='assets/images/icons/pan.svg' class='active' />
@@ -597,15 +597,17 @@
               <p>Click an image above for higher resolution, or click the button to the right to download a JSON file identifying selected images.</p>
             </div>
             <div class='modal-text-right'>
-              <input id='download-filename' type='text' placeholder='filename'>
-              <div id='download-link'>
-                <button class='active'>Download Metadata</button>
+              <div class='row'>
+                <input id='download-filename' type='text' placeholder='filename'>
+                <div id='download-link'>
+                  <button class='active'>Download Metadata</button>
+                </div>
               </div>
-              <div id='download-as'>
+              <div id='download-as' class='row align-center'>
                 <span>Download as:</span>
-                <button class='filetype active' id='csv'>CSV</button>
-                <button class='filetype' id='json'>JSON</button>
-                <button class='filetype' id='zip'>ZIP</button>
+                <div class='filetype active' id='csv'>CSV</div>
+                <div class='filetype' id='json'>JSON</div>
+                <div class='filetype' id='zip'>ZIP</div>
               </div>
             </div>
           </div>

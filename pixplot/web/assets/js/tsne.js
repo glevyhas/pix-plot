@@ -1507,7 +1507,7 @@ World.prototype.flyTo = function(obj) {
   this.state.flying = true;
   // get a new camera to reset .up and .quaternion on this.camera
   var camera = this.getCamera(),
-      controls = new THREE.TrackballControls(camera);
+      controls = new THREE.TrackballControls(camera, this.canvas);
   camera.position.set(obj.x, obj.y, obj.z);
   controls.target.set(obj.x, obj.y, obj.z);
   controls.update();
@@ -1716,18 +1716,18 @@ function Lasso() {
 }
 
 Lasso.prototype.addMouseEventListeners = function() {
-  window.addEventListener('mousedown', this.handleMouseDown.bind(this), false);
-  window.addEventListener('touchstart', this.handleMouseDown.bind(this), false);
+  window.addEventListener('mousedown', this.handleMouseDown.bind(this));
+  window.addEventListener('touchstart', this.handleMouseDown.bind(this));
   
-  window.addEventListener('mousemove', this.handleMouseMove.bind(this), false);
-  window.addEventListener('touchmove', this.handleMouseMove.bind(this), false);
+  window.addEventListener('mousemove', this.handleMouseMove.bind(this));
+  window.addEventListener('touchmove', this.handleMouseMove.bind(this));
   
-  window.addEventListener('mouseup', this.handleMouseUp.bind(this), false);
-  window.addEventListener('touchend', this.handleMouseUp.bind(this), false);
+  window.addEventListener('mouseup', this.handleMouseUp.bind(this));
+  window.addEventListener('touchend', this.handleMouseUp.bind(this));
 }
 
 Lasso.prototype.isLassoEvent = function(e) {
-  return e.target.id || e.target.id != 'pixplot-canvas';
+  return e.target.id && e.target.id === 'pixplot-canvas';
 }
 
 Lasso.prototype.handleMouseDown = function(e) {
@@ -1774,7 +1774,7 @@ Lasso.prototype.addModalEventListeners = function() {
       this.displayed = false;
     }
     if (e.target.className == 'background-image') {
-      var index = e.target.getAttribute('data-index');
+      var index = parseInt(e.target.getAttribute('data-index'));
       var indices = [];
       Object.keys(this.selected).forEach(function(i, idx) {
         if (this.selected[i]) indices.push(idx);
@@ -1864,7 +1864,7 @@ Lasso.prototype.removeMesh = function() {
 }
 
 Lasso.prototype.draw = function() {
-  if (this.points.length <4) return;
+  if (this.points.length < 4) return;
   this.points = this.getHull();
   // remove the old mesh
   this.removeMesh();
@@ -2660,13 +2660,14 @@ function Modal() {
   this.cellIndices = [];
   this.addEventListeners();
   this.state = {
+    displayed: false,
     highlightPose: false,
-  }
+  };
 }
 
 Modal.prototype.showCells = function(cellIndices, cellIdx) {
   var self = this;
-  self.displayed = true;
+  self.state.displayed = true;
   self.cellIndices = Object.assign([], cellIndices);
   self.cellIdx = !isNaN(parseInt(cellIdx)) ? parseInt(cellIdx) : 0;
   // parse data attributes
@@ -2679,7 +2680,7 @@ Modal.prototype.showCells = function(cellIndices, cellIdx) {
   function showModal(json) {
     var json = json || {};
     var template = document.querySelector('#selected-image-template').textContent;
-    var target = document.querySelector('#selected-image-target');
+    var target = document.querySelector('#selected-image-modal');
     var hasPose = 'pose' in data.json.layouts && data.json.layouts['pose'];
     var templateData = {
       hasPose: hasPose,
@@ -2716,15 +2717,24 @@ Modal.prototype.showCells = function(cellIndices, cellIdx) {
 
 Modal.prototype.close = function() {
   window.location.href = '#';
-  document.querySelector('#selected-image-target').style.display = 'none';
+  document.querySelector('#selected-image-modal').style.display = 'none';
   window.removeEventListener('resize', self.resizePoseHighlight);
   this.cellIndices = [];
   this.cellIdx = null;
-  this.displayed = false;
+  this.state.displayed = false;
 }
 
 Modal.prototype.addEventListeners = function() {
+  var self = this;
   window.addEventListener('keydown', this.handleKeydown.bind(this))
+  var swipes = new Swipes({
+    onSwipeRight: function() {
+      if (self.state.displayed) self.showPreviousCell();
+    },
+    onSwipeLeft: function() {
+      if (self.state.displayed) self.showNextCell();
+    }
+  })
 }
 
 Modal.prototype.handleKeydown = function(e) {
@@ -2733,7 +2743,7 @@ Modal.prototype.handleKeydown = function(e) {
 }
 
 Modal.prototype.showPreviousCell = function() {
-  if (!this.displayed) return;
+  if (!this.state.displayed) return;
   var cellIdx = this.cellIdx > 0
     ? this.cellIdx - 1
     : this.cellIndices.length-1;
@@ -2741,7 +2751,7 @@ Modal.prototype.showPreviousCell = function() {
 }
 
 Modal.prototype.showNextCell = function() {
-  if (!this.displayed) return;
+  if (!this.state.displayed) return;
   var cellIdx = this.cellIdx < this.cellIndices.length-1
     ? this.cellIdx + 1
     : 0;
@@ -3795,6 +3805,52 @@ Welcome.prototype.startWorld = function() {
 }
 
 /**
+* Swipe listeners
+**/
+
+function Swipes(obj) {
+  this.xDown = null;
+  this.yDown = null;
+  document.addEventListener('touchstart', function(e) {
+    this.xDown = e.touches[0].clientX;                    
+    this.yDown = e.touches[0].clientY;  
+  }, false);    
+  document.addEventListener('touchmove', function(e) {
+    if (!this.xDown || !this.yDown) return;
+    var xUp = e.touches[0].clientX;                  
+    var yUp = e.touches[0].clientY;
+    var xDiff = this.xDown - xUp;
+    var yDiff = this.yDown - yUp;
+    if (obj.onSwipeUp || obj.onSwipeDown) {
+      if (Math.abs(xDiff) > Math.abs(yDiff)) {
+        if (xDiff > 0) {
+          if (obj.onSwipeRight) obj.onSwipeRight();
+        }
+        else {
+          if (obj.onSwipeLeft) obj.onSwipeLeft();
+        }
+      } else {
+        if (yDiff > 0) {
+          if (obj.onSwipeUp) obj.onSwipeUp();
+        }
+        else {
+          if (obj.onSwipeDown) obj.onSwipeDown();
+        }
+      }  
+    } else {
+      if (xDiff > 0) {
+        if (obj.onSwipeRight) obj.onSwipeRight();
+      }
+      else {
+        if (obj.onSwipeLeft) obj.onSwipeLeft();
+      }
+    }
+    this.xDown = null;
+    this.yDown = null;        
+  }, false);
+}
+
+/**
 * Make an XHR get request for data
 *
 * @param {str} url: the url of the data to fetch
@@ -4114,8 +4170,9 @@ function pointInPolygon(point, polygon) {
 function getEventWorldCoords(e) {
   var rect = e.target.getBoundingClientRect(),
       dx = (e.clientX || e.pageX) - rect.left,
-      dy = (e.clientY || e.pageY) - rect.top;
-  return screenToWorldCoords({x: dx, y: dy});
+      dy = (e.clientY || e.pageY) - rect.top,
+      offsets = {x: dx, y: dy};
+  return screenToWorldCoords(offsets);
 }
 
 function screenToWorldCoords(pos) {

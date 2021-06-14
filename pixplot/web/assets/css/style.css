@@ -76,6 +76,15 @@ select:disabled {
   overflow: auto;
 }
 
+.row {
+  display: flex;
+  flex-direction: row;
+}
+
+.align-center {
+  align-items: center;
+}
+
 /**
 * Canvases
 **/
@@ -83,7 +92,7 @@ select:disabled {
 #canvas-container {
   position: absolute;
   top: 0;
-  left: 0;
+  left: 105px;
   right: 0;
   bottom: 0;
   overflow: hidden;
@@ -247,7 +256,7 @@ select:disabled {
   top: 0;
   right: 0;
   left: 0;
-  height: 108px;
+  height: 49px;
 }
 
 #header-controls-top {
@@ -553,7 +562,7 @@ input[type=range]::-ms-thumb {
 }
 
 #settings-icon.active {
-  transform: rotate(-360deg);
+  transform: rotate(-90deg);
 }
 
 /**
@@ -1119,6 +1128,7 @@ noscript {
   font-size: 22px;
   cursor: pointer;
   padding: 0;
+  z-index: 100;
 }
 
 .modal-top {
@@ -1157,6 +1167,7 @@ noscript {
   font-size: 12px;
   box-sizing: border-box;
   height: 115px;
+  overflow: hidden;
 }
 
 .modal-bottom-content {
@@ -1177,7 +1188,7 @@ noscript {
 * Selected Image modal
 **/
 
-#selected-image-target {
+#selected-image-modal {
   position: absolute;
   top: 48px;
   right: 0;
@@ -1205,11 +1216,11 @@ noscript {
   display: none;
 }
 
-#selected-image-target .modal-content {
+#selected-image-modal .modal-content {
   justify-content: center;
 }
 
-#selected-image-target .modal-top-content {
+#selected-image-modal .modal-top-content {
   background: transparent;
   height: 100%;
   position: relative;
@@ -1571,6 +1582,12 @@ noscript {
 #selected-images-grid {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+#selected-images-grid::after {
+  content: '';
+  flex: auto;
 }
 
 #selected-images-target {
@@ -1675,10 +1692,10 @@ input[type=text] {
 }
 
 #download-as span {
-  margin-right: 2px;
+  margin-right: 3px;
 }
 
-#download-as button {
+#download-as div {
   opacity: 1;
   background-color: #d2d2d2;
   padding: 4px 8px;
@@ -1686,9 +1703,10 @@ input[type=text] {
   border-radius: 4px;
   font-size: 12px;
   margin: 2px;
+  cursor: pointer;
 }
 
-#download-as button.active {
+#download-as div.active {
   background-color: #eab755;
 }
 
@@ -1736,7 +1754,12 @@ input[type=text] {
     padding-top: 20px;
   }
 
-  nav {
+  #canvas-container {
+    left: 0px;
+  }
+
+  nav,
+  #hotspot-actions {
     display: none;
   }
 
@@ -1807,6 +1830,59 @@ input[type=text] {
     border-radius: 100%;
     background: #ffffff;
     cursor: pointer;
+  }
+
+  /**
+  * Modals
+  **/
+
+  .modal-top {
+    padding: 15px;
+  }
+
+  .modal-top-content {
+    padding: 20px;
+  }
+
+  .selected-image {
+    width: 40px;
+    height: 40px;
+    border: 1px solid #888;
+    margin: 3px;
+  }
+
+  .selected-image .toggle-selection {
+    display: none;
+  }
+
+  #selected-images-modal .modal-bottom {
+    display: none;
+  }
+
+  #selected-images-modal .modal-bottom {
+    padding:  15px;
+  }
+
+  #selected-image-modal .icons {
+    display: none;
+  }
+
+  #selected-image-modal .modal-text-right {
+    display: none;
+  }
+
+  #selected-image-modal .modal-text-left {
+    flex: 1;
+    padding: 0;
+  }
+
+  #selected-image-modal .modal-top {
+    padding: 30px;
+  } 
+
+  .modal-x {
+    top: 12px;
+    right: 26px;
   }
 
 }
