@@ -321,7 +321,7 @@ select:disabled {
   margin: 10px 5px;
 }
 
-#filters {
+#filters-desktop {
   vertical-align: top;
   position: relative;
   display: inline-block;
@@ -1763,8 +1763,21 @@ input[type=text] {
     display: none;
   }
 
-  .layout-icon {
+  .layout-icon,
+  .filter {
     display: none;
+  }
+
+  #filters-mobile-wrap {
+    display: block;
+  }
+
+  #filters-mobile-container * {
+    display: inline-block;
+  }
+
+  #filters-mobile-container select {
+    padding-right: 30px;
   }
 
   #header-controls-bottom {
@@ -1878,7 +1891,7 @@ input[type=text] {
 
   #selected-image-modal .modal-top {
     padding: 30px;
-  } 
+  }
 
   .modal-x {
     top: 12px;

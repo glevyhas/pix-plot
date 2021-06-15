@@ -70,6 +70,7 @@ function Config() {
     ease: Power1.easeOut,
     }
   }
+  this.mobileBreakpoint = 600;
   this.pickerMaxZ = 0.4; // max z value of camera to trigger picker modal
   this.atlasesPerTex = (this.size.texture/this.size.atlas)**2;
   this.isLocalhost = window.location.hostname.includes('localhost') ||
@@ -554,17 +555,18 @@ Layout.prototype.initializeMobileLayoutOptions = function() {
 }
 
 Layout.prototype.showHideIcons = function() {
+  var display = window.innerWidth < config.mobileBreakpoint ? 'none' : 'inline-block';
   if (data.layouts.categorical) {
-    this.elems.layoutCategorical.style.display = 'inline-block';
+    this.elems.layoutCategorical.style.display = display;
   }
   if (data.layouts.date) {
-    this.elems.layoutDate.style.display = 'inline-block';
+    this.elems.layoutDate.style.display = display;
   }
   if (data.layouts.pose) {
-    this.elems.layoutPose.style.display = 'inline-block';
+    this.elems.layoutPose.style.display = display;
   }
   if (data.layouts.geographic) {
-    this.elems.layoutGeographic.style.display = 'inline-block';
+    this.elems.layoutGeographic.style.display = display;
   }
 }
 
@@ -662,6 +664,10 @@ Layout.prototype.addEventListeners = function() {
   // change the layout when the mobile select changes
   this.elems.layoutSelect.addEventListener('change', function(e) {
     this.set(e.target.value);
+  }.bind(this));
+  // show/hide icons
+  window.addEventListener('resize', function(e) {
+    this.showHideIcons()
   }.bind(this))
 }
 
@@ -1718,10 +1724,10 @@ function Lasso() {
 Lasso.prototype.addMouseEventListeners = function() {
   window.addEventListener('mousedown', this.handleMouseDown.bind(this));
   window.addEventListener('touchstart', this.handleMouseDown.bind(this));
-  
+
   window.addEventListener('mousemove', this.handleMouseMove.bind(this));
   window.addEventListener('touchmove', this.handleMouseMove.bind(this));
-  
+
   window.addEventListener('mouseup', this.handleMouseUp.bind(this));
   window.addEventListener('touchend', this.handleMouseUp.bind(this));
 }
@@ -3114,6 +3120,7 @@ function Filters() {
 }
 
 Filters.prototype.loadFilters = function() {
+  document.querySelector('#filters-mobile-container').style.display = 'block';
   var url = config.data.dir + '/metadata/filters/filters.json';
   get(getPath(url), function(data) {
     for (var i=0; i<data.length; i++) {
@@ -3144,22 +3151,25 @@ function Filter(obj) {
   if (this.values.length <= 1) return;
   this.selected = null;
   this.name = obj.filter_name || '';
-  this.elem = document.createElement('div');
-  this.elem.addEventListener('mouseenter', this.show.bind(this));
-  this.elem.addEventListener('mouseleave', this.hide.bind(this));
-  // create the filter's select
-  this.elem.className = 'filter';
+  this.desktopSelect = document.createElement('div');
+  this.desktopSelect.addEventListener('mouseenter', this.show.bind(this));
+  this.desktopSelect.addEventListener('mouseleave', this.hide.bind(this));
+  // create the desktop filter's select
+  this.desktopSelect.className = 'filter';
   var label = document.createElement('div');
   label.className = 'settings-label filter-label';
   label.textContent = 'Category';
-  this.elem.appendChild(label);
+  this.desktopSelect.appendChild(label);
+  // create the mobile filter's select
+  this.mobileSelect = document.createElement('select');
   // format all filter options
   var children = document.createElement('div');
   children.className = 'filter-options';
   for (var i=0; i<this.values.length; i++) {
+    // create the desktop select child
     var child = document.createElement('div');
     child.setAttribute('data-label', this.values[i]);
-    child.addEventListener('click', this.onChange.bind(this));
+    child.addEventListener('click', this.onChange.bind(this, true));
     child.className = 'filter-option no-highlight';
     var input = document.createElement('input');
     var label = document.createElement('div');
@@ -3168,57 +3178,78 @@ function Filter(obj) {
     child.appendChild(input);
     child.appendChild(label);
     children.appendChild(child);
+    // create the mobile select child
+    var option = document.createElement('option');
+    option.value = this.values[i];
+    option.text = this.values[i].replace(/__/g, ' ');
+    if (option.text.length > 22) option.text = option.text.substring(0, 22) + '...';
+    option.setAttribute('data-label', this.values[i]);
+    this.mobileSelect.appendChild(option);
   }
-  this.elem.appendChild(children);
+  this.desktopSelect.appendChild(children);
+  this.mobileSelect.addEventListener('change', this.onChange.bind(this, false));
   // add the select to the DOM
-  document.querySelector('#filters').appendChild(this.elem);
+  document.querySelector('#filters-desktop').appendChild(this.desktopSelect);
+  document.querySelector('#filters-mobile').appendChild(this.mobileSelect);
   // allow canvas clicks to close the filter options
   document.querySelector('#pixplot-canvas').addEventListener('click', this.hide.bind(this));
 }
 
 Filter.prototype.showHide = function(e) {
-  this.elem.classList.toggle('open');
+  this.desktopSelect.classList.toggle('open');
 }
 
 Filter.prototype.show = function() {
-  this.elem.classList.add('open');
+  this.desktopSelect.classList.add('open');
 }
 
 Filter.prototype.hide = function() {
-  this.elem.classList.remove('open');
+  this.desktopSelect.classList.remove('open');
 }
 
-Filter.prototype.onChange = function(e) {
+Filter.prototype.onChange = function(isDesktop, e) {
   // find the filter
   var elem = e.target;
+  // get the value that's selected for this filter
+  this.selected = this.getSelected(isDesktop, e);
+  this.showSelected();
+  this.filterImages();
+}
+
+Filter.prototype.getSelected = function(isDesktop, e) {
+  // mobile select
+  if (!isDesktop) return e.target.value;
+  // user unselected the only active selection
+  var elem = e.target;
   while (!elem.classList.contains('filter-option')) elem = elem.parentNode;
-  // toggle the classlist
-  elem.classList.toggle('active');
-  // update the ui given the state of this element
-  if (elem.classList.contains('active')) {
-    // uncheck all of the other options
-    var elems = this.elem.querySelectorAll('.filter-option');
-    for (var i=0; i<elems.length; i++) {
-      elems[i].classList.remove('active');
-      elems[i].querySelector('input').checked = false;
+  if (elem.classList.contains('active')) return null;
+  // user selected a new selection
+  return elem.getAttribute('data-label');
+}
+
+Filter.prototype.showSelected = function() {
+  // show the selected state in the desktop select
+  var options = this.desktopSelect.querySelectorAll('.filter-option');
+  for (var i=0; i<options.length; i++) {
+    if (options[i].getAttribute('data-label') == this.selected) {
+      options[i].classList.add('active');
+      options[i].querySelector('input').checked = true;
+    } else {
+      options[i].classList.remove('active');
+      options[i].querySelector('input').checked = false;
     }
-    // update state
-    elem.classList.add('active');
-    elem.querySelector('input').checked = true;
-    this.selected = elem.getAttribute('data-label');
-    this.elem.classList.add('has-selection');
-  } else {
-    // update state
-    elem.classList.remove('active');
-    elem.querySelector('input').checked = false;
-    this.selected = null;
-    this.elem.classList.remove('has-selection');
   }
+  // highliht the desktop select if there's a selection
+  this.selected
+    ? this.desktopSelect.classList.add('has-selection')
+    : this.desktopSelect.classList.remove('has-selection');
+  // show the selected state in the mobile select
+  if (this.selected) this.mobileSelect.value = this.selected;
+}
+
+Filter.prototype.filterImages = function() {
   if (!this.selected) {
-    // function that indicates whether to include an image in a selection
-    this.imageSelected = function(image) {
-      return true;
-    }
+    this.imageSelected = function(image) {return true;}
     filters.filterImages();
   } else {
     var filename = this.selected.replace(/\//g, '-').replace(/ /g, '__') + '.json',
@@ -3812,12 +3843,12 @@ function Swipes(obj) {
   this.xDown = null;
   this.yDown = null;
   document.addEventListener('touchstart', function(e) {
-    this.xDown = e.touches[0].clientX;                    
-    this.yDown = e.touches[0].clientY;  
-  }, false);    
+    this.xDown = e.touches[0].clientX;
+    this.yDown = e.touches[0].clientY;
+  }, false);
   document.addEventListener('touchmove', function(e) {
     if (!this.xDown || !this.yDown) return;
-    var xUp = e.touches[0].clientX;                  
+    var xUp = e.touches[0].clientX;
     var yUp = e.touches[0].clientY;
     var xDiff = this.xDown - xUp;
     var yDiff = this.yDown - yUp;
@@ -3836,7 +3867,7 @@ function Swipes(obj) {
         else {
           if (obj.onSwipeDown) obj.onSwipeDown();
         }
-      }  
+      }
     } else {
       if (xDiff > 0) {
         if (obj.onSwipeRight) obj.onSwipeRight();
@@ -3846,7 +3877,7 @@ function Swipes(obj) {
       }
     }
     this.xDown = null;
-    this.yDown = null;        
+    this.yDown = null;
   }, false);
 }
 

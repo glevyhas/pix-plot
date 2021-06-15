@@ -259,8 +259,8 @@
 
     void main() {
       if (!render) discard;
-      float dashSize = cameraPosition.z / 100.0;
-      float gapSize = dashSize * 0.4;
+      float dashSize = 0.01;
+      float gapSize = 0.005;
       if (mod(vLength + time, dashSize + gapSize) > dashSize) discard;
       gl_FragColor = vec4(0.9, 0.9, 0.9, 1.0);
     }
@@ -370,7 +370,7 @@
             <div id='date-label' class='settings-label'>Date</div>
             <div id='date-slider'></div>
           </div>
-          <div id='filters'></div>
+          <div id='filters-desktop'></div>
           <div id='icons'>
             <img class='layout-icon' id='layout-alphabetic' src='assets/images/icons/az-layout.svg' />
             <img class='layout-icon' id='layout-umap' src='assets/images/icons/scatter-layout.svg' />
@@ -385,9 +385,13 @@
         <div id='header-controls-bottom' class='no-highlight'>
           <div id='layout-select-container' class='mobile-only'>
             <div class='settings-label'>Layout</div>
-            <select id='layout-select'>
-
-            </select>
+            <select id='layout-select'></select>
+          </div>
+          <div id='filters-mobile-wrap' class='mobile-only'>
+            <div id='filters-mobile-container'>
+              <div class='settings-label'>Category</div>
+              <div id='filters-mobile'></div>
+            </div>
           </div>
           <div id='pose-display-container'>
             <div class='settings-label'>Display</div>
