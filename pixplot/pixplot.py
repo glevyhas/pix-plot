@@ -98,8 +98,8 @@ config = {
   'atlas_size': 2048,
   'cell_size': 32,
   'lod_cell_height': 128,
-  'n_neighbors': [15],
-  'min_distance': [0.01],
+  'n_neighbors': [2, 15],
+  'min_dist': [0.01],
   'metric': 'correlation',
   'pointgrid_fill': 0.05,
   'square_cells': False,
@@ -122,6 +122,7 @@ config = {
 
 def process_images(**kwargs):
   '''Main method for processing user images and metadata'''
+  kwargs = preprocess_kwargs(**kwargs)
   np.random.seed(kwargs['seed'])
   tf.compat.v1.set_random_seed(kwargs['seed'])
   copy_web_assets(**kwargs)
@@ -131,6 +132,14 @@ def process_images(**kwargs):
   get_manifest(**kwargs)
   write_images(**kwargs)
   print(' * done!')
+
+
+def preprocess_kwargs(**kwargs):
+  '''Preprocess incoming key word arguments'''
+  for i in ['n_neighbors', 'min_dist']:
+    if not isinstance(kwargs[i], list):
+      kwargs[i] = [kwargs[i]]
+  return kwargs
 
 
 def copy_web_assets(**kwargs):
@@ -567,7 +576,7 @@ def get_umap_layout(**kwargs):
   params = [{
     'n_neighbors': i[0],
     'min_dist': i[1],
-  } for i in itertools.product(kwargs['n_neighbors'], kwargs['min_distance'])]
+  } for i in itertools.product(kwargs['n_neighbors'], kwargs['min_dist'])]
   z = AlignedUMAP(
     n_neighbors=[i['n_neighbors'] for i in params],
     min_dist=[i['min_dist'] for i in params],
@@ -596,7 +605,7 @@ def get_umap_layout(**kwargs):
 
 def get_umap_model(**kwargs):
   return UMAP(n_neighbors=kwargs['n_neighbors'],
-    min_dist=kwargs['min_distance'],
+    min_dist=kwargs['min_dist'],
     metric=kwargs['metric'],
     random_state=kwargs['seed'],
     transform_seed=kwargs['seed'])
@@ -1342,8 +1351,8 @@ def parse():
   parser.add_argument('--max_clusters', type=int, default=config['max_clusters'], help='the maximum number of clusters to return', required=False)
   parser.add_argument('--out_dir', type=str, default=config['out_dir'], help='the directory to which outputs will be saved', required=False)
   parser.add_argument('--cell_size', type=int, default=config['cell_size'], help='the size of atlas cells in px', required=False)
-  parser.add_argument('--n_neighbors', nargs='+', type=list, default=config['n_neighbors'], help='the n_neighbors arguments for UMAP')
-  parser.add_argument('--min_distance', nargs='+', type=list, default=config['min_distance'], help='the min_distance arguments for UMAP')
+  parser.add_argument('--n_neighbors', nargs='+', type=int, default=config['n_neighbors'], help='the n_neighbors arguments for UMAP')
+  parser.add_argument('--min_dist', nargs='+', type=int, default=config['min_dist'], help='the min_dist arguments for UMAP')
   parser.add_argument('--metric', type=str, default=config['metric'], help='the metric argument for umap')
   parser.add_argument('--pointgrid_fill', type=float, default=config['pointgrid_fill'], help='float 0:1 that determines sparsity of jittered distributions (lower means more sparse)')
   parser.add_argument('--copy_web_only', action='store_true', help='update ./output/assets without reprocessing data')
