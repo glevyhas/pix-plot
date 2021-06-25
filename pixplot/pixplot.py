@@ -1352,7 +1352,7 @@ def parse():
   parser.add_argument('--out_dir', type=str, default=config['out_dir'], help='the directory to which outputs will be saved', required=False)
   parser.add_argument('--cell_size', type=int, default=config['cell_size'], help='the size of atlas cells in px', required=False)
   parser.add_argument('--n_neighbors', nargs='+', type=int, default=config['n_neighbors'], help='the n_neighbors arguments for UMAP')
-  parser.add_argument('--min_dist', nargs='+', type=int, default=config['min_dist'], help='the min_dist arguments for UMAP')
+  parser.add_argument('--min_dist', nargs='+', type=float, default=config['min_dist'], help='the min_dist arguments for UMAP')
   parser.add_argument('--metric', type=str, default=config['metric'], help='the metric argument for umap')
   parser.add_argument('--pointgrid_fill', type=float, default=config['pointgrid_fill'], help='float 0:1 that determines sparsity of jittered distributions (lower means more sparse)')
   parser.add_argument('--copy_web_only', action='store_true', help='update ./output/assets without reprocessing data')
