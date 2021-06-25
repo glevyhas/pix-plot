@@ -1128,7 +1128,7 @@ noscript {
   font-size: 22px;
   cursor: pointer;
   padding: 0;
-  z-index: 100;
+  z-index: 1000;
 }
 
 .modal-top {
@@ -1864,33 +1864,24 @@ input[type=text] {
     margin: 3px;
   }
 
-  .selected-image .toggle-selection {
-    display: none;
-  }
-
-  #selected-images-modal .modal-bottom {
+  .selected-image .toggle-selection,
+  #selected-images-modal .modal-bottom,
+  #selected-image-modal .icons,
+  #selected-image-modal .modal-text-right,
+  #tooltip {
     display: none;
   }
 
   #selected-images-modal .modal-bottom {
     padding:  15px;
   }
-
-  #selected-image-modal .icons {
-    display: none;
-  }
-
-  #selected-image-modal .modal-text-right {
-    display: none;
-  }
-
   #selected-image-modal .modal-text-left {
     flex: 1;
     padding: 0;
   }
 
   #selected-image-modal .modal-top {
-    padding: 30px;
+    padding: 44px;
   }
 
   .modal-x {

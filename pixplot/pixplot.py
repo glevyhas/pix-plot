@@ -98,7 +98,7 @@ config = {
   'atlas_size': 2048,
   'cell_size': 32,
   'lod_cell_height': 128,
-  'n_neighbors': [2, 15, 40],
+  'n_neighbors': [15],
   'min_distance': [0.01],
   'metric': 'correlation',
   'pointgrid_fill': 0.05,
@@ -1342,8 +1342,8 @@ def parse():
   parser.add_argument('--max_clusters', type=int, default=config['max_clusters'], help='the maximum number of clusters to return', required=False)
   parser.add_argument('--out_dir', type=str, default=config['out_dir'], help='the directory to which outputs will be saved', required=False)
   parser.add_argument('--cell_size', type=int, default=config['cell_size'], help='the size of atlas cells in px', required=False)
-  parser.add_argument('--n_neighbors', type=list, default=config['n_neighbors'], help='the n_neighbors arguments for UMAP')
-  parser.add_argument('--min_distance', type=list, default=config['min_distance'], help='the min_distance arguments for UMAP')
+  parser.add_argument('--n_neighbors', nargs='+', type=list, default=config['n_neighbors'], help='the n_neighbors arguments for UMAP')
+  parser.add_argument('--min_distance', nargs='+', type=list, default=config['min_distance'], help='the min_distance arguments for UMAP')
   parser.add_argument('--metric', type=str, default=config['metric'], help='the metric argument for umap')
   parser.add_argument('--pointgrid_fill', type=float, default=config['pointgrid_fill'], help='float 0:1 that determines sparsity of jittered distributions (lower means more sparse)')
   parser.add_argument('--copy_web_only', action='store_true', help='update ./output/assets without reprocessing data')
