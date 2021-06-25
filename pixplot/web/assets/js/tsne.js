@@ -3471,7 +3471,7 @@ Hotspots.prototype.render = function() {
         e.stopPropagation();
         // select a random image from those in this cluster
         var selected = Math.floor(Math.random() * this.json[i].images.length);
-        this.json[i].img = data.json.images[inside[selected]];
+        this.json[i].img = data.json.images[this.json[i].images[selected]];
         // make the change saveable
         this.setEdited(true);
         this.render();
