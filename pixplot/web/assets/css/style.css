@@ -76,6 +76,15 @@ select:disabled {
   overflow: auto;
 }
 
+.row {
+  display: flex;
+  flex-direction: row;
+}
+
+.align-center {
+  align-items: center;
+}
+
 /**
 * Canvases
 **/
@@ -83,7 +92,7 @@ select:disabled {
 #canvas-container {
   position: absolute;
   top: 0;
-  left: 0;
+  left: 105px;
   right: 0;
   bottom: 0;
   overflow: hidden;
@@ -145,20 +154,31 @@ select:disabled {
   position: absolute;
   top: 0;
   left: 0;
+  right: 0;
   height: 48px;
   width: 100%;
+  z-index: 10;
+  -webkit-transform: translateZ(10px);
+  -moz-transform: translateZ(10px);
+  -o-transform: translateZ(10px);
+  transform: translateZ(10px);
+}
+
+#header,
+#logo {
+  background: #333333;
+  position: relative;
+  z-index: 4;
 }
 
 #header {
   height: 48px;
   width: 100%;
-  position: fixed;
   top: 0px;
   box-shadow: 0 3px 6px rgba(0, 0, 0, 0.16);
   border-bottom: 1px solid #1f1f1f;
   font-size: 0;
 }
-
 
 #header-brand {
   position: absolute;
@@ -169,13 +189,6 @@ select:disabled {
   height: inherit;
   overflow: hidden;
   font-size: 0;
-}
-
-#header,
-#logo {
-  background: #333333;
-  position: relative;
-  z-index: 4;
 }
 
 #logo {
@@ -243,7 +256,7 @@ select:disabled {
   top: 0;
   right: 0;
   left: 0;
-  height: 108px;
+  height: 49px;
 }
 
 #header-controls-top {
@@ -254,7 +267,7 @@ select:disabled {
 }
 
 #header-controls-bottom {
-  height: 36px;
+  height: auto;
   position: absolute;
   top: 48px;
   right: 0;
@@ -262,13 +275,14 @@ select:disabled {
   background: #222222;
   z-index: 2;
   transition: transform 0.3s;
-  transform: translate(0, -48px);
+  transform: translateY(-1000px);
   box-shadow: 0 3px 2px rgba(0, 0, 0, 0.3);
   padding-right: 56px;
+  overflow: hidden;
 }
 
 #header-controls-bottom.open {
-  transform: translate(0, 0);
+  transform: translateY(0);
 }
 
 /**
@@ -307,7 +321,7 @@ select:disabled {
   margin: 10px 5px;
 }
 
-#filters {
+#filters-desktop {
   vertical-align: top;
   position: relative;
   display: inline-block;
@@ -548,7 +562,7 @@ input[type=range]::-ms-thumb {
 }
 
 #settings-icon.active {
-  transform: rotate(-360deg);
+  transform: rotate(-90deg);
 }
 
 /**
@@ -610,6 +624,10 @@ nav {
   opacity: 1;
   cursor: default;
   overflow: hidden;
+  -webkit-transform: translateZ(0px);
+  -moz-transform: translateZ(0px);
+  -o-transform: translateZ(0px);
+  transform: translateZ(0px);
 }
 
 #nav-inner {
@@ -906,10 +924,9 @@ nav h2 {
   bottom: 0;
   left: 0;
   color: #fff;
-  padding: 40px;
-  padding-top: 120px;
+  padding: 40px 40px 0;
+  padding-top: 80px;
   transition: transform 1s;
-  z-index: 3;
   background: #000;
   max-height: 100%;
   width: 100%;
@@ -919,6 +936,11 @@ nav h2 {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  z-index: 3;
+  -webkit-transform:translateZ(3px);
+  -moz-transform:translateZ(3px);
+  -o-transform:translateZ(3px);
+  transform:translateZ(3px);
 }
 
 #loader-scene.hidden {
@@ -926,7 +948,7 @@ nav h2 {
 }
 
 #loader-text {
-  margin: 10px -50px;
+  margin: 10px 0 0;
   text-align: center;
 }
 
@@ -953,7 +975,7 @@ nav h2 {
 
 .loader-container {
   max-width: 70px;
-  margin: 30px auto;
+  margin: 30px auto 20px;
   text-align: center;
 }
 
@@ -1050,6 +1072,7 @@ button {
   font-weight: 600;
   transition: opacity .3s;
   cursor: pointer;
+  min-height: 39px; /* Fix Safari bug */
 }
 
 #enter-button {
@@ -1105,6 +1128,7 @@ noscript {
   font-size: 22px;
   cursor: pointer;
   padding: 0;
+  z-index: 1000;
 }
 
 .modal-top {
@@ -1143,6 +1167,7 @@ noscript {
   font-size: 12px;
   box-sizing: border-box;
   height: 115px;
+  overflow: hidden;
 }
 
 .modal-bottom-content {
@@ -1163,7 +1188,7 @@ noscript {
 * Selected Image modal
 **/
 
-#selected-image-target {
+#selected-image-modal {
   position: absolute;
   top: 48px;
   right: 0;
@@ -1191,11 +1216,11 @@ noscript {
   display: none;
 }
 
-#selected-image-target .modal-content {
+#selected-image-modal .modal-content {
   justify-content: center;
 }
 
-#selected-image-target .modal-top-content {
+#selected-image-modal .modal-top-content {
   background: transparent;
   height: 100%;
   position: relative;
@@ -1557,6 +1582,12 @@ noscript {
 #selected-images-grid {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+#selected-images-grid::after {
+  content: '';
+  flex: auto;
 }
 
 #selected-images-target {
@@ -1661,10 +1692,10 @@ input[type=text] {
 }
 
 #download-as span {
-  margin-right: 2px;
+  margin-right: 3px;
 }
 
-#download-as button {
+#download-as div {
   opacity: 1;
   background-color: #d2d2d2;
   padding: 4px 8px;
@@ -1672,9 +1703,10 @@ input[type=text] {
   border-radius: 4px;
   font-size: 12px;
   margin: 2px;
+  cursor: pointer;
 }
 
-#download-as button.active {
+#download-as div.active {
   background-color: #eab755;
 }
 
@@ -1706,4 +1738,155 @@ input[type=text] {
   right: 15px;
   transform: rotate(45deg);
   z-index: -1;
+}
+
+/**
+* Mobile
+**/
+
+.mobile-only {
+  display: none;
+}
+
+@media (max-width: 600px) {
+  #loader-scene {
+    padding: 20px 20px 0;
+    padding-top: 20px;
+  }
+
+  #canvas-container {
+    left: 0px;
+  }
+
+  nav,
+  #hotspot-actions {
+    display: none;
+  }
+
+  .layout-icon,
+  .filter {
+    display: none;
+  }
+
+  #filters-mobile-wrap {
+    display: block;
+  }
+
+  #filters-mobile-container * {
+    display: inline-block;
+  }
+
+  #filters-mobile-container select {
+    padding-right: 30px;
+  }
+
+  #header-controls-bottom {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: flex-start;
+    padding-left: 8px;
+    height: auto;
+    padding: 10px;
+  }
+
+  .settings-label {
+    font-size: 14px;
+  }
+
+  #icons #settings-icon {
+    margin: 0;
+  }
+
+  .range-slider,
+  #jitter-container {
+    margin: 0;
+  }
+
+  #layout-select-container {
+    display: block;
+  }
+
+  /**
+  * Range slider thumbs
+  **/
+
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    border: 1px solid #000000;
+    height: 22px;
+    width: 22px;
+    border-radius: 100%;
+    background: #ffffff;
+    cursor: pointer;
+    margin-top: -1px;
+    box-shadow: 1px 1px 1px #000000, 0px 0px 1px #0d0d0d; /* Add cool effects to your sliders! */
+  }
+
+  /* All the same stuff for Firefox */
+  input[type=range]::-moz-range-thumb {
+    box-shadow: 1px 1px 1px #000000, 0px 0px 1px #0d0d0d;
+    border: 1px solid #000000;
+    height: 22px;
+    width: 22px;
+    border-radius: 100%;
+    background: #ffffff;
+    cursor: pointer;
+  }
+
+  /* All the same stuff for IE */
+  input[type=range]::-ms-thumb {
+    box-shadow: 1px 1px 1px #000000, 0px 0px 1px #0d0d0d;
+    border: 1px solid #000000;
+    height: 22px;
+    width: 22px;
+    border-radius: 100%;
+    background: #ffffff;
+    cursor: pointer;
+  }
+
+  /**
+  * Modals
+  **/
+
+  .modal-top {
+    padding: 15px;
+  }
+
+  .modal-top-content {
+    padding: 20px;
+  }
+
+  .selected-image {
+    width: 40px;
+    height: 40px;
+    border: 1px solid #888;
+    margin: 3px;
+  }
+
+  .selected-image .toggle-selection,
+  #selected-images-modal .modal-bottom,
+  #selected-image-modal .icons,
+  #selected-image-modal .modal-text-right,
+  #tooltip {
+    display: none;
+  }
+
+  #selected-images-modal .modal-bottom {
+    padding:  15px;
+  }
+  #selected-image-modal .modal-text-left {
+    flex: 1;
+    padding: 0;
+  }
+
+  #selected-image-modal .modal-top {
+    padding: 44px;
+  }
+
+  .modal-x {
+    top: 12px;
+    right: 26px;
+  }
+
 }

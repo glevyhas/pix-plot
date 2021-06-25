@@ -51,9 +51,9 @@ function Config() {
     cell: 32, // height of each cell in atlas
     lodCell: 128, // height of each cell in LOD
     atlas: 2048, // height of each atlas
-    texture: webgl.limits.textureSize,
-    lodTexture: 2**13,
-    points: {
+    texture: window.innerWidth < 800 ? 2048 : webgl.limits.textureSize,
+    lodTexture: 2048,
+    points: { // the follow values are set by Data()
       min: 0, // min point size
       max: 0, // max point size
       initial: 0, // initial point size
@@ -70,6 +70,7 @@ function Config() {
     ease: Power1.easeOut,
     }
   }
+  this.mobileBreakpoint = 600;
   this.pickerMaxZ = 0.4; // max z value of camera to trigger picker modal
   this.atlasesPerTex = (this.size.texture/this.size.atlas)**2;
   this.isLocalhost = window.location.hostname.includes('localhost') ||
@@ -95,8 +96,8 @@ function Config() {
 **/
 
 function Data() {
-  this.atlasCount = null;
-  this.textureCount = null;
+  this.atlasCount = null; // number of atlases provided in data output
+  this.textureCount = null; // number of textures needed to render all atlases
   this.layouts = [];
   this.cells = [];
   this.textures = [];
@@ -159,7 +160,7 @@ Data.prototype.parseManifest = function(json) {
     }));
   };
   // add cells to the world
-  layout.getLayoutPath.bind(layout);
+  layout.getLayoutPath.bind(layout)
   get(getPath(layout.getLayoutPath()), function(data) {
     this.addCells(data);
     this.hotspots.initialize();
@@ -168,7 +169,7 @@ Data.prototype.parseManifest = function(json) {
 
 // When a texture's progress updates, update the aggregate progress
 Data.prototype.onTextureProgress = function(texIdx, progress) {
-  this.textureProgress[texIdx] = progress / this.textures[texIdx].getAtlasCount(texIdx);
+  this.textureProgress[texIdx] = progress / this.textures[texIdx].getAtlasCount();
   welcome.updateProgress();
 }
 
@@ -264,11 +265,13 @@ Texture.prototype.load = function() {
   }
 }
 
-// Get the number of atlases to include in this texture
+// Get the number of atlases to load into this texture
 Texture.prototype.getAtlasCount = function() {
-  return (data.atlasCount / config.atlasesPerTex) > (this.idx + 1)
+  var val = (data.atlasCount / config.atlasesPerTex) > (this.idx + 1)
     ? config.atlasesPerTex
     : data.atlasCount % config.atlasesPerTex;
+  // handle special case of single atlas that's size of single texture
+  return val ? val : 1;
 }
 
 // Store the load progress of each atlas file
@@ -477,18 +480,18 @@ Cell.prototype.setBuffer = function(attr) {
       attrs.offset.array[(idxInDrawCall * 2) + 1] = this.dy;
       return;
 
-    case 'position':
+    case 'translation':
       // set the cell's translation
-      attrs.position.array[(idxInDrawCall * 3)] = this.x;
-      attrs.position.array[(idxInDrawCall * 3) + 1] = this.y;
-      attrs.position.array[(idxInDrawCall * 3) + 2] = this.z;
+      attrs.translation.array[(idxInDrawCall * 3)] = this.x;
+      attrs.translation.array[(idxInDrawCall * 3) + 1] = this.y;
+      attrs.translation.array[(idxInDrawCall * 3) + 2] = this.z;
       return;
 
-    case 'targetPosition':
+    case 'targetTranslation':
       // set the cell's translation
-      attrs.targetPosition.array[(idxInDrawCall * 3)] = this.tx;
-      attrs.targetPosition.array[(idxInDrawCall * 3) + 1] = this.ty;
-      attrs.targetPosition.array[(idxInDrawCall * 3) + 2] = this.tz;
+      attrs.targetTranslation.array[(idxInDrawCall * 3)] = this.tx;
+      attrs.targetTranslation.array[(idxInDrawCall * 3) + 1] = this.ty;
+      attrs.targetTranslation.array[(idxInDrawCall * 3) + 2] = this.tz;
       return;
   }
 }
@@ -529,7 +532,9 @@ Layout.prototype.init = function(options) {
     nNeighborsInput: document.querySelector('#n-neighbors-range-input'),
     minDistInputContainer: document.querySelector('#min-dist-range-input-container'),
     nNeighborsInputContainer: document.querySelector('#n-neighbors-range-input-container'),
+    layoutSelect: document.querySelector('#layout-select'),
   }
+  this.initializeMobileLayoutOptions();
   this.initializeUmapInputs();
   this.showHideIcons();
   this.showHideJitter();
@@ -538,18 +543,30 @@ Layout.prototype.init = function(options) {
   this.selectActiveIcon();
 }
 
+Layout.prototype.initializeMobileLayoutOptions = function() {
+  this.options.forEach(function(o) {
+    if (data.layouts[o]) {
+      var option = document.createElement('option');
+      option.value = o;
+      option.textContent = o;
+      this.elems.layoutSelect.appendChild(option);
+    }
+  }.bind(this))
+}
+
 Layout.prototype.showHideIcons = function() {
+  var display = window.innerWidth < config.mobileBreakpoint ? 'none' : 'inline-block';
   if (data.layouts.categorical) {
-    this.elems.layoutCategorical.style.display = 'inline-block';
+    this.elems.layoutCategorical.style.display = display;
   }
   if (data.layouts.date) {
-    this.elems.layoutDate.style.display = 'inline-block';
+    this.elems.layoutDate.style.display = display;
   }
   if (data.layouts.pose) {
-    this.elems.layoutPose.style.display = 'inline-block';
+    this.elems.layoutPose.style.display = display;
   }
   if (data.layouts.geographic) {
-    this.elems.layoutGeographic.style.display = 'inline-block';
+    this.elems.layoutGeographic.style.display = display;
   }
 }
 
@@ -621,6 +638,8 @@ Layout.prototype.selectActiveIcon = function() {
   } catch (err) {
     console.warn(' * the requested layout has no icon:', this.selected)
   }
+  // select the active state in the mobile dropdown
+  this.elems.layoutSelect.selected = this.selected;
 }
 
 Layout.prototype.addEventListeners = function() {
@@ -642,6 +661,14 @@ Layout.prototype.addEventListeners = function() {
     }
     this.set(this.selected, false);
   }.bind(this));
+  // change the layout when the mobile select changes
+  this.elems.layoutSelect.addEventListener('change', function(e) {
+    this.set(e.target.value);
+  }.bind(this));
+  // show/hide icons
+  window.addEventListener('resize', function(e) {
+    this.showHideIcons()
+  }.bind(this))
 }
 
 // Transition to a new layout; layout must be an attr on Cell.layouts
@@ -680,7 +707,7 @@ Layout.prototype.set = function(layout, enableDelay) {
         data.cells[i].tx = pos[i][0];
         data.cells[i].ty = pos[i][1];
         data.cells[i].tz = pos[i][2] || data.cells[i].getZ(pos[i][0], pos[i][1]);
-        data.cells[i].setBuffer('targetPosition');
+        data.cells[i].setBuffer('targetTranslation');
       }
       // set the target locations of lines
       if (lines.mesh) {
@@ -696,7 +723,7 @@ Layout.prototype.set = function(layout, enableDelay) {
       }
       // update the transition uniforms and targetPosition buffers on each mesh
       for (var i=0; i<world.group.children.length; i++) {
-        world.group.children[i].geometry.attributes.targetPosition.needsUpdate = true;
+        world.group.children[i].geometry.attributes.targetTranslation.needsUpdate = true;
         animatable.push(world.group.children[i].material.uniforms.transitionPercent);
       }
       // begin the animation
@@ -787,7 +814,7 @@ Layout.prototype.onTransitionComplete = function() {
     cell.x = cell.tx;
     cell.y = cell.ty;
     cell.z = cell.tz;
-    cell.setBuffer('position');
+    cell.setBuffer('translation');
   });
   // update the buffers for the lines
   if (lines.mesh) {
@@ -799,7 +826,7 @@ Layout.prototype.onTransitionComplete = function() {
   }
   // pass each updated position buffer to the gpu
   for (var i=0; i<world.group.children.length; i++) {
-    world.group.children[i].geometry.attributes.position.needsUpdate = true;
+    world.group.children[i].geometry.attributes.translation.needsUpdate = true;
     world.group.children[i].material.uniforms.transitionPercent = {type: 'f', value: 0};
   }
   // indicate the world is no longer transitioning
@@ -904,6 +931,9 @@ World.prototype.getControls = function() {
   controls.zoomSpeed = 0.4;
   controls.panSpeed = 0.4;
   controls.noRotate = true;
+  controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
+  controls.mouseButtons.MIDDLE = THREE.MOUSE.ZOOM;
+  controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
   return controls;
 }
 
@@ -999,7 +1029,7 @@ World.prototype.addBorderWidthChangeListener = function() {
 }
 
 World.prototype.setBorderWidthUniforms = function(e) {
-  world.setUniform('borderWidth', e.target.value);
+  world.setUniform('borderWidth', parseFloat(e.target.value));
 }
 
 /**
@@ -1074,9 +1104,12 @@ World.prototype.plotPoints = function() {
   for (var drawCallIdx in drawCallToCells) {
     var meshCells = drawCallToCells[drawCallIdx],
         attrs = this.getGroupAttributes(meshCells),
-        geometry = new THREE.BufferGeometry();
+        geometry = new THREE.InstancedBufferGeometry();
+    geometry.setIndex([0,1,2, 2,3,0]);
     geometry.setAttribute('position', attrs.position);
-    geometry.setAttribute('targetPosition', attrs.targetPosition);
+    geometry.setAttribute('uv', attrs.uv);
+    geometry.setAttribute('translation', attrs.translation);
+    geometry.setAttribute('targetTranslation', attrs.targetTranslation);
     geometry.setAttribute('color', attrs.color);
     geometry.setAttribute('width', attrs.width);
     geometry.setAttribute('height', attrs.height);
@@ -1092,7 +1125,7 @@ World.prototype.plotPoints = function() {
       useColor: false,
     });
     material.transparent = true;
-    var mesh = new THREE.Points(geometry, material);
+    var mesh = new THREE.Mesh(geometry, material);
     mesh.frustumCulled = false;
     this.group.add(mesh);
   }
@@ -1124,12 +1157,12 @@ World.prototype.getGroupAttributes = function(cells) {
     var cell = cells[i];
     var rgb = this.color.setHex(cells[i].idx + 1); // use 1-based ids for colors
     it.texIndex[it.texIndexIterator++] = cell.texIdx; // index of texture among all textures -1 means LOD texture
-    it.position[it.positionIterator++] = cell.x; // current position.x
-    it.position[it.positionIterator++] = cell.y; // current position.y
-    it.position[it.positionIterator++] = cell.z; // current position.z
-    it.targetPosition[it.targetPositionIterator++] = cell.tx; // target position.x
-    it.targetPosition[it.targetPositionIterator++] = cell.ty; // target position.y
-    it.targetPosition[it.targetPositionIterator++] = cell.tz; // target position.z
+    it.translation[it.translationIterator++] = cell.x; // current position.x
+    it.translation[it.translationIterator++] = cell.y; // current position.y
+    it.translation[it.translationIterator++] = cell.z; // current position.z
+    it.targetTranslation[it.targetTranslationIterator++] = cell.tx; // target position.x
+    it.targetTranslation[it.targetTranslationIterator++] = cell.ty; // target position.y
+    it.targetTranslation[it.targetTranslationIterator++] = cell.tz; // target position.z
     it.color[it.colorIterator++] = rgb.r; // could be single float
     it.color[it.colorIterator++] = rgb.g; // unique color for GPU picking
     it.color[it.colorIterator++] = rgb.b; // unique color for GPU picking
@@ -1142,20 +1175,36 @@ World.prototype.getGroupAttributes = function(cells) {
     it.offset[it.offsetIterator++] = cell.dy; // px offset of cell from top of tex
   }
 
+  var positions = new Float32Array([
+    0, 0, 0,
+    1, 0, 0,
+    1, 1, 0,
+    0, 1, 0,
+  ])
+
+  var uvs = new Float32Array([
+    0.0, 0.0,
+    1.0, 0.0,
+    1.0, 1.0,
+    0.0, 1.0,
+  ])
+
   // format the arrays into THREE attributes
-  var position = new THREE.BufferAttribute(it.position, 3, true, 1),
-      targetPosition = new THREE.BufferAttribute(it.targetPosition, 3, true, 1),
-      color = new THREE.BufferAttribute(it.color, 3, true, 1),
-      opacity = new THREE.BufferAttribute(it.opacity, 1, true, 1),
-      selected = new THREE.Uint8BufferAttribute(it.selected, 1, false, 1),
-      clusterSelected = new THREE.Uint8BufferAttribute(it.clusterSelected, 1, false, 1),
-      texIndex = new THREE.Int8BufferAttribute(it.texIndex, 1, false, 1),
-      width = new THREE.Uint8BufferAttribute(it.width, 1, false, 1),
-      height = new THREE.Uint8BufferAttribute(it.height, 1, false, 1),
-      offset = new THREE.Uint16BufferAttribute(it.offset, 2, false, 1);
+  var position = new THREE.BufferAttribute(positions, 3, true, 1),
+      uv = new THREE.BufferAttribute(uvs, 2, true, 1),
+      translation = new THREE.InstancedBufferAttribute(it.translation, 3, true, 1),
+      targetTranslation = new THREE.InstancedBufferAttribute(it.targetTranslation, 3, true, 1),
+      color = new THREE.InstancedBufferAttribute(it.color, 3, true, 1),
+      opacity = new THREE.InstancedBufferAttribute(it.opacity, 1, true, 1),
+      selected = new THREE.InstancedBufferAttribute(it.selected, 1, false, 1),
+      clusterSelected = new THREE.InstancedBufferAttribute(it.clusterSelected, 1, false, 1),
+      texIndex = new THREE.InstancedBufferAttribute(it.texIndex, 1, false, 1),
+      width = new THREE.InstancedBufferAttribute(it.width, 1, false, 1),
+      height = new THREE.InstancedBufferAttribute(it.height, 1, false, 1),
+      offset = new THREE.InstancedBufferAttribute(it.offset, 2, false, 1);
   texIndex.usage = THREE.DynamicDrawUsage;
-  position.usage = THREE.DynamicDrawUsage;
-  targetPosition.usage = THREE.DynamicDrawUsage;
+  translation.usage = THREE.DynamicDrawUsage;
+  targetTranslation.usage = THREE.DynamicDrawUsage;
   opacity.usage = THREE.DynamicDrawUsage;
   selected.usage = THREE.DynamicDrawUsage;
   clusterSelected.usage = THREE.DynamicDrawUsage;
@@ -1163,7 +1212,9 @@ World.prototype.getGroupAttributes = function(cells) {
   var texIndices = this.getTexIndices(cells);
   return {
     position: position,
-    targetPosition: targetPosition,
+    uv: uv,
+    translation: translation,
+    targetTranslation: targetTranslation,
     color: color,
     width: width,
     height: height,
@@ -1187,8 +1238,8 @@ World.prototype.getGroupAttributes = function(cells) {
 
 World.prototype.getCellIterators = function(n) {
   return {
-    position: new Float32Array(n * 3),
-    targetPosition: new Float32Array(n * 3),
+    translation: new Float32Array(n * 3),
+    targetTranslation: new Float32Array(n * 3),
     color: new Float32Array(n * 3),
     width: new Uint8Array(n),
     height: new Uint8Array(n),
@@ -1197,8 +1248,8 @@ World.prototype.getCellIterators = function(n) {
     selected: new Uint8Array(n),
     clusterSelected: new Uint8Array(n),
     texIndex: new Int8Array(n),
-    positionIterator: 0,
-    targetPositionIterator: 0,
+    translationIterator: 0,
+    targetTranslationIterator: 0,
     colorIterator: 0,
     widthIterator: 0,
     heightIterator: 0,
@@ -1325,7 +1376,7 @@ World.prototype.getShaderMaterial = function(obj) {
         type: 'f',
         value: 0.15,
       },
-      borderColor: {
+      yellowColor: {
         type: 'vec3',
         value: new Float32Array([234/255, 183/255, 85/255]),
       },
@@ -1462,7 +1513,7 @@ World.prototype.flyTo = function(obj) {
   this.state.flying = true;
   // get a new camera to reset .up and .quaternion on this.camera
   var camera = this.getCamera(),
-      controls = new THREE.TrackballControls(camera);
+      controls = new THREE.TrackballControls(camera, this.canvas);
   camera.position.set(obj.x, obj.y, obj.z);
   controls.target.set(obj.x, obj.y, obj.z);
   controls.update();
@@ -1671,40 +1722,53 @@ function Lasso() {
 }
 
 Lasso.prototype.addMouseEventListeners = function() {
-  window.addEventListener('mousedown', function(e) {
-    if (!this.enabled) return;
-    if (!e.target.id || e.target.id != 'pixplot-canvas') return;
-    if (!keyboard.shiftPressed() && !keyboard.commandPressed()) {
-      this.points = [];
-    }
-    this.mousedownCoords = {x: e.clientX, y: e.clientY};
-    this.setCapturing(true);
-    this.setFrozen(false);
-  }.bind(this));
+  window.addEventListener('mousedown', this.handleMouseDown.bind(this));
+  window.addEventListener('touchstart', this.handleMouseDown.bind(this));
 
-  window.addEventListener('mousemove', function(e) {
-    if (!this.capturing || this.frozen) return;
-    if (!e.target.id || e.target.id != 'pixplot-canvas') return;
-    this.points.push(getEventWorldCoords(e));
-    this.draw();
-  }.bind(this));
+  window.addEventListener('mousemove', this.handleMouseMove.bind(this));
+  window.addEventListener('touchmove', this.handleMouseMove.bind(this));
 
-  window.addEventListener('mouseup', function(e) {
-    if (!this.enabled) return;
-    // prevent the lasso points from changing
-    this.setFrozen(true);
-    // if the user registered a click, clear the lasso
-    if (e.clientX == this.mousedownCoords.x &&
-        e.clientY == this.mousedownCoords.y &&
-        !keyboard.shiftPressed() &&
-        !keyboard.commandPressed()) {
-      this.clear();
-    }
-    // do not turn off capturing if the user is clicking the lasso symbol
-    if (!e.target.id || e.target.id == 'select') return;
-    // prevent the lasso from updating its points boundary
-    this.setCapturing(false);
-  }.bind(this));
+  window.addEventListener('mouseup', this.handleMouseUp.bind(this));
+  window.addEventListener('touchend', this.handleMouseUp.bind(this));
+}
+
+Lasso.prototype.isLassoEvent = function(e) {
+  return e.target.id && e.target.id === 'pixplot-canvas';
+}
+
+Lasso.prototype.handleMouseDown = function(e) {
+  if (!this.enabled) return;
+  if (!this.isLassoEvent(e)) return;
+  if (!keyboard.shiftPressed() && !keyboard.commandPressed()) {
+    this.points = [];
+  }
+  this.mousedownCoords = {x: (e.clientX || e.pageX), y: (e.clientY || e.pageY)};
+  this.setCapturing(true);
+  this.setFrozen(false);
+}
+
+Lasso.prototype.handleMouseMove = function(e) {
+  if (!this.capturing || this.frozen) return;
+  if (!this.isLassoEvent(e)) return;
+  this.points.push(getEventWorldCoords(e));
+  this.draw();
+}
+
+Lasso.prototype.handleMouseUp = function(e) {
+  if (!this.enabled) return;
+  // prevent the lasso points from changing
+  this.setFrozen(true);
+  // if the user registered a click, clear the lasso
+  if ((e.clientX || e.pageX) == this.mousedownCoords.x &&
+      (e.clientY || e.pageY) == this.mousedownCoords.y &&
+      !keyboard.shiftPressed() &&
+      !keyboard.commandPressed()) {
+    this.clear();
+  }
+  // do not turn off capturing if the user is clicking the lasso symbol
+  if (!e.target.id || e.target.id == 'select') return;
+  // prevent the lasso from updating its points boundary
+  this.setCapturing(false);
 }
 
 Lasso.prototype.addModalEventListeners = function() {
@@ -1716,7 +1780,7 @@ Lasso.prototype.addModalEventListeners = function() {
       this.displayed = false;
     }
     if (e.target.className == 'background-image') {
-      var index = e.target.getAttribute('data-index');
+      var index = parseInt(e.target.getAttribute('data-index'));
       var indices = [];
       Object.keys(this.selected).forEach(function(i, idx) {
         if (this.selected[i]) indices.push(idx);
@@ -1806,7 +1870,7 @@ Lasso.prototype.removeMesh = function() {
 }
 
 Lasso.prototype.draw = function() {
-  if (this.points.length <4) return;
+  if (this.points.length < 4) return;
   this.points = this.getHull();
   // remove the old mesh
   this.removeMesh();
@@ -2602,13 +2666,14 @@ function Modal() {
   this.cellIndices = [];
   this.addEventListeners();
   this.state = {
+    displayed: false,
     highlightPose: false,
-  }
+  };
 }
 
 Modal.prototype.showCells = function(cellIndices, cellIdx) {
   var self = this;
-  self.displayed = true;
+  self.state.displayed = true;
   self.cellIndices = Object.assign([], cellIndices);
   self.cellIdx = !isNaN(parseInt(cellIdx)) ? parseInt(cellIdx) : 0;
   // parse data attributes
@@ -2621,7 +2686,7 @@ Modal.prototype.showCells = function(cellIndices, cellIdx) {
   function showModal(json) {
     var json = json || {};
     var template = document.querySelector('#selected-image-template').textContent;
-    var target = document.querySelector('#selected-image-target');
+    var target = document.querySelector('#selected-image-modal');
     var hasPose = 'pose' in data.json.layouts && data.json.layouts['pose'];
     var templateData = {
       hasPose: hasPose,
@@ -2658,15 +2723,24 @@ Modal.prototype.showCells = function(cellIndices, cellIdx) {
 
 Modal.prototype.close = function() {
   window.location.href = '#';
-  document.querySelector('#selected-image-target').style.display = 'none';
+  document.querySelector('#selected-image-modal').style.display = 'none';
   window.removeEventListener('resize', self.resizePoseHighlight);
   this.cellIndices = [];
   this.cellIdx = null;
-  this.displayed = false;
+  this.state.displayed = false;
 }
 
 Modal.prototype.addEventListeners = function() {
+  var self = this;
   window.addEventListener('keydown', this.handleKeydown.bind(this))
+  var swipes = new Swipes({
+    onSwipeRight: function() {
+      if (self.state.displayed) self.showPreviousCell();
+    },
+    onSwipeLeft: function() {
+      if (self.state.displayed) self.showNextCell();
+    }
+  })
 }
 
 Modal.prototype.handleKeydown = function(e) {
@@ -2675,7 +2749,7 @@ Modal.prototype.handleKeydown = function(e) {
 }
 
 Modal.prototype.showPreviousCell = function() {
-  if (!this.displayed) return;
+  if (!this.state.displayed) return;
   var cellIdx = this.cellIdx > 0
     ? this.cellIdx - 1
     : this.cellIndices.length-1;
@@ -2683,7 +2757,7 @@ Modal.prototype.showPreviousCell = function() {
 }
 
 Modal.prototype.showNextCell = function() {
-  if (!this.displayed) return;
+  if (!this.state.displayed) return;
   var cellIdx = this.cellIdx < this.cellIndices.length-1
     ? this.cellIdx + 1
     : 0;
@@ -3046,6 +3120,7 @@ function Filters() {
 }
 
 Filters.prototype.loadFilters = function() {
+  document.querySelector('#filters-mobile-container').style.display = 'block';
   var url = config.data.dir + '/metadata/filters/filters.json';
   get(getPath(url), function(data) {
     for (var i=0; i<data.length; i++) {
@@ -3076,22 +3151,25 @@ function Filter(obj) {
   if (this.values.length <= 1) return;
   this.selected = null;
   this.name = obj.filter_name || '';
-  this.elem = document.createElement('div');
-  this.elem.addEventListener('mouseenter', this.show.bind(this));
-  this.elem.addEventListener('mouseleave', this.hide.bind(this));
-  // create the filter's select
-  this.elem.className = 'filter';
+  this.desktopSelect = document.createElement('div');
+  this.desktopSelect.addEventListener('mouseenter', this.show.bind(this));
+  this.desktopSelect.addEventListener('mouseleave', this.hide.bind(this));
+  // create the desktop filter's select
+  this.desktopSelect.className = 'filter';
   var label = document.createElement('div');
   label.className = 'settings-label filter-label';
   label.textContent = 'Category';
-  this.elem.appendChild(label);
+  this.desktopSelect.appendChild(label);
+  // create the mobile filter's select
+  this.mobileSelect = document.createElement('select');
   // format all filter options
   var children = document.createElement('div');
   children.className = 'filter-options';
   for (var i=0; i<this.values.length; i++) {
+    // create the desktop select child
     var child = document.createElement('div');
     child.setAttribute('data-label', this.values[i]);
-    child.addEventListener('click', this.onChange.bind(this));
+    child.addEventListener('click', this.onChange.bind(this, true));
     child.className = 'filter-option no-highlight';
     var input = document.createElement('input');
     var label = document.createElement('div');
@@ -3100,57 +3178,78 @@ function Filter(obj) {
     child.appendChild(input);
     child.appendChild(label);
     children.appendChild(child);
+    // create the mobile select child
+    var option = document.createElement('option');
+    option.value = this.values[i];
+    option.text = this.values[i].replace(/__/g, ' ');
+    if (option.text.length > 22) option.text = option.text.substring(0, 22) + '...';
+    option.setAttribute('data-label', this.values[i]);
+    this.mobileSelect.appendChild(option);
   }
-  this.elem.appendChild(children);
+  this.desktopSelect.appendChild(children);
+  this.mobileSelect.addEventListener('change', this.onChange.bind(this, false));
   // add the select to the DOM
-  document.querySelector('#filters').appendChild(this.elem);
+  document.querySelector('#filters-desktop').appendChild(this.desktopSelect);
+  document.querySelector('#filters-mobile').appendChild(this.mobileSelect);
   // allow canvas clicks to close the filter options
   document.querySelector('#pixplot-canvas').addEventListener('click', this.hide.bind(this));
 }
 
 Filter.prototype.showHide = function(e) {
-  this.elem.classList.toggle('open');
+  this.desktopSelect.classList.toggle('open');
 }
 
 Filter.prototype.show = function() {
-  this.elem.classList.add('open');
+  this.desktopSelect.classList.add('open');
 }
 
 Filter.prototype.hide = function() {
-  this.elem.classList.remove('open');
+  this.desktopSelect.classList.remove('open');
 }
 
-Filter.prototype.onChange = function(e) {
+Filter.prototype.onChange = function(isDesktop, e) {
   // find the filter
   var elem = e.target;
+  // get the value that's selected for this filter
+  this.selected = this.getSelected(isDesktop, e);
+  this.showSelected();
+  this.filterImages();
+}
+
+Filter.prototype.getSelected = function(isDesktop, e) {
+  // mobile select
+  if (!isDesktop) return e.target.value;
+  // user unselected the only active selection
+  var elem = e.target;
   while (!elem.classList.contains('filter-option')) elem = elem.parentNode;
-  // toggle the classlist
-  elem.classList.toggle('active');
-  // update the ui given the state of this element
-  if (elem.classList.contains('active')) {
-    // uncheck all of the other options
-    var elems = this.elem.querySelectorAll('.filter-option');
-    for (var i=0; i<elems.length; i++) {
-      elems[i].classList.remove('active');
-      elems[i].querySelector('input').checked = false;
+  if (elem.classList.contains('active')) return null;
+  // user selected a new selection
+  return elem.getAttribute('data-label');
+}
+
+Filter.prototype.showSelected = function() {
+  // show the selected state in the desktop select
+  var options = this.desktopSelect.querySelectorAll('.filter-option');
+  for (var i=0; i<options.length; i++) {
+    if (options[i].getAttribute('data-label') == this.selected) {
+      options[i].classList.add('active');
+      options[i].querySelector('input').checked = true;
+    } else {
+      options[i].classList.remove('active');
+      options[i].querySelector('input').checked = false;
     }
-    // update state
-    elem.classList.add('active');
-    elem.querySelector('input').checked = true;
-    this.selected = elem.getAttribute('data-label');
-    this.elem.classList.add('has-selection');
-  } else {
-    // update state
-    elem.classList.remove('active');
-    elem.querySelector('input').checked = false;
-    this.selected = null;
-    this.elem.classList.remove('has-selection');
   }
+  // highliht the desktop select if there's a selection
+  this.selected
+    ? this.desktopSelect.classList.add('has-selection')
+    : this.desktopSelect.classList.remove('has-selection');
+  // show the selected state in the mobile select
+  if (this.selected) this.mobileSelect.value = this.selected;
+}
+
+Filter.prototype.filterImages = function() {
   if (!this.selected) {
-    // function that indicates whether to include an image in a selection
-    this.imageSelected = function(image) {
-      return true;
-    }
+    this.imageSelected = function(image) {return true;}
     filters.filterImages();
   } else {
     var filename = this.selected.replace(/\//g, '-').replace(/ /g, '__') + '.json',
@@ -3576,7 +3675,9 @@ Webgl.prototype.getLimits = function() {
   ['', 'MOZ_', 'WEBKIT_'].forEach(function(ext) {
     if (extensions[ext + 'OES_element_index_uint']) maxIndex = 2**32 - 1;
   })
-  // for stats see e.g. https://webglstats.com/webgl/parameter/MAX_TEXTURE_SIZE
+  // one can fetch stats from https://webglstats.com/webgl/parameter/MAX_TEXTURE_SIZE
+  // N.B. however: the MAX_TEXTURE_SIZE only reflects the largest possible texture that
+  // a device can handle if the device has sufficient GPU RAM for that texture.
   return {
     // max h,w of textures in px
     textureSize: Math.min(this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE), 2**13),
@@ -3732,6 +3833,52 @@ Welcome.prototype.startWorld = function() {
       })
     }, 1500)
   }.bind(this))
+}
+
+/**
+* Swipe listeners
+**/
+
+function Swipes(obj) {
+  this.xDown = null;
+  this.yDown = null;
+  document.addEventListener('touchstart', function(e) {
+    this.xDown = e.touches[0].clientX;
+    this.yDown = e.touches[0].clientY;
+  }, false);
+  document.addEventListener('touchmove', function(e) {
+    if (!this.xDown || !this.yDown) return;
+    var xUp = e.touches[0].clientX;
+    var yUp = e.touches[0].clientY;
+    var xDiff = this.xDown - xUp;
+    var yDiff = this.yDown - yUp;
+    if (obj.onSwipeUp || obj.onSwipeDown) {
+      if (Math.abs(xDiff) > Math.abs(yDiff)) {
+        if (xDiff > 0) {
+          if (obj.onSwipeRight) obj.onSwipeRight();
+        }
+        else {
+          if (obj.onSwipeLeft) obj.onSwipeLeft();
+        }
+      } else {
+        if (yDiff > 0) {
+          if (obj.onSwipeUp) obj.onSwipeUp();
+        }
+        else {
+          if (obj.onSwipeDown) obj.onSwipeDown();
+        }
+      }
+    } else {
+      if (xDiff > 0) {
+        if (obj.onSwipeRight) obj.onSwipeRight();
+      }
+      else {
+        if (obj.onSwipeLeft) obj.onSwipeLeft();
+      }
+    }
+    this.xDown = null;
+    this.yDown = null;
+  }, false);
 }
 
 /**
@@ -4053,9 +4200,10 @@ function pointInPolygon(point, polygon) {
 
 function getEventWorldCoords(e) {
   var rect = e.target.getBoundingClientRect(),
-      dx = e.clientX - rect.left,
-      dy = e.clientY - rect.top;
-  return screenToWorldCoords({x: dx, y: dy});
+      dx = (e.clientX || e.pageX) - rect.left,
+      dy = (e.clientY || e.pageY) - rect.top,
+      offsets = {x: dx, y: dy};
+  return screenToWorldCoords(offsets);
 }
 
 function screenToWorldCoords(pos) {

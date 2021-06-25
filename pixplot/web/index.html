@@ -4,7 +4,9 @@
     <link href='https://fonts.googleapis.com/css?family=Open+Sans:300,400,600' rel='stylesheet'>
     <link rel='stylesheet' type='text/css' href='assets/css/no-ui-slider.css'>
     <link rel='stylesheet' type='text/css' href='assets/css/style.css'>
-    <title>Visualizing Image Fields</title>
+    <meta name='viewport' content='width=device-width, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no'>
+    <meta http-equiv='ScreenOrientation' content='autoRotate:disabled'>
+    <title>PixPlot | Visualizing Image Fields</title>
     <meta charset='UTF-8'/>
     <meta name='author' content='Yale Digital Humanities Lab'>
   </head>
@@ -46,55 +48,64 @@
     uniform vec3 cameraPosition;
     uniform float scale;
     uniform float targetScale;
-    uniform float transitionPercent;
     uniform float scaleTransitionPercent;
+    uniform float transitionPercent;
     uniform float borderWidth;
+    uniform float cellAtlasPxPerSide;
+    uniform float lodAtlasPxPerSide;
 
-    attribute vec3 position;         // x y z position offsets for an instance
-    attribute vec3 targetPosition;   // x y z position to which we're transitioning
-    attribute vec3 color;            // unique color for cell; used for raycasting
-    attribute float width;           // px width of cell in lod texture
-    attribute float height;          // px height of cell in lod texture
-    attribute vec2 offset;           // px offset in tex from left, top
-    attribute float opacity;         // opacity value for cell
-    attribute float selected;        // 1 if the cell is selected else 0
-    attribute float clusterSelected; // 1 if the cell's cluster is selected else 0
-    attribute float textureIndex;    // index of instance's texture among all textures
+    attribute vec2 uv;                // u v blueprint 0:1 in each axis
+    attribute vec3 position;          // x y z positional blueprint 0:1 in x, y axes
+    attribute vec3 translation;       // x y z position of point currently
+    attribute vec3 targetTranslation; // x y z position to which we're transitioning
+    attribute vec3 color;             // unique color for cell; used for raycasting
+    attribute float width;            // px width of cell in lod texture
+    attribute float height;           // px height of cell in lod texture
+    attribute vec2 offset;            // px offset in tex from left, top
+    attribute float opacity;          // opacity value for cell
+    attribute float selected;         // 1 if the cell is selected else 0
+    attribute float clusterSelected;  // 1 if the cell is cluster selected else 0
+    attribute float textureIndex;     // index of instance's texture among all textures
 
-    varying vec3 vColor;             // cell color
-    varying vec2 vOffset;            // px of cell offset left, top in texture
-    varying float vWidth;            // px width of cell in lod texture
-    varying float vHeight;           // px height of cell in lod texture
-    varying float vOpacity;          // cell opacity
-    varying float vSelected;         // 1 if this cell is selected else 0
-    varying float vClusterSelected;  // 1 if this cell's cluster is selected else 0
-    varying float vTextureIndex;     // cell texture idx (varyings can't be int)
+    varying vec2 vUv;                 // u v blueprint 0:1 in each axis
+    varying vec3 vPosition;           // x y z blueprint 0:1 in x, y axes
+    varying vec3 vColor;              // cell color
+    varying vec2 vOffset;             // px of cell offset left, top in texture
+    varying float vWidth;             // px width of cell in lod texture
+    varying float vHeight;            // px height of cell in lod texture
+    varying float vOpacity;           // cell opacity
+    varying float vSelected;          // 1 if this cell is selected else 0
+    varying float vTextureIndex;      // cell texture idx (varyings can't be int)
+    varying float vClusterSelected;   // 1 if this cell is cluster selected else 0
 
     void main() {
       // pass varyings to fragment shader
-      vTextureIndex = textureIndex;
+      vUv = uv;
       vColor = color;
       vWidth = width;
       vHeight = height;
       vOffset = offset;
       vOpacity = opacity;
       vSelected = selected;
+      vPosition = position;
+      vTextureIndex = textureIndex;
       vClusterSelected = clusterSelected;
 
+      // determine the interpolation point in the current transition
       float percent = clamp(transitionPercent, 0.0, 1.0);
 
-      // set point position as a mixture between the position + target
-      vec3 pos = mix(position, targetPosition, percent);
+      // scale the blueprint unit vectors by this image's size
+      bool bordered = selected > 0.5 || clusterSelected > 0.5;
+      vec3 p = position - 0.5;
+      p.x *= bordered ? (width  + (2.0 * borderWidth * width )) : width;
+      p.y *= bordered ? (height + (2.0 * borderWidth * height)) : height;
+
+      p = p * mix(scale, targetScale, percent) * 0.00001;
+      vec3 p0 = p + translation; // current position
+      vec3 p1 = p + targetTranslation; // target position
+      vec3 pos = mix(p0, p1, percent);
       vec4 world = modelViewMatrix * vec4(pos, 1.0);
       gl_Position = projectionMatrix * world;
-
-      // use the unscaled point position and camera position to set point size
-      float s = mix(scale, targetScale, percent);
-      float pointSize = s / -world.z;
-
-      gl_PointSize = pointSize;
-      if (selected > 0.5) gl_PointSize = pointSize + (pointSize * borderWidth);
-      if (clusterSelected > 0.5) gl_PointSize = pointSize + (pointSize * borderWidth);
     }
     </script>
 
@@ -122,92 +133,79 @@
     uniform float cellPxHeight;
     uniform float lodPxHeight;
     uniform float borderWidth;
-    uniform vec3 borderColor;
+    uniform vec3 yellowColor;
     uniform float display;
-    uniform float time;
 
-    varying vec3 vColor;                      // cell's color (for gpu picking)
-    varying vec2 vOffset;                     // cell's offset in px from left, top of tex
-    varying float vWidth;                     // cell's width in lod tex in px
-    varying float vHeight;                    // cell's height in lod tex in px
-    varying float vOpacity;                   // cell's opacity
-    varying float vSelected;                  // greater than 0.5 if selected
-    varying float vClusterSelected;           // greater than 0.5 if cluster is selected
-    varying float vTextureIndex;              // cell's texture index
+    varying vec2 vUv;               // u v texture blueprint scaled 0:1 in each axis
+    varying vec3 vPosition;         // x y z blueprint scaled 0:1 in x, y axes
+    varying vec3 vColor;            // cell's color (for gpu picking)
+    varying vec2 vOffset;           // cell's offset in px from left, top of tex
+    varying float vWidth;           // cell's width in lod tex in px
+    varying float vHeight;          // cell's height in lod tex in px
+    varying float vOpacity;         // cell's opacity
+    varying float vSelected;        // cell is selected if > 0.5
+    varying float vTextureIndex;    // cell's texture index
+    varying float vClusterSelected; // cell is cluster selected if > 0.5
 
     #ifndef SELECTING
       uniform sampler2D textures[N_TEXTURES]; // array of sampler2Ds
-      uniform sampler2D lodTexture;           // single sampler2D
+      uniform sampler2D lodTexture; // single sampler2D
     #endif
 
     void main() {
+
+      // hide all points when rendering lines for poses
       if (display < 0.5) {
+
         discard;
+
       } else {
-        // is this cell a LOD cell?
-        bool isLod = vTextureIndex < -0.5;
 
-        // find the width and height of this cell in its texture (in px)
-        float w = isLod ? vWidth : vWidth/vHeight*cellPxHeight;
-        float h = isLod ? vHeight : cellPxHeight;
-
-        // find the length of the cell in its longest dimension (in px)
-        float big = max(w, h);
-
-        // set boolean indicating whether to center cells
-        bool center = true;
-
-        // find min, max vals of 0:1 scaled x axis to be textured
-        float x0 = center ? (big-w)/2.0/big : 0.0;
-        float x1 = center ? (w/big)+x0 : w / big;
-
-        // find min, max vals of 0:1 scaled y axis to be textured
-        float y0 = center ? (big-h)/2.0/big : 0.0;
-        float y1 = center ? (h/big)+y0 : h / big;
-
-        // clip left and right margins from the square GL_POINT
-        if (h > w && (gl_PointCoord.x < x0 || gl_PointCoord.x > x1)) discard;
-
-        // clip top and bottom margins from the square GL_POINT
-        else if (w > h && gl_PointCoord.y < y0 || gl_PointCoord.y > y1) discard;
-
-        // if this shader is using vColor attributes for GPU picking skip texture processing
+        // if this shader is using vColor attributes skip texture processing
         if (int(useColor) == 1) {
 
           gl_FragColor = vec4(vColor, 1.0);
 
-        // else this cell should be textured
+        // this cell should be textured
         } else {
 
-          // identify whether this pixel is selected, cluster selected, and inside border area
+          // determine if pixel is selected, cluster selected, & inside border
           bool isSelected = vSelected > 0.5;
           bool isClusterSelected = vClusterSelected > 0.5;
           float borderW = borderWidth / 2.0;
-          bool isInBorder = gl_PointCoord.x < x0 + borderW ||
-            gl_PointCoord.x > x1 - borderW ||
-            gl_PointCoord.y < y0 + borderW ||
-            gl_PointCoord.y > y1 - borderW;
+          bool isInBorder =
+            vPosition.x > 1.0 - borderW ||
+            vPosition.x < borderW ||
+            vPosition.y > 1.0 - borderW ||
+            vPosition.y < borderW;
 
           // check if the current pointcoord position is within the border
           if ((isSelected || isClusterSelected) && isInBorder) {
 
             // draw a border around lasso'd cells
-            if (isSelected) gl_FragColor = vec4(borderColor, 1.0);
+            if (isSelected) gl_FragColor = vec4(yellowColor, 1.0);
 
             if (isClusterSelected) gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
 
           // pixel is outside the border; paint with the provided texture
           } else {
 
-            // get the x and y positions to sample for this cell's texture
-            float x = center ? gl_PointCoord.x - x0 : gl_PointCoord.x;
-            float y = center ? gl_PointCoord.y - y0 : gl_PointCoord.y;
+            // find the width and height of this cell in its texture (in px)
+            bool isLod = vTextureIndex < -0.5;
+            float w = isLod ? vWidth : vWidth/vHeight*cellPxHeight;
+            float h = isLod ? vHeight : cellPxHeight;
 
-            // scale the x and y positions to the size of the texture
-            vec2 uv = vOffset + vec2(x, y) * big;
+            // get the texture uv offsets
+            vec2 uv = vUv; // uv is unit uvs 0:1 in each axis
+            uv.y = 1.0 - uv.y; // flip the texture right side up
+            uv.x *= w; // scale the unit uvs to the size of this cell in px
+            uv.y *= h;
 
-            // set variables consumed by fragment tree below
-            vec2 scaledUv = isLod ? uv/lodAtlasPxPerSide : uv/cellAtlasPxPerSide;
+            uv = vOffset + uv; // vOffset is a translation of the cell in px
+            float denom = isLod ? lodAtlasPxPerSide : cellAtlasPxPerSide;
+            vec2 scaledUv = uv / denom; // scale the uvs from px coords to 0:1
+
+            // get the index for the selected texture
             int textureIndex = isLod ? -1 : int(vTextureIndex);
 
             // target to be replaced by texture tree
@@ -216,8 +214,15 @@
             gl_FragColor = mix(gl_FragColor, vec4(0.0), 1.0-vOpacity);
             gl_FragColor.a = 1.0;
 
-            if (vSelected > 0.5) gl_FragColor = mix(gl_FragColor, vec4(borderColor, 1.0), 0.15);
-            if (vClusterSelected > 0.5) gl_FragColor = mix(gl_FragColor, vec4(1.0, 1.0, 1.0, 1.0), 0.30);
+            // add a yellow wash if the cell is selected
+            if (vSelected > 0.5) {
+              gl_FragColor = mix(gl_FragColor, vec4(yellowColor, 1.0), 0.15);
+            }
+
+            // add a white wash if the cell is cluster selected
+            if (vClusterSelected > 0.5) {
+              gl_FragColor = mix(gl_FragColor, vec4(1.0), 0.30);
+            }
           }
         }
       }
@@ -255,8 +260,8 @@
 
     void main() {
       if (!render) discard;
-      float dashSize = cameraPosition.z / 100.0;
-      float gapSize = dashSize * 0.4;
+      float dashSize = 0.01;
+      float gapSize = 0.005;
       if (mod(vLength + time, dashSize + gapSize) > dashSize) discard;
       gl_FragColor = vec4(0.9, 0.9, 0.9, 1.0);
     }
@@ -358,7 +363,7 @@
       <div id='header-controls'>
         <div id='header-controls-top' class='no-highlight'>
           <div id='image-search-container'>
-            <input id='image-search' type='text' placeholder='Search for an image'></input>
+            <input id='image-search' type='text' placeholder='Search for an image'>
             <img id='image-search-icon' src='assets/images/icons/search-icon.svg'>
             <div id='typeahead-container'></div>
           </div>
@@ -366,7 +371,7 @@
             <div id='date-label' class='settings-label'>Date</div>
             <div id='date-slider'></div>
           </div>
-          <div id='filters'></div>
+          <div id='filters-desktop'></div>
           <div id='icons'>
             <img class='layout-icon' id='layout-alphabetic' src='assets/images/icons/az-layout.svg' />
             <img class='layout-icon' id='layout-umap' src='assets/images/icons/scatter-layout.svg' />
@@ -379,6 +384,16 @@
           </div>
         </div>
         <div id='header-controls-bottom' class='no-highlight'>
+          <div id='layout-select-container' class='mobile-only'>
+            <div class='settings-label'>Layout</div>
+            <select id='layout-select'></select>
+          </div>
+          <div id='filters-mobile-wrap' class='mobile-only'>
+            <div id='filters-mobile-container'>
+              <div class='settings-label'>Category</div>
+              <div id='filters-mobile'></div>
+            </div>
+          </div>
           <div id='pose-display-container'>
             <div class='settings-label'>Display</div>
             <select id='pose-display-select'>
@@ -398,13 +413,13 @@
             <div class='settings-label'>Border Width</div>
             <input id='border-width-range-input' min='0' max='1' value='0.15' step='0.01' type='range' />
           </div>
-          <div id='jitter-container'>
-            <div class='settings-label'>Jitter</div>
-            <input type='checkbox' id='jitter-input'>
-          </div>
           <div class='range-slider'>
             <div class='settings-label'>Point Size</div>
             <input id='pointsize-range-input' min='0' max='0.03' value='0' step='0.00001' type='range' />
+          </div>
+          <div id='jitter-container'>
+            <div class='settings-label'>Jitter</div>
+            <input type='checkbox' id='jitter-input'>
           </div>
         </div>
       </div>
@@ -436,7 +451,7 @@
     <!-- Canvas -->
     <div id='canvas-container'>
       <div id='canvas-target'>
-        <canvas id='pixplot-canvas' />
+        <canvas id='pixplot-canvas'></canvas>
       </div>
     </div>
     <!-- Hotspot Navigation -->
@@ -541,7 +556,7 @@
         </div>
       </div>
     </script>
-    <div id='selected-image-target'></div>
+    <div id='selected-image-modal'></div>
     <!-- Image Selection: multi-image selection -->
     <div id='selection-icons' class='no-highlight'>
       <img id='pan' src='assets/images/icons/pan.svg' class='active' />
@@ -587,15 +602,17 @@
               <p>Click an image above for higher resolution, or click the button to the right to download a JSON file identifying selected images.</p>
             </div>
             <div class='modal-text-right'>
-              <input id='download-filename' type='text' placeholder='filename'>
-              <a href='#' id='download-link'>
-                <button class='active'>Download Metadata</button>
-              </a>
-              <div id='download-as'>
+              <div class='row'>
+                <input id='download-filename' type='text' placeholder='filename'>
+                <div id='download-link'>
+                  <button class='active'>Download Metadata</button>
+                </div>
+              </div>
+              <div id='download-as' class='row align-center'>
                 <span>Download as:</span>
-                <button class='filetype active' id='csv'>CSV</button>
-                <button class='filetype' id='json'>JSON</button>
-                <button class='filetype' id='zip'>ZIP</button>
+                <div class='filetype active' id='csv'>CSV</div>
+                <div class='filetype' id='json'>JSON</div>
+                <div class='filetype' id='zip'>ZIP</div>
               </div>
             </div>
           </div>
@@ -609,18 +626,18 @@
     <noscript>
       <span class='browser-message'>Sorry, your browser is not able to load a WebGL scene currently. Please enable JavaScript and try again.</span>
     </noscript>
-    <script type='text/javascript' src='assets/vendor/dist/three.min.js'></script>
-    <script type='text/javascript' src='assets/vendor/dist/lodash.min.js'></script>
-    <script type='text/javascript' src='assets/js/object-assign-polyfill.js'></script>
-    <script type='text/javascript' src='assets/vendor/dist/gsap.min.js'></script>
-    <script type='text/javascript' src='assets/vendor/dist/trackball-controls.min.js'></script>
-    <script type='text/javascript' src='assets/vendor/dist/stats.min.js'></script>
-    <script type='text/javascript' src='assets/vendor/dist/gunzip.min.js'></script>
-    <script type='text/javascript' src='assets/vendor/dist/papaparse.min.js'></script>
-    <script type='text/javascript' src='assets/vendor/dist/no-ui-slider.min.js'></script>
-    <script type='text/javascript' src='assets/vendor/dist/jszip.min.js'></script>
-    <script type='text/javascript' src='assets/vendor/dist/d3.min.js'></script>
-    <script type='text/javascript' src='assets/js/tsne.js'></script>
+    <script src='assets/vendor/dist/three.min.js'></script>
+    <script src='assets/vendor/dist/lodash.min.js'></script>
+    <script src='assets/js/object-assign-polyfill.js'></script>
+    <script src='assets/vendor/dist/gsap.min.js'></script>
+    <script src='assets/vendor/dist/trackball-controls.min.js'></script>
+    <script src='assets/vendor/dist/stats.min.js'></script>
+    <script src='assets/vendor/dist/gunzip.min.js'></script>
+    <script src='assets/vendor/dist/papaparse.min.js'></script>
+    <script src='assets/vendor/dist/no-ui-slider.min.js'></script>
+    <script src='assets/vendor/dist/jszip.min.js'></script>
+    <script src='assets/vendor/dist/d3.min.js'></script>
+    <script src='assets/js/tsne.js'></script>
     <script>
       (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
       (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
