@@ -30,6 +30,7 @@ import itertools
 import datetime
 import operator
 import argparse
+import pickle
 import random
 import shutil
 import glob2
@@ -573,34 +574,87 @@ def get_umap_layout(**kwargs):
   vecs = get_inception_vectors(**kwargs)
   w = PCA(n_components=min(100, len(vecs))).fit_transform(vecs)
   print(' * creating UMAP layout')
-  params = [{
-    'n_neighbors': i[0],
-    'min_dist': i[1],
-  } for i in itertools.product(kwargs['n_neighbors'], kwargs['min_dist'])]
-  z = AlignedUMAP(
-    n_neighbors=[i['n_neighbors'] for i in params],
-    min_dist=[i['min_dist'] for i in params],
-    alignment_window_size=2,
-    alignment_regularisation=1e-3,
-  ).fit(
-    [w for _ in range(len(params))],
-    relations=[{i:i for i in range(len(w))} for i in range(len(params)-1)]
-  )
-  # save the layouts
-  l = []
-  for idx, i in enumerate(params):
-    filename = 'umap-n_neighbors_{}-min_dist_{}'.format(i['n_neighbors'], i['min_dist'])
+  # identify the parameters that determine the various layouts to create
+  params = []
+  for n_neighbors, min_dist in itertools.product(kwargs['n_neighbors'], kwargs['min_dist']):
+    filename = 'umap-n_neighbors_{}-min_dist_{}'.format(n_neighbors, min_dist)
     out_path = get_path('layouts', filename, **kwargs)
-    json_path = write_layout(out_path, z.embeddings_[idx], **kwargs)
+    params.append({
+      'n_neighbors': n_neighbors,
+      'min_dist': min_dist,
+      'filename': filename,
+      'out_path': out_path,
+    })
+  # map each image's index to itself and create one copy of that map for each layout
+  relations_dict = {idx: idx for idx, _ in enumerate(w)}
+  # determine the subset of params that have already been computed
+  uncomputed_params = [i for i in params if not os.path.exists(i['out_path'])]
+  # determine the filepath where this model will be saved
+  model_filename = 'umap-' + str(abs(hash(kwargs['images'])))
+  model_path = get_path('models', model_filename, **kwargs).replace('.json', '.gz')
+  out_dir = os.path.join(kwargs['out_dir'], 'models')
+  if not os.path.exists(out_dir):
+    os.makedirs(out_dir)
+  # load or create the model
+  if os.path.exists(model_path):
+    model = load_model(model_path)
+    for i in uncomputed_params:
+      model.update(w, relations_dict.copy())
+    # after updating, we can read the results from the end of the updated model
+    for idx, i in enumerate(uncomputed_params):
+      embedding = z.embeddings_[len(uncomputed_params)-idx]
+      write_layout(i['out_path'], embedding, **kwargs)
+  else:
+    model = AlignedUMAP(
+      n_neighbors=[i['n_neighbors'] for i in uncomputed_params],
+      min_dist=[i['min_dist'] for i in uncomputed_params],
+      alignment_window_size=2,
+      alignment_regularisation=1e-3,
+    )
+    # fit the model on the data
+    z = model.fit(
+      [w for _ in params],
+      relations=[relations_dict.copy() for _ in params[:-1]]
+    )
+    for idx, i in enumerate(params):
+      write_layout(i['out_path'], z.embeddings_[idx], **kwargs)
+    # save the model
+    save_model(model, model_path)
+  # load the list of layout variants
+  l = []
+  for i in params:
     l.append({
       'n_neighbors': i['n_neighbors'],
       'min_dist': i['min_dist'],
-      'layout':json_path,
-      'jittered': get_pointgrid_layout(json_path, filename, **kwargs)
+      'layout': i['out_path'],
+      'jittered': get_pointgrid_layout(i['out_path'], i['filename'], **kwargs)
     })
   return {
     'variants': l,
   }
+
+
+def save_model(model, path):
+  params = model.get_params()
+  attributes_names = [attr for attr in model.__dir__() if attr not in params and attr[0] != '_']
+  attributes = {key: model.__getattribute__(key) for key in attributes_names}
+  attributes['embeddings_'] = list(model.embeddings_)
+  for x in ['fit', 'fit_transform', 'update', 'get_params','set_params']:
+    del attributes[x]
+  all_params = {
+    'umap_params': params,
+    'umap_attributes': {key:value for key, value in attributes.items()}
+  }
+  pickle.dump(all_params, open(path, 'wb'))
+
+
+def load_model(path):
+  params = pickle.load(open(path, 'rb'))
+  model = AlignedUMAP()
+  model.set_params(**params.get('umap_params'))
+  for attr, value in params.get('umap_attributes').items():
+    model.__setattr__(attr, value)
+  model.__setattr__('embeddings_', List(params.get('umap_attributes').get('embeddings_')))
 
 
 def get_umap_model(**kwargs):
@@ -1342,8 +1396,8 @@ def parse():
   '''Read command line args and begin data processing'''
   description = 'Generate the data required to create a PixPlot viewer'
   parser = argparse.ArgumentParser(description=description, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-  parser.add_argument('--images', type=str, default=config['images'], help='path to a glob of images to process', required=False)
-  parser.add_argument('--metadata', type=str, default=config['metadata'], help='path to a csv or glob of JSON files with image metadata (see readme for format)', required=False)
+  parser.add_argument('--images', '-i', type=str, default=config['images'], help='path to a glob of images to process', required=False)
+  parser.add_argument('--metadata', '-m', type=str, default=config['metadata'], help='path to a csv or glob of JSON files with image metadata (see readme for format)', required=False)
   parser.add_argument('--max_images', type=int, default=config['max_images'], help='maximum number of images to process from the input glob', required=False)
   parser.add_argument('--use_cache', type=bool, default=config['use_cache'], help='given inputs identical to prior inputs, load outputs from cache', required=False)
   parser.add_argument('--encoding', type=str, default=config['encoding'], help='the encoding of input metadata', required=False)
