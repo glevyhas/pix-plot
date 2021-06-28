@@ -47,12 +47,18 @@ function Config() {
     file: 'manifest.json',
     gzipped: false,
   }
+  this.mobileBreakpoint = 600; // "small-texture" threshold
+  // texture buffer pixel *limits* are independent of memory *size*
+  var smallTexSize = Math.min(2048, webgl.limits.textureSize) // a small, safe size
+  // Try for max (8192/128)^2 = (2^6)^2 = 4096 LOD images (or smaller safe size)
+  //          or (2048/128)^2 = 256 LOD images for mobile.
+  var bigTexSize = Math.min(2**13, webgl.limits.textureSize)
   this.size = {
     cell: 32, // height of each cell in atlas
     lodCell: 128, // height of each cell in LOD
-    atlas: 2048, // height of each atlas
-    texture: window.innerWidth < 800 ? 2048 : webgl.limits.textureSize,
-    lodTexture: 2048,
+    atlas: smallTexSize, // height of each atlas
+    texture: window.innerWidth < this.mobileBreakpoint ? smallTexSize : webgl.limits.textureSize,
+    lodTexture: window.innerWidth < this.mobileBreakpoint ? smallTexSize : bigTexSize, // one detail texture buffer
     points: { // the follow values are set by Data()
       min: 0, // min point size
       max: 0, // max point size
@@ -70,7 +76,6 @@ function Config() {
     ease: Power1.easeOut,
     }
   }
-  this.mobileBreakpoint = 600;
   this.pickerMaxZ = 0.4; // max z value of camera to trigger picker modal
   this.atlasesPerTex = (this.size.texture/this.size.atlas)**2;
   this.isLocalhost = window.location.hostname.includes('localhost') ||
@@ -4265,3 +4270,4 @@ var settings = new Settings();
 var tooltip = new Tooltip();
 var globe = new Globe();
 var data = new Data();
+// vim: ts=2 sw=2 et
