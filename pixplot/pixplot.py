@@ -30,6 +30,7 @@ import itertools
 import datetime
 import operator
 import argparse
+import pickle
 import random
 import shutil
 import glob2
@@ -131,7 +132,7 @@ def process_images(**kwargs):
   kwargs['atlas_dir'] = get_atlas_data(**kwargs)
   get_manifest(**kwargs)
   write_images(**kwargs)
-  print(' * done!')
+  print(timestamp(), 'Done!')
 
 
 def preprocess_kwargs(**kwargs):
@@ -194,20 +195,20 @@ def filter_images(**kwargs):
     w, h = i.original.size
     # remove images with 0 height or width when resized to lod height
     if (h == 0) or (w == 0):
-      print(' * skipping {} because it contains 0 height or width'.format(i.path))
+      print(timestamp(), 'Skipping {} because it contains 0 height or width'.format(i.path))
       continue
     # remove images that have 0 height or width when resized
     try:
       resized = i.resize_to_max(kwargs['lod_cell_height'])
     except ValueError:
-      print(' * skipping {} because it contains 0 height or width when resized'.format(i.path))
+      print(timestamp(), 'Skipping {} because it contains 0 height or width when resized'.format(i.path))
       continue
     except OSError:
-      print(' * skipping {} because it could not be resized'.format(i.path))
+      print(timestamp(), 'Skipping {} because it could not be resized'.format(i.path))
       continue
     # remove images that are too wide for the atlas
     if (w/h) > (kwargs['atlas_size']/kwargs['cell_size']):
-      print(' * skipping {} because its dimensions are oblong'.format(i.path))
+      print(timestamp(), 'Skipping {} because its dimensions are oblong'.format(i.path))
       continue
     filtered_image_paths.append(i.path)
   # if there are no remaining images, throw an error
@@ -225,8 +226,8 @@ def filter_images(**kwargs):
   meta_missing = list(img_bn - meta_bn)
   # notify the user of images that are missing metadata
   if meta_missing:
-    print(' ! Some images are missing metadata:\n  -', '\n  - '.join(meta_missing[:10]))
-    if len(meta_missing) > 10: print(' ...', len(meta_missing)-10, 'more')
+    print(timestamp(), ' ! Some images are missing metadata:\n  -', '\n  - '.join(meta_missing[:10]))
+    if len(meta_missing) > 10: print(timestamp(), ' ...', len(meta_missing)-10, 'more')
     with open('missing-metadata.txt', 'w') as out: out.write('\n'.join(meta_missing))
   # get the sorted lists of images and metadata
   d = {clean_filename(i['filename']): i for i in l}
@@ -258,7 +259,7 @@ def get_image_paths(**kwargs):
           try:
             Manifest(url=i).save_images(limit=1)
           except:
-            print(' * could not download url ' + i)
+            print(timestamp(), 'Could not download url ' + i)
       image_paths = sorted(glob2.glob(os.path.join('iiif-downloads', 'images', '*')))
   # handle case where images flag points to a glob of images
   if not image_paths:
@@ -269,7 +270,7 @@ def get_image_paths(**kwargs):
     sys.exit()
   # optionally shuffle the image_paths
   if kwargs['shuffle']:
-    print(' * shuffling input images')
+    print(timestamp(), 'Shuffling input images')
     random.Random(kwargs['seed']).shuffle(sorted(image_paths))
   # optionally limit the number of images in image_paths
   if kwargs.get('max_images', False):
@@ -286,7 +287,7 @@ def stream_images(**kwargs):
         metadata = kwargs['metadata'][idx]
       yield Image(i, metadata=metadata)
     except Exception as exc:
-      print(' * image', i, 'could not be processed --', exc)
+      print(timestamp(), 'Image', i, 'could not be processed --', exc)
 
 
 def clean_filename(s, **kwargs):
@@ -468,12 +469,12 @@ def get_atlas_data(**kwargs):
   # if the atlas files already exist, load from cache
   out_dir = os.path.join(kwargs['out_dir'], 'atlases', kwargs['plot_id'])
   if os.path.exists(out_dir) and kwargs['use_cache'] and not kwargs.get('shuffle', False):
-    print(' * loading saved atlas data')
+    print(timestamp(), 'Loading saved atlas data')
     return out_dir
   if not os.path.exists(out_dir):
     os.makedirs(out_dir)
   # else create the atlas images and store the positions of cells in atlases
-  print(' * creating atlas files')
+  print(timestamp(), 'Creating atlas files')
   n = 0 # number of atlases
   x = 0 # x pos in atlas
   y = 0 # y pos in atlas
@@ -548,12 +549,12 @@ def get_layouts(**kwargs):
 
 def get_inception_vectors(**kwargs):
   '''Create and return Inception vector representation of Image() instances'''
-  print(' * generating Inception vectors for {} images'.format(len(kwargs['image_paths'])))
+  print(timestamp(), 'Generating Inception vectors for {} images'.format(len(kwargs['image_paths'])))
   vector_dir = os.path.join(kwargs['out_dir'], 'image-vectors', 'inception')
   if not os.path.exists(vector_dir): os.makedirs(vector_dir)
   base = InceptionV3(include_top=True, weights='imagenet',)
   model = Model(inputs=base.input, outputs=base.get_layer('avg_pool').output)
-  print(' * creating image array')
+  print(timestamp(), 'Creating image array')
   vecs = []
   for idx, i in enumerate(stream_images(**kwargs)):
     vector_path = os.path.join(vector_dir, os.path.basename(i.path) + '.npy')
@@ -564,7 +565,7 @@ def get_inception_vectors(**kwargs):
       vec = model.predict(np.expand_dims(im, 0)).squeeze()
       np.save(vector_path, vec)
     vecs.append(vec)
-    print(' * vectorized {}/{} images'.format(idx+1, len(kwargs['image_paths'])))
+    print(timestamp(), 'Vectorized {}/{} images'.format(idx+1, len(kwargs['image_paths'])))
   return np.array(vecs)
 
 
@@ -572,35 +573,88 @@ def get_umap_layout(**kwargs):
   '''Get the x,y positions of images passed through a umap projection'''
   vecs = get_inception_vectors(**kwargs)
   w = PCA(n_components=min(100, len(vecs))).fit_transform(vecs)
-  print(' * creating UMAP layout')
-  params = [{
-    'n_neighbors': i[0],
-    'min_dist': i[1],
-  } for i in itertools.product(kwargs['n_neighbors'], kwargs['min_dist'])]
-  z = AlignedUMAP(
-    n_neighbors=[i['n_neighbors'] for i in params],
-    min_dist=[i['min_dist'] for i in params],
-    alignment_window_size=2,
-    alignment_regularisation=1e-3,
-  ).fit(
-    [w for _ in range(len(params))],
-    relations=[{i:i for i in range(len(w))} for i in range(len(params)-1)]
-  )
-  # save the layouts
-  l = []
-  for idx, i in enumerate(params):
-    filename = 'umap-n_neighbors_{}-min_dist_{}'.format(i['n_neighbors'], i['min_dist'])
+  print(timestamp(), 'Creating UMAP layout')
+  # identify the parameters that determine the various layouts to create
+  params = []
+  for n_neighbors, min_dist in itertools.product(kwargs['n_neighbors'], kwargs['min_dist']):
+    filename = 'umap-n_neighbors_{}-min_dist_{}'.format(n_neighbors, min_dist)
     out_path = get_path('layouts', filename, **kwargs)
-    json_path = write_layout(out_path, z.embeddings_[idx], **kwargs)
+    params.append({
+      'n_neighbors': n_neighbors,
+      'min_dist': min_dist,
+      'filename': filename,
+      'out_path': out_path,
+    })
+  # map each image's index to itself and create one copy of that map for each layout
+  relations_dict = {idx: idx for idx, _ in enumerate(w)}
+  # determine the subset of params that have already been computed
+  uncomputed_params = [i for i in params if not os.path.exists(i['out_path'])]
+  # determine the filepath where this model will be saved
+  model_filename = 'umap-' + str(abs(hash(kwargs['images'])))
+  model_path = get_path('models', model_filename, **kwargs).replace('.json', '.gz')
+  out_dir = os.path.join(kwargs['out_dir'], 'models')
+  if not os.path.exists(out_dir):
+    os.makedirs(out_dir)
+  # load or create the model
+  if os.path.exists(model_path):
+    model = load_model(model_path)
+    for i in uncomputed_params:
+      model.update(w, relations_dict.copy())
+    # after updating, we can read the results from the end of the updated model
+    for idx, i in enumerate(uncomputed_params):
+      embedding = z.embeddings_[len(uncomputed_params)-idx]
+      write_layout(i['out_path'], embedding, **kwargs)
+  else:
+    model = AlignedUMAP(
+      n_neighbors=[i['n_neighbors'] for i in uncomputed_params],
+      min_dist=[i['min_dist'] for i in uncomputed_params],
+      alignment_window_size=2,
+      alignment_regularisation=1e-3,
+    )
+    # fit the model on the data
+    z = model.fit(
+      [w for _ in params],
+      relations=[relations_dict.copy() for _ in params[:-1]]
+    )
+    for idx, i in enumerate(params):
+      write_layout(i['out_path'], z.embeddings_[idx], **kwargs)
+    # save the model
+    save_model(model, model_path)
+  # load the list of layout variants
+  l = []
+  for i in params:
     l.append({
       'n_neighbors': i['n_neighbors'],
       'min_dist': i['min_dist'],
-      'layout':json_path,
-      'jittered': get_pointgrid_layout(json_path, filename, **kwargs)
+      'layout': i['out_path'],
+      'jittered': get_pointgrid_layout(i['out_path'], i['filename'], **kwargs)
     })
   return {
     'variants': l,
   }
+
+
+def save_model(model, path):
+  params = model.get_params()
+  attributes_names = [attr for attr in model.__dir__() if attr not in params and attr[0] != '_']
+  attributes = {key: model.__getattribute__(key) for key in attributes_names}
+  attributes['embeddings_'] = list(model.embeddings_)
+  for x in ['fit', 'fit_transform', 'update', 'get_params','set_params']:
+    del attributes[x]
+  all_params = {
+    'umap_params': params,
+    'umap_attributes': {key:value for key, value in attributes.items()}
+  }
+  pickle.dump(all_params, open(path, 'wb'))
+
+
+def load_model(path):
+  params = pickle.load(open(path, 'rb'))
+  model = AlignedUMAP()
+  model.set_params(**params.get('umap_params'))
+  for attr, value in params.get('umap_attributes').items():
+    model.__setattr__(attr, value)
+  model.__setattr__('embeddings_', List(params.get('umap_attributes').get('embeddings_')))
 
 
 def get_umap_model(**kwargs):
@@ -613,7 +667,7 @@ def get_umap_model(**kwargs):
 
 def get_tsne_layout(**kwargs):
   '''Get the x,y positions of images passed through a TSNE projection'''
-  print(' * creating TSNE layout with ' + str(multiprocessing.cpu_count()) + ' cores...')
+  print(timestamp(), 'Creating TSNE layout with ' + str(multiprocessing.cpu_count()) + ' cores...')
   out_path = get_path('layouts', 'tsne', **kwargs)
   if os.path.exists(out_path) and kwargs['use_cache']: return out_path
   model = TSNE(perplexity=kwargs.get('perplexity', 2),n_jobs=multiprocessing.cpu_count())
@@ -623,7 +677,7 @@ def get_tsne_layout(**kwargs):
 
 def get_rasterfairy_layout(**kwargs):
   '''Get the x, y position of images passed through a rasterfairy projection'''
-  print(' * creating rasterfairy layout')
+  print(timestamp(), 'Creating rasterfairy layout')
   out_path = get_path('layouts', 'rasterfairy', **kwargs)
   if os.path.exists(out_path) and kwargs['use_cache']: return out_path
   umap = np.array(read_json(kwargs['umap']['variants'][0]['layout'], **kwargs))
@@ -634,13 +688,13 @@ def get_rasterfairy_layout(**kwargs):
       autoPerimeterOffset=False,
       paddingScale=1.05)
   except:
-    print(' * coonswarp rectification could not be performed')
+    print(timestamp(), 'Coonswarp rectification could not be performed')
   pos = rasterfairy.transformPointCloud2D(umap)[0]
   return write_layout(out_path, pos, **kwargs)
 
 
 def get_lap_layout(**kwargs):
-  print(' * creating linear assignment layout')
+  print(timestamp(), 'Creating linear assignment layout')
   try:
     import lap
   except:
@@ -668,7 +722,7 @@ def get_lap_layout(**kwargs):
 
 def get_alphabetic_layout(**kwargs):
   '''Get the x,y positions of images in a grid projection'''
-  print(' * creating grid layout')
+  print(timestamp(), 'Creating grid layout')
   out_path = get_path('layouts', 'grid', **kwargs)
   if os.path.exists(out_path) and kwargs['use_cache']: return out_path
   paths = kwargs['image_paths']
@@ -684,7 +738,7 @@ def get_alphabetic_layout(**kwargs):
 
 def get_pointgrid_layout(path, label, **kwargs):
   '''Gridify the positions in `path` and return the path to this new layout'''
-  print(' * creating {} pointgrid'.format(label))
+  print(timestamp(), 'Creating {} pointgrid'.format(label))
   out_path = get_path('layouts', label + '-jittered', **kwargs)
   if os.path.exists(out_path) and kwargs['use_cache']: return out_path
   arr = np.array(read_json(path, **kwargs))
@@ -703,7 +757,7 @@ def get_pose_layout(**kwargs):
   out_path = get_path('layouts', 'pose', **kwargs)
   if os.path.exists(out_path) and kwargs['use_cache']: return out_path
   # generate a new pose layout
-  print(' * generating pose layout')
+  print(timestamp(), 'Generating pose layout')
   vector_dir = os.path.join(kwargs['out_dir'], 'image-vectors', 'openpose')
   vecs = []
   # images are vectorized during subdivision step
@@ -762,9 +816,9 @@ def crop_openpose_figure(im, vec, margin=0.4):
 def subdivide_images_with_openpose(**kwargs):
   '''Cut each input image into single-pose subimages and save vectors for each'''
   if not pose_ready:
-    print(' * to use --extract_poses, please install tf-pose==0.11.0 and build your plot again')
+    print(timestamp(), 'To use --extract_poses, please install tf-pose==0.11.0 and build your plot again')
     sys.exit()
-  print(' * subdividing images with OpenPose model')
+  print(timestamp(), 'Subdividing images with OpenPose model')
   download_cmu_model()
   # determine the subset of input images for which we've already parsed pose vectors
   parsed_path = os.path.join(kwargs['out_dir'], 'image-vectors', 'openpose', 'parsed.json')
@@ -783,7 +837,7 @@ def subdivide_images_with_openpose(**kwargs):
   pose_image_paths = []
   vectors_list = []
   for idx, i in enumerate(stream_images(image_paths=kwargs['image_paths'])):
-    print(' * processing {}/{} images'.format(idx+1, len(kwargs['image_paths'])))
+    print(timestamp(), 'Processing {}/{} images'.format(idx+1, len(kwargs['image_paths'])))
     # split the file into its basename and extension
     file_extension = i.path.split('.')[-1]
     file_basename = '.'.join(os.path.basename(i.path).split('.')[:-1])
@@ -823,7 +877,7 @@ def subdivide_images_with_openpose(**kwargs):
   # store the images we processed
   write_json(parsed_path, parsed_dict)
   write_json(vectors_path, vectors_list)
-  print(' * extracted', len(pose_image_paths), 'pose images')
+  print(timestamp(), 'Extracted', len(pose_image_paths), 'pose images')
   return pose_image_paths
 
 
@@ -849,7 +903,7 @@ def download_cmu_model():
   '''Download the pretrained openpose model to be used'''
   url = 'https://lab-apps.s3-us-west-2.amazonaws.com/pixplot-assets/tf-pose/graph_opt.pb'
   out_path = get_cmu_graph_path()
-  print(' * downoading cmu model to ' + out_path)
+  print(timestamp(), 'Downoading cmu model to ' + out_path)
   out_dir = os.path.split(out_path)[0]
   if not exists(out_dir): os.makedirs(out_dir)
   if not exists(out_path): download_function(url, out_path)
@@ -884,7 +938,7 @@ def get_date_layout(cols=3, bin_units='years', **kwargs):
       'labels': labels_out_path,
     }
   # date layout is not cached, so fetch dates and process
-  print(' * creating date layout with {} columns'.format(cols))
+  print(timestamp(), 'Creating date layout with {} columns'.format(cols))
   datestrings = [i.metadata.get('year', 'no_date') for i in stream_images(**kwargs)]
   dates = [datestring_to_date(i) for i in datestrings]
   rounded_dates = [round_date(i, bin_units) for i in dates]
@@ -939,7 +993,7 @@ def datestring_to_date(datestring):
   try:
     return parse_date(str(datestring), fuzzy=True, default=datetime.datetime(9999, 1, 1))
   except Exception as exc:
-    print(' * could not parse datestring {}'.format(datestring))
+    print(timestamp(), 'Could not parse datestring {}'.format(datestring))
     return datestring
 
 
@@ -1121,7 +1175,7 @@ def get_geographic_layout(**kwargs):
       'layout': write_layout(out_path, l, scale=False, **kwargs)
     }
   elif kwargs['geojson']:
-    print(' * GeoJSON is only processed if you also provide lat/lng coordinates for your images in a metadata file!')
+    print(timestamp(), 'GeoJSON is only processed if you also provide lat/lng coordinates for your images in a metadata file!')
   return None
 
 
@@ -1142,6 +1196,11 @@ def process_geojson(geojson_path):
 ##
 # Helpers
 ##
+
+
+def timestamp():
+  '''Return a string for printing the current time'''
+  return str(datetime.datetime.now()) + ':'
 
 
 def get_path(*args, **kwargs):
@@ -1193,7 +1252,7 @@ def read_json(path, **kwargs):
 
 def get_hotspots(**kwargs):
   '''Return the stable clusters from the condensed tree of connected components from the density graph'''
-  print(' * Clustering data with {}'.format(cluster_method))
+  print(timestamp(), 'Clustering data with {}'.format(cluster_method))
   model = get_cluster_model(**kwargs)
   v = kwargs['vecs']
   z = model.fit(v)
@@ -1228,7 +1287,7 @@ def get_hotspots(**kwargs):
   # slice off the first `max_clusters`
   clusters = clusters[:kwargs['max_clusters']]
   # save the hotspots to disk and return the path to the saved json
-  print(' * found', len(clusters), 'hotspots')
+  print(timestamp(), 'Found', len(clusters), 'hotspots')
   return write_json(get_path('hotspots', 'hotspot', **kwargs), clusters, **kwargs)
 
 
@@ -1333,6 +1392,7 @@ class Image:
     else: b[:h, :w, :] = a
     return b
 
+
 ##
 # Entry Point
 ##
@@ -1342,8 +1402,8 @@ def parse():
   '''Read command line args and begin data processing'''
   description = 'Generate the data required to create a PixPlot viewer'
   parser = argparse.ArgumentParser(description=description, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-  parser.add_argument('--images', type=str, default=config['images'], help='path to a glob of images to process', required=False)
-  parser.add_argument('--metadata', type=str, default=config['metadata'], help='path to a csv or glob of JSON files with image metadata (see readme for format)', required=False)
+  parser.add_argument('--images', '-i', type=str, default=config['images'], help='path to a glob of images to process', required=False)
+  parser.add_argument('--metadata', '-m', type=str, default=config['metadata'], help='path to a csv or glob of JSON files with image metadata (see readme for format)', required=False)
   parser.add_argument('--max_images', type=int, default=config['max_images'], help='maximum number of images to process from the input glob', required=False)
   parser.add_argument('--use_cache', type=bool, default=config['use_cache'], help='given inputs identical to prior inputs, load outputs from cache', required=False)
   parser.add_argument('--encoding', type=str, default=config['encoding'], help='the encoding of input metadata', required=False)
