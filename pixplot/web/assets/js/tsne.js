@@ -1792,7 +1792,7 @@ Lasso.prototype.addModalEventListeners = function() {
       var index = 0;
       indices.forEach(function(i) {
         if (indices[i] === parseInt(e.target.getAttribute('data-index'))) {
-          index = i;
+          index = indices[i];
         }
       })
       modal.showCells(indices, index);
