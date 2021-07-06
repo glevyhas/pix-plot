@@ -99,7 +99,7 @@ config = {
   'atlas_size': 2048,
   'cell_size': 32,
   'lod_cell_height': 128,
-  'n_neighbors': [2, 15],
+  'n_neighbors': [15],
   'min_dist': [0.01],
   'metric': 'correlation',
   'pointgrid_fill': 0.05,
@@ -574,7 +574,43 @@ def get_umap_layout(**kwargs):
   vecs = get_inception_vectors(**kwargs)
   w = PCA(n_components=min(100, len(vecs))).fit_transform(vecs)
   print(timestamp(), 'Creating UMAP layout')
-  # identify the parameters that determine the various layouts to create
+  # single model umap
+  if len(kwargs['n_neighbors']) == 1 and len(kwargs['min_dist']) == 1:
+    return process_single_layout_umap(w, **kwargs)
+  else:
+    return process_multi_layout_umap(w, **kwargs)
+
+
+def process_single_layout_umap(vecs, **kwargs):
+  '''Create a single layout UMAP projection'''
+  out_path = get_path('layouts', 'umap', **kwargs)
+  if os.path.exists(out_path) and kwargs['use_cache']: return out_path
+  model = get_umap_model(**kwargs)
+  y = []
+  if kwargs.get('metadata', False):
+    labels = [i.get('label', None) for i in kwargs['metadata']]
+    # if the user provided labels, integerize them
+    if any([i for i in labels]):
+      d = defaultdict(lambda: len(d))
+      for i in labels:
+        if i == None: y.append(-1)
+        else: y.append(d[i])
+      y = np.array(y)
+  # project the PCA space down to 2d for visualization
+  z = model.fit(vecs, y=y if np.any(y) else None).embedding_
+  return {
+    'variants': [
+      {
+        'n_neighbors': kwargs['n_neighbors'][0],
+        'min_dist': kwargs['min_dist'][0],
+        'layout': write_layout(out_path, z, **kwargs),
+        'jittered': get_pointgrid_layout(out_path, 'umap', **kwargs),
+      }
+    ]
+  }
+
+def process_multi_layout_umap(vecs, **kwargs):
+  '''Create a multi-layout UMAP projection'''
   params = []
   for n_neighbors, min_dist in itertools.product(kwargs['n_neighbors'], kwargs['min_dist']):
     filename = 'umap-n_neighbors_{}-min_dist_{}'.format(n_neighbors, min_dist)
@@ -586,7 +622,7 @@ def get_umap_layout(**kwargs):
       'out_path': out_path,
     })
   # map each image's index to itself and create one copy of that map for each layout
-  relations_dict = {idx: idx for idx, _ in enumerate(w)}
+  relations_dict = {idx: idx for idx, _ in enumerate(vecs)}
   # determine the subset of params that have already been computed
   uncomputed_params = [i for i in params if not os.path.exists(i['out_path'])]
   # determine the filepath where this model will be saved
@@ -599,7 +635,7 @@ def get_umap_layout(**kwargs):
   if os.path.exists(model_path):
     model = load_model(model_path)
     for i in uncomputed_params:
-      model.update(w, relations_dict.copy())
+      model.update(vecs, relations_dict.copy())
     # after updating, we can read the results from the end of the updated model
     for idx, i in enumerate(uncomputed_params):
       embedding = z.embeddings_[len(uncomputed_params)-idx]
@@ -613,7 +649,7 @@ def get_umap_layout(**kwargs):
     )
     # fit the model on the data
     z = model.fit(
-      [w for _ in params],
+      [vecs for _ in params],
       relations=[relations_dict.copy() for _ in params[:-1]]
     )
     for idx, i in enumerate(params):
@@ -658,8 +694,8 @@ def load_model(path):
 
 
 def get_umap_model(**kwargs):
-  return UMAP(n_neighbors=kwargs['n_neighbors'],
-    min_dist=kwargs['min_dist'],
+  return UMAP(n_neighbors=kwargs['n_neighbors'][0],
+    min_dist=kwargs['min_dist'][0],
     metric=kwargs['metric'],
     random_state=kwargs['seed'],
     transform_seed=kwargs['seed'])
