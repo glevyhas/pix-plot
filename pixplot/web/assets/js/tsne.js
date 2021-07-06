@@ -1785,11 +1785,12 @@ Lasso.prototype.addModalEventListeners = function() {
       this.displayed = false;
     }
     if (e.target.className == 'background-image') {
-      var index = parseInt(e.target.getAttribute('data-index'));
       var indices = [];
+      var index = 0;
       Object.keys(this.selected).forEach(function(i, idx) {
+        if (i === e.target.getAttribute('data-image')) index = indices.length;
         if (this.selected[i]) indices.push(idx);
-      }.bind(this))
+      }.bind(this));
       modal.showCells(indices, index);
     }
   }.bind(this))
@@ -1811,9 +1812,7 @@ Lasso.prototype.addModalEventListeners = function() {
       e.preventDefault();
       var sibling = e.target.parentNode.querySelector('.background-image'),
           image = sibling.getAttribute('data-image');
-      sibling.classList.contains('unselected')
-        ? sibling.classList.remove('unselected')
-        : sibling.classList.add('unselected');
+      sibling.classList.toggle('unselected');
       for (var i=0; i<data.json.images.length; i++) {
         if (data.json.images[i] == image) {
           this.toggleSelection(i);
@@ -2043,6 +2042,7 @@ Lasso.prototype.setNSelected = function(n) {
     }
   }
   elem.textContent = n;
+  this.elems.countTarget.textContent = n;
 }
 
 /**
