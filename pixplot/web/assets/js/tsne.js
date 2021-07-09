@@ -873,6 +873,7 @@ function World() {
     transitioning: false,
     displayed: false,
     mode: 'pan', // 'pan' || 'select'
+    togglingMode: false,
   };
   this.elems = {
     pointSize: document.querySelector('#pointsize-range-input'),
@@ -1071,6 +1072,8 @@ World.prototype.addModeChangeListeners = function() {
   document.querySelector('#pan').addEventListener('click', this.handleModeIconClick.bind(this));
   document.querySelector('#select').addEventListener('click', this.handleModeIconClick.bind(this));
   document.querySelector('#select').addEventListener('mouseenter', this.showSelectTooltip.bind(this));
+  document.body.addEventListener('keydown', this.handleKeyDown.bind(this));
+  document.body.addEventListener('keyup', this.handleKeyUp.bind(this));
 }
 
 /**
@@ -1643,6 +1646,27 @@ World.prototype.handleModeIconClick = function(e) {
 }
 
 /**
+* Handle keydown events
+**/
+
+World.prototype.handleKeyDown = function(e) {
+  if (e.keyCode != 32) return;
+  if (this.state.togglingMode) return;
+  this.state.togglingMode = true;
+  this.toggleMode();
+}
+
+World.prototype.handleKeyUp = function(e) {
+  if (e.keyCode != 32) return;
+  this.state.togglingMode = false;
+  this.toggleMode();
+}
+
+World.prototype.toggleMode = function(e) {
+  this.setMode(this.mode === 'pan' ? 'select' : 'pan');
+}
+
+/**
 * Show the user the tooltip explaining the select mode
 **/
 
@@ -1786,15 +1810,11 @@ Lasso.prototype.addModalEventListeners = function() {
     }
     if (e.target.className == 'background-image') {
       var indices = [];
+      var index = 0;
       Object.keys(this.selected).forEach(function(i, idx) {
+        if (i === e.target.getAttribute('data-image')) index = indices.length;
         if (this.selected[i]) indices.push(idx);
       }.bind(this));
-      var index = 0;
-      indices.forEach(function(i) {
-        if (indices[i] === parseInt(e.target.getAttribute('data-index'))) {
-          index = i;
-        }
-      })
       modal.showCells(indices, index);
     }
   }.bind(this))
