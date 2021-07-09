@@ -873,6 +873,7 @@ function World() {
     transitioning: false,
     displayed: false,
     mode: 'pan', // 'pan' || 'select'
+    togglingMode: false,
   };
   this.elems = {
     pointSize: document.querySelector('#pointsize-range-input'),
@@ -1071,6 +1072,8 @@ World.prototype.addModeChangeListeners = function() {
   document.querySelector('#pan').addEventListener('click', this.handleModeIconClick.bind(this));
   document.querySelector('#select').addEventListener('click', this.handleModeIconClick.bind(this));
   document.querySelector('#select').addEventListener('mouseenter', this.showSelectTooltip.bind(this));
+  document.body.addEventListener('keydown', this.handleKeyDown.bind(this));
+  document.body.addEventListener('keyup', this.handleKeyUp.bind(this));
 }
 
 /**
@@ -1640,6 +1643,27 @@ World.prototype.handleModeIconClick = function(e) {
   this.setMode(e.target.id);
   // hide the create hotspot button
   data.hotspots.setCreateHotspotVisibility(false);
+}
+
+/**
+* Handle keydown events
+**/
+
+World.prototype.handleKeyDown = function(e) {
+  if (e.keyCode != 32) return;
+  if (this.state.togglingMode) return;
+  this.state.togglingMode = true;
+  this.toggleMode();
+}
+
+World.prototype.handleKeyUp = function(e) {
+  if (e.keyCode != 32) return;
+  this.state.togglingMode = false;
+  this.toggleMode();
+}
+
+World.prototype.toggleMode = function(e) {
+  this.setMode(this.mode === 'pan' ? 'select' : 'pan');
 }
 
 /**
