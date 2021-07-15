@@ -2225,8 +2225,8 @@ Picker.prototype.onMouseDown = function(e) {
 Picker.prototype.getClickOffsets = function(e) {
   var rect = e.target.getBoundingClientRect();
   return {
-    x: e.clientX - rect.left,
-    y: e.clientY - rect.top,
+    x: (e.clientX || e.pageX) - rect.left,
+    y: (e.clientY || e.pageX) - rect.top,
   }
 }
 
@@ -2265,7 +2265,10 @@ Picker.prototype.onMouseUp = function(e) {
 // get the mesh in which to render picking elements
 Picker.prototype.init = function() {
   world.canvas.addEventListener('mousedown', this.onMouseDown.bind(this));
+  world.canvas.addEventListener('touchstart', this.onMouseDown.bind(this));
   document.body.addEventListener('mouseup', this.onMouseUp.bind(this));
+  document.body.addEventListener('touchend', this.onMouseUp.bind(this));
+
   var group = new THREE.Group();
   for (var i=0; i<world.group.children.length; i++) {
     var mesh = world.group.children[i].clone();
