@@ -47,7 +47,7 @@ function Config() {
     file: 'manifest.json',
     gzipped: false,
   }
-  this.mobileBreakpoint = 600; // "small-texture" threshold
+  this.isSmallDevice = 'ontouchstart' in document.documentElement;
   // texture buffer pixel *limits* are independent of memory *size*
   var smallTexSize = Math.min(2048, webgl.limits.textureSize) // a small, safe size
   // Try for max (8192/128)^2 = (2^6)^2 = 4096 LOD images (or smaller safe size)
@@ -57,8 +57,8 @@ function Config() {
     cell: 32, // height of each cell in atlas
     lodCell: 128, // height of each cell in LOD
     atlas: smallTexSize, // height of each atlas
-    texture: window.innerWidth < this.mobileBreakpoint ? smallTexSize : webgl.limits.textureSize,
-    lodTexture: window.innerWidth < this.mobileBreakpoint ? smallTexSize : bigTexSize, // one detail texture buffer
+    texture: this.isSmallDevice ? smallTexSize : webgl.limits.textureSize,
+    lodTexture: this.isSmallDevice ? smallTexSize : bigTexSize, // one detail texture buffer
     points: { // the follow values are set by Data()
       min: 0, // min point size
       max: 0, // max point size
@@ -560,7 +560,7 @@ Layout.prototype.initializeMobileLayoutOptions = function() {
 }
 
 Layout.prototype.showHideIcons = function() {
-  var display = window.innerWidth < config.mobileBreakpoint ? 'none' : 'inline-block';
+  var display = config.isSmallDevice ? 'none' : 'inline-block';
   if (data.layouts.categorical) {
     this.elems.layoutCategorical.style.display = display;
   }
