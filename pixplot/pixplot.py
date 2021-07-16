@@ -177,7 +177,8 @@ def filter_images(**kwargs):
       Image filenames should be unique, but the following filenames are duplicated\n
       {}
       '''.format('\n'.join(duplicates)))
-  image_paths = sorted(image_paths)
+  if not kwargs.get('shuffle', False):
+    image_paths = sorted(image_paths)
   # if the user requested pose detection, subdivide images
   if kwargs.get('extract_poses', False):
     # copy the uncropped input images
@@ -269,9 +270,9 @@ def get_image_paths(**kwargs):
     print('\nError: No input images were found. Please check your --images glob\n')
     sys.exit()
   # optionally shuffle the image_paths
-  if kwargs['shuffle']:
+  if kwargs.get('shuffle', False):
     print(timestamp(), 'Shuffling input images')
-    random.Random(kwargs['seed']).shuffle(sorted(image_paths))
+    random.Random(kwargs['seed']).shuffle(image_paths)
   # optionally limit the number of images in image_paths
   if kwargs.get('max_images', False):
     image_paths = image_paths[:kwargs['max_images']]
