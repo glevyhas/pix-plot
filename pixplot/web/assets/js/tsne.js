@@ -47,7 +47,7 @@ function Config() {
     file: 'manifest.json',
     gzipped: false,
   }
-  this.mobileBreakpoint = 600; // "small-texture" threshold
+  this.isSmallDevice = 'ontouchstart' in document.documentElement;
   // texture buffer pixel *limits* are independent of memory *size*
   var smallTexSize = Math.min(2048, webgl.limits.textureSize) // a small, safe size
   // Try for max (8192/128)^2 = (2^6)^2 = 4096 LOD images (or smaller safe size)
@@ -57,8 +57,8 @@ function Config() {
     cell: 32, // height of each cell in atlas
     lodCell: 128, // height of each cell in LOD
     atlas: smallTexSize, // height of each atlas
-    texture: window.innerWidth < this.mobileBreakpoint ? smallTexSize : webgl.limits.textureSize,
-    lodTexture: window.innerWidth < this.mobileBreakpoint ? smallTexSize : bigTexSize, // one detail texture buffer
+    texture: this.isSmallDevice ? smallTexSize : webgl.limits.textureSize,
+    lodTexture: this.isSmallDevice ? smallTexSize : bigTexSize, // one detail texture buffer
     points: { // the follow values are set by Data()
       min: 0, // min point size
       max: 0, // max point size
@@ -560,7 +560,7 @@ Layout.prototype.initializeMobileLayoutOptions = function() {
 }
 
 Layout.prototype.showHideIcons = function() {
-  var display = window.innerWidth < config.mobileBreakpoint ? 'none' : 'inline-block';
+  var display = config.isSmallDevice ? 'none' : 'inline-block';
   if (data.layouts.categorical) {
     this.elems.layoutCategorical.style.display = display;
   }
@@ -2225,8 +2225,8 @@ Picker.prototype.onMouseDown = function(e) {
 Picker.prototype.getClickOffsets = function(e) {
   var rect = e.target.getBoundingClientRect();
   return {
-    x: e.clientX - rect.left,
-    y: e.clientY - rect.top,
+    x: (e.clientX || e.pageX) - rect.left,
+    y: (e.clientY || e.pageX) - rect.top,
   }
 }
 
@@ -2265,7 +2265,10 @@ Picker.prototype.onMouseUp = function(e) {
 // get the mesh in which to render picking elements
 Picker.prototype.init = function() {
   world.canvas.addEventListener('mousedown', this.onMouseDown.bind(this));
+  world.canvas.addEventListener('touchstart', this.onMouseDown.bind(this));
   document.body.addEventListener('mouseup', this.onMouseUp.bind(this));
+  document.body.addEventListener('touchend', this.onMouseUp.bind(this));
+
   var group = new THREE.Group();
   for (var i=0; i<world.group.children.length; i++) {
     var mesh = world.group.children[i].clone();
