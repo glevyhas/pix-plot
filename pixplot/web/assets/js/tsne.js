@@ -47,6 +47,7 @@ function Config() {
     file: 'manifest.json',
     gzipped: false,
   }
+  this.mobileBreakpoint = 600;
   this.isSmallDevice = 'ontouchstart' in document.documentElement;
   // texture buffer pixel *limits* are independent of memory *size*
   var smallTexSize = Math.min(2048, webgl.limits.textureSize) // a small, safe size
@@ -82,6 +83,11 @@ function Config() {
     window.location.hostname.includes('127.0.0.1') ||
     window.location.hostname.includes('0.0.0.0') ||
     window.location.hostname.includes('[::]');
+  this.setIsNarrowDevice();
+}
+
+Config.prototype.setIsNarrowDevice = function() {
+  this.isNarrowDevice = window.innerWidth < this.mobileBreakpoint;
 }
 
 /**
@@ -560,7 +566,7 @@ Layout.prototype.initializeMobileLayoutOptions = function() {
 }
 
 Layout.prototype.showHideIcons = function() {
-  var display = config.isSmallDevice ? 'none' : 'inline-block';
+  var display = config.isSmallDevice || config.isNarrowDevice ? 'none' : 'inline-block';
   if (data.layouts.categorical) {
     this.elems.layoutCategorical.style.display = display;
   }
@@ -880,6 +886,7 @@ function World() {
     borderWidth: document.querySelector('#border-width-range-input'),
     selectTooltip: document.querySelector('#select-tooltip'),
     selectTooltipButton: document.querySelector('#select-tooltip-button'),
+    mobileInteractions: document.querySelector('#mobile-interaction-guide'),
   };
   this.addEventListeners();
 }
@@ -1006,6 +1013,8 @@ World.prototype.handleResize = function() {
   this.controls.handleResize();
   picker.tex.setSize(w, h);
   this.setScaleUniforms();
+  config.setIsNarrowDevice();
+  layout.showHideIcons();
 }
 
 World.prototype.setScaleUniforms = function() {
@@ -1633,6 +1642,8 @@ World.prototype.init = function() {
   this.setMode('pan');
   // set the display boolean
   world.state.displayed = true;
+  // add drag notifications (if necessary)
+  this.addDeviceInteractionGuide();
 }
 
 /**
@@ -1712,6 +1723,19 @@ World.prototype.setMode = function(mode) {
     this.canvas.classList.add('select');
     lasso.setEnabled(true);
   }
+}
+
+/**
+* Add mobile interaction guide if necessary
+**/
+
+World.prototype.addDeviceInteractionGuide = function() {
+  if (!config.isSmallDevice) return;
+  var elem = this.elems.mobileInteractions;
+  var button = elem.querySelector('button');
+  button.addEventListener('click', function() {
+    elem.style.display = 'none';
+  }.bind(this))
 }
 
 /**
