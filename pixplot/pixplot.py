@@ -671,17 +671,20 @@ def process_multi_layout_umap(vecs, **kwargs):
 
 
 def save_model(model, path):
-  params = model.get_params()
-  attributes_names = [attr for attr in model.__dir__() if attr not in params and attr[0] != '_']
-  attributes = {key: model.__getattribute__(key) for key in attributes_names}
-  attributes['embeddings_'] = list(model.embeddings_)
-  for x in ['fit', 'fit_transform', 'update', 'get_params','set_params']:
-    del attributes[x]
-  all_params = {
-    'umap_params': params,
-    'umap_attributes': {key:value for key, value in attributes.items()}
-  }
-  pickle.dump(all_params, open(path, 'wb'))
+  try:
+    params = model.get_params()
+    attributes_names = [attr for attr in model.__dir__() if attr not in params and attr[0] != '_']
+    attributes = {key: model.__getattribute__(key) for key in attributes_names}
+    attributes['embeddings_'] = list(model.embeddings_)
+    for x in ['fit', 'fit_transform', 'update', 'get_params','set_params']:
+      del attributes[x]
+    all_params = {
+      'umap_params': params,
+      'umap_attributes': {key:value for key, value in attributes.items()}
+    }
+    pickle.dump(all_params, open(path, 'wb'))
+  except:
+    print(timestamp(), 'Could not save model')
 
 
 def load_model(path):
