@@ -47,6 +47,7 @@ function Config() {
     file: 'manifest.json',
     gzipped: false,
   }
+  this.mobileBreakpoint = 600;
   this.isSmallDevice = 'ontouchstart' in document.documentElement;
   // texture buffer pixel *limits* are independent of memory *size*
   var smallTexSize = Math.min(2048, webgl.limits.textureSize) // a small, safe size
@@ -82,6 +83,11 @@ function Config() {
     window.location.hostname.includes('127.0.0.1') ||
     window.location.hostname.includes('0.0.0.0') ||
     window.location.hostname.includes('[::]');
+  this.setIsNarrowDevice();
+}
+
+Config.prototype.setIsNarrowDevice = function() {
+  this.isNarrowDevice = window.innerWidth < this.mobileBreakpoint;
 }
 
 /**
@@ -560,7 +566,7 @@ Layout.prototype.initializeMobileLayoutOptions = function() {
 }
 
 Layout.prototype.showHideIcons = function() {
-  var display = config.isSmallDevice ? 'none' : 'inline-block';
+  var display = config.isSmallDevice || config.isNarrowDevice ? 'none' : 'inline-block';
   if (data.layouts.categorical) {
     this.elems.layoutCategorical.style.display = display;
   }
@@ -880,6 +886,7 @@ function World() {
     borderWidth: document.querySelector('#border-width-range-input'),
     selectTooltip: document.querySelector('#select-tooltip'),
     selectTooltipButton: document.querySelector('#select-tooltip-button'),
+    mobileInteractions: document.querySelector('#mobile-interaction-guide'),
   };
   this.addEventListeners();
 }
@@ -1006,6 +1013,8 @@ World.prototype.handleResize = function() {
   this.controls.handleResize();
   picker.tex.setSize(w, h);
   this.setScaleUniforms();
+  config.setIsNarrowDevice();
+  layout.showHideIcons();
 }
 
 World.prototype.setScaleUniforms = function() {
@@ -1633,6 +1642,8 @@ World.prototype.init = function() {
   this.setMode('pan');
   // set the display boolean
   world.state.displayed = true;
+  // add drag notifications (if necessary)
+  this.addDeviceInteractionGuide();
 }
 
 /**
@@ -1712,6 +1723,19 @@ World.prototype.setMode = function(mode) {
     this.canvas.classList.add('select');
     lasso.setEnabled(true);
   }
+}
+
+/**
+* Add mobile interaction guide if necessary
+**/
+
+World.prototype.addDeviceInteractionGuide = function() {
+  if (!config.isSmallDevice) return;
+  var elem = this.elems.mobileInteractions;
+  var button = elem.querySelector('button');
+  button.addEventListener('click', function() {
+    elem.style.display = 'none';
+  }.bind(this))
 }
 
 /**
@@ -2223,11 +2247,17 @@ Picker.prototype.onMouseDown = function(e) {
 
 // get the x, y offsets of a click within the canvas
 Picker.prototype.getClickOffsets = function(e) {
-  var rect = e.target.getBoundingClientRect();
-  return {
-    x: (e.clientX || e.pageX) - rect.left,
-    y: (e.clientY || e.pageX) - rect.top,
+  var elem = e.target;
+  var position = {
+    x: e.clientX ? e.clientX : e.pageX,
+    y: e.clientY ? e.clientY : e.pageY,
+  };
+  while (elem.offsetParent) {
+    position.x -= elem.offsetLeft - elem.scrollLeft;
+    position.y -= elem.offsetTop - elem.scrollTop;
+    elem = elem.offsetParent;
   }
+  return position;
 }
 
 // on canvas click, show detailed modal with clicked image
@@ -2235,6 +2265,8 @@ Picker.prototype.onMouseUp = function(e) {
   // if click hit background, close the modal
   if (e.target.className == 'modal-top' ||
       e.target.className == 'modal-x') {
+    // prevent another cell from displaying
+    e.stopPropagation();
     return modal.close();
   }
   // find the offset of the click event within the canvas
@@ -2242,33 +2274,30 @@ Picker.prototype.onMouseUp = function(e) {
   // if mouseup isn't in the last mouse position, user is dragging
   // if the click wasn't on the canvas, quit
   var cellIdx = this.select({x: click.x, y: click.y});
-  if (click.x !== this.mouseDown.x ||
-      click.y !== this.mouseDown.y || // m.down and m.up != means user is dragging
-      cellIdx == -1 || // cellIdx == -1 means the user didn't click on a cell
-      e.target.id !== 'pixplot-canvas') { // whether the click hit the gl canvas
-    return;
-  }
+  if (cellIdx === -1) return; // cellIdx == -1 means the user didn't click on a cell
+  if (e.target.id !== 'pixplot-canvas') return; // whether the click hit the gl canvas
+  var allowedDelta = config.isSmallDevice ? 10 : 0;
+  if (Math.abs(click.x - this.mouseDown.x) > allowedDelta ||
+      Math.abs(click.y - this.mouseDown.y) > allowedDelta) return;
   // if we're in select mode, conditionally un/select the clicked cell
   if (world.mode == 'select') {
     if (keyboard.shiftPressed() || keyboard.commandPressed()) {
       return lasso.toggleSelection(cellIdx);
     }
   }
+  if (world.mode !== 'pan') return;
   // else we're in pan mode; zoom in if the camera is far away, else show the modal
-  else if (world.mode == 'pan') {
-    return world.camera.position.z > config.pickerMaxZ
-      ? world.flyToCellIdx(cellIdx)
-      : modal.showCells([cellIdx]);
-  }
+  return world.camera.position.z > config.pickerMaxZ
+    ? world.flyToCellIdx(cellIdx)
+    : modal.showCells([cellIdx]);
 }
 
 // get the mesh in which to render picking elements
 Picker.prototype.init = function() {
   world.canvas.addEventListener('mousedown', this.onMouseDown.bind(this));
-  world.canvas.addEventListener('touchstart', this.onMouseDown.bind(this));
+  world.canvas.addEventListener('touchstart', this.onMouseDown.bind(this), { passive: false });
   document.body.addEventListener('mouseup', this.onMouseUp.bind(this));
-  document.body.addEventListener('touchend', this.onMouseUp.bind(this));
-
+  document.body.addEventListener('touchend', this.onMouseUp.bind(this), { passive: false });
   var group = new THREE.Group();
   for (var i=0; i<world.group.children.length; i++) {
     var mesh = world.group.children[i].clone();
@@ -2705,6 +2734,7 @@ function Modal() {
 
 Modal.prototype.showCells = function(cellIndices, cellIdx) {
   var self = this;
+  settings.close();
   self.state.displayed = true;
   self.cellIndices = Object.assign([], cellIndices);
   self.cellIdx = !isNaN(parseInt(cellIdx)) ? parseInt(cellIdx) : 0;

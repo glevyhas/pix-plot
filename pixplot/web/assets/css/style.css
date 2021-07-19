@@ -1195,7 +1195,7 @@ noscript {
   bottom: 0;
   left: 0;
   background: rgba(17, 17, 17, 0.98);
-  z-index: 10;
+  z-index: 11;
   display: none;
 }
 
@@ -1744,6 +1744,49 @@ input[type=text] {
 * Mobile
 **/
 
+#mobile-interaction-guide {
+  position: absolute;
+  padding: 10px;
+  bottom: 10px;
+  left: 15px;
+  font-size: 13px;
+  border-radius: 4px;
+  display: inline-block;
+  max-width: 110px;
+  transition: transform 0.3s;
+  transform: translateY(500px);
+}
+
+#mobile-interaction-guide::before {
+  display: none;
+}
+
+#mobile-interaction-guide .col {
+  max-width: 120px;
+  margin-left: 10px;
+}
+
+#mobile-interaction-guide button {
+  margin-top: 5px;
+}
+
+#mobile-interaction-guide img {
+  height: 22px;
+  position: relative;
+  animation: bounce 5s linear infinite;
+  margin-top: 17px;
+  margin-left: 3px;
+}
+
+@keyframes bounce {
+  0%, 100% {
+    bottom: 0px;
+  }
+  50% {
+    bottom: 5px;
+  }
+}
+
 .mobile-only {
   display: none;
 }
@@ -1887,6 +1930,19 @@ input[type=text] {
   .modal-x {
     top: 12px;
     right: 26px;
+  }
+
+  #mobile-interaction-guide {
+    animation: 1s slide-up 5s forwards;
+  }
+
+  @keyframes slide-up {
+    0% {
+      transform: translateY(500px)
+    }
+    100% {
+      transform: translateY(0px)
+    }
   }
 
 }
