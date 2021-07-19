@@ -199,7 +199,7 @@ def filter_images(**kwargs):
     if not os.path.exists(os.path.join(kwargs['out_dir'], 'uncropped')):
       os.makedirs(os.path.join(kwargs['out_dir'], 'uncropped'))
     for i in image_paths:
-      target_path = os.path.join(kwargs['out_dir'], 'uncropped', os.path.basename(i))
+      target_path = os.path.join(kwargs['out_dir'], 'uncropped', clean_filename(i))
       if not os.path.exists(target_path):
         shutil.copy(i, target_path)
     image_paths = subdivide_images_with_openpose(image_paths=image_paths, **kwargs)
@@ -572,7 +572,7 @@ def get_inception_vectors(**kwargs):
   print(timestamp(), 'Creating image array')
   vecs = []
   for idx, i in enumerate(stream_images(**kwargs)):
-    vector_path = os.path.join(vector_dir, os.path.basename(i.path) + '.npy')
+    vector_path = os.path.join(vector_dir, clean_filename(i.path) + '.npy')
     if os.path.exists(vector_path) and kwargs['use_cache']:
       vec = np.load(vector_path)
     else:
@@ -816,7 +816,7 @@ def get_pose_layout(**kwargs):
   vecs = []
   # images are vectorized during subdivision step
   for i in stream_images(**kwargs):
-    vector_path = os.path.join(vector_dir, os.path.basename(i.path) + '.npy')
+    vector_path = os.path.join(vector_dir, clean_filename(i.path) + '.npy')
     vec = np.load(vector_path)
     vec = vec.reshape(18, 3)
     vec = normalize_2d_vector(vec[:,:2]) # slice out the confidence scores
@@ -894,9 +894,9 @@ def subdivide_images_with_openpose(**kwargs):
     print(timestamp(), 'Processing {}/{} images'.format(idx+1, len(kwargs['image_paths'])))
     # split the file into its basename and extension
     file_extension = i.path.split('.')[-1]
-    file_basename = '.'.join(os.path.basename(i.path).split('.')[:-1])
+    file_basename = '.'.join(clean_filename(i.path).split('.')[:-1])
     # load all relevant daughter image in the parsed dict
-    cache_filename = os.path.basename(i.path)
+    cache_filename = clean_filename(i.path)
     # existential check will return false for true negatives, which have {}
     if parsed_dict.get(cache_filename, 'missing') != 'missing':
       for pose_path, pose_vector in parsed_dict[cache_filename].items():
@@ -1321,7 +1321,7 @@ def get_hotspots(layouts={}, use_high_dimensional_vectors=False, **kwargs):
     d[i]['centroid'] = np.array([np.mean(x), np.mean(y)]).tolist()
     # find the image closest to the centroid
     closest, _ = pairwise_distances_argmin_min(np.array([d[i]['centroid']]), vecs)
-    d[i]['img'] = os.path.basename(kwargs['image_paths'][closest[0]])
+    d[i]['img'] = clean_filename(kwargs['image_paths'][closest[0]])
   # remove massive clusters
   deletable = []
   for i in d:
