@@ -43,10 +43,9 @@ import sys
 import csv
 import os
 
-try:
-  from MulticoreTSNE import MulticoreTSNE as TSNE
-except:
-  from sklearn.manifold import TSNE
+##
+# Python 2 vs 3 imports
+##
 
 try:
   from urllib.parse import unquote # python 3
@@ -58,6 +57,28 @@ try:
 except:
   from urllib.request import urlretrieve as download_function # python 2
 
+##
+# Conditional imports
+##
+
+def timestamp():
+  '''Return a string for printing the current time'''
+  return str(datetime.datetime.now()) + ':'
+
+try:
+  from MulticoreTSNE import MulticoreTSNE as TSNE
+except:
+  print(timestamp(), 'MulticoreTSNE not available; falling back to sklearns')
+  from sklearn.manifold import TSNE
+
+try:
+  from hdbscan import HDBSCAN
+  cluster_method = 'hdbscan'
+except:
+  print(timestamp(), 'Could not import hdbscan; falling back to kmeans')
+  from sklearn.cluster import KMeans
+  cluster_method = 'kmeans'
+
 try:
   from tf_pose.networks import get_graph_path, model_wh
   from tf_pose.estimator import TfPoseEstimator
@@ -65,13 +86,6 @@ try:
   pose_ready = True
 except:
   pose_ready = False
-
-try:
-  from hdbscan import HDBSCAN
-  cluster_method = 'hdbscan'
-except:
-  from sklearn.cluster import KMeans
-  cluster_method = 'kmeans'
 
 # handle dynamic GPU memory allocation
 tf_config = tf.compat.v1.ConfigProto()
@@ -429,7 +443,7 @@ def get_manifest(**kwargs):
     'imagelist': get_path('imagelists', 'imagelist', **kwargs),
     'atlas_dir': kwargs['atlas_dir'],
     'metadata': True if kwargs['metadata'] else False,
-    'default_hotspots': get_hotspots(vecs=read_json(layouts['umap']['variants'][0]['layout'], **kwargs), **kwargs),
+    'default_hotspots': get_hotspots(layouts=layouts, **kwargs),
     'custom_hotspots': get_path('hotspots', 'user_hotspots', add_hash=False, **kwargs),
     'config': {
       'sizes': {
@@ -1238,11 +1252,6 @@ def process_geojson(geojson_path):
 ##
 
 
-def timestamp():
-  '''Return a string for printing the current time'''
-  return str(datetime.datetime.now()) + ':'
-
-
 def get_path(*args, **kwargs):
   '''Return the path to a JSON file with conditional gz extension'''
   sub_dir, filename = args
@@ -1290,12 +1299,15 @@ def read_json(path, **kwargs):
     return json.load(f)
 
 
-def get_hotspots(**kwargs):
+def get_hotspots(layouts={}, use_high_dimensional_vectors=False, **kwargs):
   '''Return the stable clusters from the condensed tree of connected components from the density graph'''
   print(timestamp(), 'Clustering data with {}'.format(cluster_method))
+  if use_high_dimensional_vectors:
+    vecs = get_inception_vectors(**kwargs)
+  else:
+    vecs = read_json(layouts['umap']['variants'][0]['layout'], **kwargs)
   model = get_cluster_model(**kwargs)
-  v = kwargs['vecs']
-  z = model.fit(v)
+  z = model.fit(vecs)
   # create a map from cluster label to image indices in cluster
   d = defaultdict(lambda: defaultdict(list))
   for idx, i in enumerate(z.labels_):
@@ -1304,17 +1316,17 @@ def get_hotspots(**kwargs):
   # find the centroids for each cluster
   centroids = []
   for i in d:
-    positions = np.array([v[j] for j in d[i]['images']])
+    positions = np.array([vecs[j] for j in d[i]['images']])
     x, y = np.array(positions).T
     d[i]['centroid'] = np.array([np.mean(x), np.mean(y)]).tolist()
     # find the image closest to the centroid
-    closest, _ = pairwise_distances_argmin_min(np.array([d[i]['centroid']]), v)
+    closest, _ = pairwise_distances_argmin_min(np.array([d[i]['centroid']]), vecs)
     d[i]['img'] = os.path.basename(kwargs['image_paths'][closest[0]])
   # remove massive clusters
   deletable = []
   for i in d:
     # find percent of images in cluster
-    image_percent = len(d[i]['images']) / len(v)
+    image_percent = len(d[i]['images']) / len(vecs)
     # determine if image or area percent is too large
     if image_percent > 0.5:
       deletable.append(i)
