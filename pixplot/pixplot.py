@@ -1,26 +1,25 @@
 from __future__ import division
 import warnings; warnings.filterwarnings('ignore')
-from keras.preprocessing.image import save_img, img_to_array, array_to_img
+from tensorflow.keras.preprocessing.image import save_img, img_to_array, array_to_img
+from tensorflow.keras.applications.inception_v3 import preprocess_input
+from tensorflow.keras.applications import InceptionV3, imagenet_utils
 from os.path import basename, join, exists, dirname, realpath
-from keras.applications.inception_v3 import preprocess_input
-from keras.applications import InceptionV3, imagenet_utils
+from tensorflow.keras.preprocessing.image import load_img
 from sklearn.metrics import pairwise_distances_argmin_min
-from keras.backend.tensorflow_backend import set_session
 from collections import defaultdict, namedtuple
 from dateutil.parser import parse as parse_date
 from sklearn.preprocessing import minmax_scale
-from keras_preprocessing.image import load_img
 from pointgrid import align_points_to_grid
+from tensorflow.keras.models import Model
 from scipy.spatial.distance import cdist
 from distutils.dir_util import copy_tree
 from sklearn.decomposition import PCA
 from iiif_downloader import Manifest
+import tensorflow.keras.backend as K
 from umap import UMAP, AlignedUMAP
 from rasterfairy import coonswarp
-from keras.models import Model
 from scipy.stats import kde
 from PIL import ImageFile
-import keras.backend as K
 import tensorflow as tf
 import multiprocessing
 import pkg_resources
