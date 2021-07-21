@@ -1373,9 +1373,13 @@ World.prototype.getShaderMaterial = function(obj) {
         type: 'f',
         value: 0.15,
       },
-      yellowColor: {
+      selectedBorderColor: {
         type: 'vec3',
         value: new Float32Array([234/255, 183/255, 85/255]),
+      },
+      clusterBorderColor: {
+        type: 'vec3',
+        value: new Float32Array([255/255, 255/255, 255/255]),
       },
       display: {
         type: 'f',

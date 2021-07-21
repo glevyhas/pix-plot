@@ -133,7 +133,8 @@
     uniform float cellPxHeight;
     uniform float lodPxHeight;
     uniform float borderWidth;
-    uniform vec3 yellowColor;
+    uniform vec3 selectedBorderColor;
+    uniform vec3 clusterBorderColor;
     uniform float display;
 
     varying vec2 vUv;               // u v texture blueprint scaled 0:1 in each axis
@@ -182,9 +183,9 @@
           if ((isSelected || isClusterSelected) && isInBorder) {
 
             // draw a border around lasso'd cells
-            if (isSelected) gl_FragColor = vec4(yellowColor, 1.0);
+            if (isSelected) gl_FragColor = vec4(selectedBorderColor, 1.0);
 
-            if (isClusterSelected) gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+            if (isClusterSelected) gl_FragColor = vec4(clusterBorderColor, 1.0);
 
           // pixel is outside the border; paint with the provided texture
           } else {
@@ -215,12 +216,12 @@
 
             // add a yellow wash if the cell is selected
             if (vSelected > 0.5) {
-              gl_FragColor = mix(gl_FragColor, vec4(yellowColor, 1.0), 0.15);
+              gl_FragColor = mix(gl_FragColor, vec4(selectedBorderColor, 1.0), 0.15);
             }
 
             // add a white wash if the cell is cluster selected
             if (vClusterSelected > 0.5) {
-              gl_FragColor = mix(gl_FragColor, vec4(1.0), 0.30);
+              gl_FragColor = mix(gl_FragColor, vec4(clusterBorderColor, 1.0), 0.30);
             }
           }
         }
