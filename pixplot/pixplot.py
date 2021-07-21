@@ -22,6 +22,7 @@ from scipy.stats import kde
 from PIL import ImageFile
 import tensorflow as tf
 import multiprocessing
+from tqdm import tqdm
 import pkg_resources
 import rasterfairy
 import numpy as np
@@ -533,6 +534,7 @@ def get_layouts(**kwargs):
     'categorical': get_categorical_layout(**kwargs),
     'date': get_date_layout(**kwargs),
     'geographic': get_geographic_layout(**kwargs),
+    'custom': get_custom_layout(**kwargs),
   }
   return layouts
 
@@ -546,16 +548,17 @@ def get_inception_vectors(**kwargs):
   model = Model(inputs=base.input, outputs=base.get_layer('avg_pool').output)
   print(timestamp(), 'Creating image array')
   vecs = []
-  for idx, i in enumerate(stream_images(**kwargs)):
-    vector_path = os.path.join(vector_dir, clean_filename(i.path) + '.npy')
-    if os.path.exists(vector_path) and kwargs['use_cache']:
-      vec = np.load(vector_path)
-    else:
-      im = preprocess_input( img_to_array( i.original.resize((299,299)) ) )
-      vec = model.predict(np.expand_dims(im, 0)).squeeze()
-      np.save(vector_path, vec)
-    vecs.append(vec)
-    print(timestamp(), 'Vectorized {}/{} images'.format(idx+1, len(kwargs['image_paths'])))
+  with tqdm(total=len(kwargs['image_paths'])) as progress_bar:
+    for idx, i in enumerate(stream_images(**kwargs)):
+      vector_path = os.path.join(vector_dir, clean_filename(i.path) + '.npy')
+      if os.path.exists(vector_path) and kwargs['use_cache']:
+        vec = np.load(vector_path)
+      else:
+        im = preprocess_input( img_to_array( i.original.resize((299,299)) ) )
+        vec = model.predict(np.expand_dims(im, 0)).squeeze()
+        np.save(vector_path, vec)
+      vecs.append(vec)
+      progress_bar.update(1)
   return np.array(vecs)
 
 
@@ -716,8 +719,8 @@ def get_rasterfairy_layout(**kwargs):
       perimeterSubdivisionSteps=4,
       autoPerimeterOffset=False,
       paddingScale=1.05)
-  except:
-    print(timestamp(), 'Coonswarp rectification could not be performed')
+  except Exception as exc:
+    print(timestamp(), 'Coonswarp rectification could not be performed', exc)
   pos = rasterfairy.transformPointCloud2D(umap)[0]
   return write_layout(out_path, pos, **kwargs)
 
@@ -773,6 +776,30 @@ def get_pointgrid_layout(path, label, **kwargs):
   arr = np.array(read_json(path, **kwargs))
   z = align_points_to_grid(arr, fill=0.045)
   return write_layout(out_path, z, **kwargs)
+
+
+def get_custom_layout(**kwargs):
+  out_path = get_path('layouts', 'custom', **kwargs)
+  if os.path.exists(out_path) and kwargs['use_cache']: return out_path
+  if not kwargs.get('metadata'): return
+  found_coords = False
+  coords = []
+  for i in stream_images(**kwargs):
+    x = i.metadata.get('x')
+    y = i.metadata.get('y')
+    if x and y:
+      found_coords = True
+      coords.append([x, y])
+    else:
+      if found_coords:
+        print(timestamp(), 'Some images are missing coordinates; skipping custom layout')
+  if not found_coords: return
+  coords = np.array(coords).astype(np.float)
+  coords = (minmax_scale(coords)-0.5)*2
+  print(timestamp(), 'Creating custom layout')
+  return {
+    'layout': write_layout(out_path, coords.tolist(), scale=False, round=False, **kwargs),
+  }
 
 
 ##
@@ -1075,6 +1102,8 @@ def write_layout(path, obj, **kwargs):
     obj = (minmax_scale(obj)-0.5)*2 # scale -1:1
   if kwargs.get('round', True) != False:
     obj = round_floats(obj)
+  if isinstance(obj, np.ndarray):
+    obj = obj.tolist()
   return write_json(path, obj, **kwargs)
 
 
