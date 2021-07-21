@@ -16,7 +16,6 @@ from distutils.dir_util import copy_tree
 from sklearn.decomposition import PCA
 from iiif_downloader import Manifest
 import tensorflow.keras.backend as K
-from cuml.manifold.umap import UMAP
 from rasterfairy import coonswarp
 from scipy.stats import kde
 from PIL import ImageFile
@@ -77,6 +76,15 @@ except:
   print(timestamp(), 'Could not import hdbscan; falling back to kmeans')
   from sklearn.cluster import KMeans
   cluster_method = 'kmeans'
+
+try:
+  from cuml.manifold.umap import UMAP
+  print(timestamp(), 'Using cuml UMAP')
+  cuml_ready = True
+except:
+  from umap import UMAP, AlignedUMAP
+  print(timestamp(), 'Using umap-learn UMAP')
+  cuml_ready = False
 
 try:
   from tf_pose.networks import get_graph_path, model_wh
@@ -597,21 +605,24 @@ def get_umap_layout(**kwargs):
 
 def process_single_layout_umap(vecs, **kwargs):
   '''Create a single layout UMAP projection'''
-  out_path = get_path('layouts', 'umap', **kwargs)
-  if os.path.exists(out_path) and kwargs['use_cache']: return out_path
   model = get_umap_model(**kwargs)
-  y = []
-  if kwargs.get('metadata', False):
-    labels = [i.get('label', None) for i in kwargs['metadata']]
-    # if the user provided labels, integerize them
-    if any([i for i in labels]):
-      d = defaultdict(lambda: len(d))
-      for i in labels:
-        if i == None: y.append(-1)
-        else: y.append(d[i])
-      y = np.array(y)
-  # project the PCA space down to 2d for visualization
-  z = model.fit(vecs, y=y if np.any(y) else None).embedding_
+  if cuml_ready:
+    z = model.fit(vecs).embedding_
+  else:
+    out_path = get_path('layouts', 'umap', **kwargs)
+    if os.path.exists(out_path) and kwargs['use_cache']: return out_path
+    y = []
+    if kwargs.get('metadata', False):
+      labels = [i.get('label', None) for i in kwargs['metadata']]
+      # if the user provided labels, integerize them
+      if any([i for i in labels]):
+        d = defaultdict(lambda: len(d))
+        for i in labels:
+          if i == None: y.append(-1)
+          else: y.append(d[i])
+        y = np.array(y)
+    # project the PCA space down to 2d for visualization
+    z = model.fit(vecs, y=y if np.any(y) else None).embedding_
   return {
     'variants': [
       {
@@ -711,10 +722,19 @@ def load_model(path):
 
 
 def get_umap_model(**kwargs):
-  return UMAP(n_neighbors=kwargs['n_neighbors'][0],
-    min_dist=kwargs['min_dist'][0],
-    random_state=kwargs['seed'],
-    verbose=5)
+  if cuml_ready:
+    return UMAP(
+      n_neighbors=kwargs['n_neighbors'][0],
+      min_dist=kwargs['min_dist'][0],
+      random_state=kwargs['seed'],
+      verbose=5)
+  else:
+    return UMAP(
+      n_neighbors=kwargs['n_neighbors'][0],
+      min_dist=kwargs['min_dist'][0],
+      metric=kwargs['metric'],
+      random_state=kwargs['seed'],
+      transform_seed=kwargs['seed'])
 
 
 def get_tsne_layout(**kwargs):
