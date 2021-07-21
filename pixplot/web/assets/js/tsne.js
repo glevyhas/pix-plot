@@ -521,6 +521,19 @@ function Layout() {
   this.jitterElem = null;
   this.selected = null;
   this.options = [];
+    this.elems = {
+    input: document.querySelector('#jitter-input'),
+    jitter: document.querySelector('#jitter-container'),
+    icons: document.querySelector('#layout-icons'),
+    layoutCategorical: document.querySelector('#layout-categorical'),
+    layoutDate: document.querySelector('#layout-date'),
+    layoutGeographic: document.querySelector('#layout-geographic'),
+    minDistInput: document.querySelector('#min-dist-range-input'),
+    nNeighborsInput: document.querySelector('#n-neighbors-range-input'),
+    minDistInputContainer: document.querySelector('#min-dist-range-input-container'),
+    nNeighborsInputContainer: document.querySelector('#n-neighbors-range-input-container'),
+    layoutSelect: document.querySelector('#layout-select'),
+  }
 }
 
 /**
@@ -531,19 +544,6 @@ function Layout() {
 Layout.prototype.init = function(options) {
   this.options = options;
   this.selected = data.json.initial_layout || Object.keys(options)[0];
-  this.elems = {
-    input: document.querySelector('#jitter-input'),
-    jitter: document.querySelector('#jitter-container'),
-    icons: document.querySelector('#icons'),
-    layoutCategorical: document.querySelector('#layout-categorical'),
-    layoutDate: document.querySelector('#layout-date'),
-    layoutGeographic: document.querySelector('#layout-geographic'),
-    minDistInput: document.querySelector('#min-dist-range-input'),
-    nNeighborsInput: document.querySelector('#n-neighbors-range-input'),
-    minDistInputContainer: document.querySelector('#min-dist-range-input-container'),
-    nNeighborsInputContainer: document.querySelector('#n-neighbors-range-input-container'),
-    layoutSelect: document.querySelector('#layout-select'),
-  }
   this.initializeMobileLayoutOptions();
   this.initializeUmapInputs();
   this.showHideIcons();
@@ -566,14 +566,16 @@ Layout.prototype.initializeMobileLayoutOptions = function() {
 
 Layout.prototype.showHideIcons = function() {
   var display = config.isSmallDevice || config.isNarrowDevice ? 'none' : 'inline-block';
-  if (data.layouts.categorical) {
-    this.elems.layoutCategorical.style.display = display;
-  }
-  if (data.layouts.date) {
-    this.elems.layoutDate.style.display = display;
-  }
-  if (data.layouts.geographic) {
-    this.elems.layoutGeographic.style.display = display;
+  var icons = this.elems.icons.querySelectorAll('img');
+  for (var i=0; i<icons.length; i++) {
+    var layout = icons[i].getAttribute('id').replace('layout-', '');
+    if (icons[i].classList.contains('conditional')) {
+      if (!layout in data.layouts) {
+        icons[i].style.display = 'none';
+      }
+    } else {
+      icons[i].style.display = display;
+    }
   }
 }
 
@@ -643,7 +645,7 @@ Layout.prototype.selectActiveIcon = function() {
   try {
     document.querySelector('#layout-' + this.selected).classList.add('active');
   } catch (err) {
-    console.warn(' * the requested layout has no icon:', this.selected)
+    console.warn('The requested layout has no icon:', this.selected)
   }
   // select the active state in the mobile dropdown
   this.elems.layoutSelect.selected = this.selected;
@@ -682,7 +684,10 @@ Layout.prototype.addEventListeners = function() {
 Layout.prototype.set = function(layout, enableDelay) {
   // disallow new transitions when we're transitioning
   if (world.state.transitioning) return;
-  if (!(layout in data.json.layouts)) return;
+  if (!(layout in data.json.layouts) || !(data.json.layouts[layout])) {
+    console.warn('The requested layout is not in data.json.layouts');
+    return;
+  };
   world.state.transitioning = true;
   // set the selected layout
   this.selected = layout;
