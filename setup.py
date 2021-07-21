@@ -34,7 +34,7 @@ setup(
     'glob2>=0.6',
     'h5py==3.1.0',
     'iiif-downloader>=0.0.6',
-    'numba>=0.51.2',
+    'numba',
     'numpy==1.19.5',
     'Pillow>=6.1.0',
     'pointgrid>=0.0.2',

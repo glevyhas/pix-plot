@@ -16,7 +16,7 @@ from distutils.dir_util import copy_tree
 from sklearn.decomposition import PCA
 from iiif_downloader import Manifest
 import tensorflow.keras.backend as K
-from umap import UMAP, AlignedUMAP
+from cuml.manifold.umap import UMAP
 from rasterfairy import coonswarp
 from scipy.stats import kde
 from PIL import ImageFile
@@ -713,9 +713,8 @@ def load_model(path):
 def get_umap_model(**kwargs):
   return UMAP(n_neighbors=kwargs['n_neighbors'][0],
     min_dist=kwargs['min_dist'][0],
-    metric=kwargs['metric'],
     random_state=kwargs['seed'],
-    transform_seed=kwargs['seed'])
+    verbose=5)
 
 
 def get_tsne_layout(**kwargs):
