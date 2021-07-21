@@ -100,10 +100,10 @@ select:disabled {
 
 #canvas-target {
   position: absolute;
-  top: -60px;
-  right: -90px;
-  bottom: -90px;
-  left: -90px;
+  top: -10px;
+  right: -60px;
+  bottom: -60px;
+  left: -60px;
 }
 
 #lod-canvas {
@@ -520,14 +520,14 @@ input[type=range]::-ms-thumb {
 * Icons
 **/
 
-#icons {
+#layout-icons {
   display: inline-block;
   vertical-align: top;
   margin-top: 10px;
   margin-right: 20px;
 }
 
-#icons img {
+#layout-icons img {
   height: 19px;
   margin: 0 30px;
   opacity: 0.2;
@@ -536,11 +536,11 @@ input[type=range]::-ms-thumb {
   padding: 5px;
 }
 
-#icons img:hover {
+#layout-icons img:hover {
   opacity: 0.5;
 }
 
-#icons img.active {
+#layout-icons img.active {
   opacity: 1;
 }
 
@@ -551,7 +551,7 @@ input[type=range]::-ms-thumb {
   display: none;
 }
 
-#icons #layout-geographic {
+#layout-icons #layout-geographic {
   height: 32px;
   position: relative;
   top: -6px;
@@ -1837,7 +1837,7 @@ input[type=text] {
     font-size: 14px;
   }
 
-  #icons #settings-icon {
+  #layout-icons #settings-icon {
     margin: 0;
   }
 

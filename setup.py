@@ -17,7 +17,7 @@ for i in dirs:
 
 setup(
   name='pixplot',
-  version='0.0.109',
+  version='0.0.110',
   packages=['pixplot'],
   package_data={
     'pixplot': web,
@@ -42,6 +42,7 @@ setup(
     'scikit-learn==0.24.2',
     'scipy==1.4.0',
     'tensorflow==2.5.0',
+    'tqdm==4.61.1',
     'umap-learn==0.5.1',
     'yale-dhlab-rasterfairy>=1.0.3',
     'yale-dhlab-keras-preprocessing>=1.1.1',
