@@ -1,26 +1,25 @@
 from __future__ import division
 import warnings; warnings.filterwarnings('ignore')
-from keras.preprocessing.image import save_img, img_to_array, array_to_img
+from tensorflow.keras.preprocessing.image import save_img, img_to_array, array_to_img
+from tensorflow.keras.applications.inception_v3 import preprocess_input
+from tensorflow.keras.applications import InceptionV3, imagenet_utils
 from os.path import basename, join, exists, dirname, realpath
-from keras.applications.inception_v3 import preprocess_input
-from keras.applications import InceptionV3, imagenet_utils
+from tensorflow.keras.preprocessing.image import load_img
 from sklearn.metrics import pairwise_distances_argmin_min
-from keras.backend.tensorflow_backend import set_session
 from collections import defaultdict, namedtuple
 from dateutil.parser import parse as parse_date
 from sklearn.preprocessing import minmax_scale
-from keras_preprocessing.image import load_img
 from pointgrid import align_points_to_grid
+from tensorflow.keras.models import Model
 from scipy.spatial.distance import cdist
 from distutils.dir_util import copy_tree
 from sklearn.decomposition import PCA
 from iiif_downloader import Manifest
+import tensorflow.keras.backend as K
 from umap import UMAP, AlignedUMAP
 from rasterfairy import coonswarp
-from keras.models import Model
 from scipy.stats import kde
 from PIL import ImageFile
-import keras.backend as K
 import tensorflow as tf
 import multiprocessing
 import pkg_resources
@@ -43,10 +42,9 @@ import sys
 import csv
 import os
 
-try:
-  from MulticoreTSNE import MulticoreTSNE as TSNE
-except:
-  from sklearn.manifold import TSNE
+##
+# Python 2 vs 3 imports
+##
 
 try:
   from urllib.parse import unquote # python 3
@@ -58,6 +56,28 @@ try:
 except:
   from urllib.request import urlretrieve as download_function # python 2
 
+##
+# Conditional imports
+##
+
+def timestamp():
+  '''Return a string for printing the current time'''
+  return str(datetime.datetime.now()) + ':'
+
+try:
+  from MulticoreTSNE import MulticoreTSNE as TSNE
+except:
+  print(timestamp(), 'MulticoreTSNE not available; falling back to sklearns')
+  from sklearn.manifold import TSNE
+
+try:
+  from hdbscan import HDBSCAN
+  cluster_method = 'hdbscan'
+except:
+  print(timestamp(), 'Could not import hdbscan; falling back to kmeans')
+  from sklearn.cluster import KMeans
+  cluster_method = 'kmeans'
+
 try:
   from tf_pose.networks import get_graph_path, model_wh
   from tf_pose.estimator import TfPoseEstimator
@@ -65,13 +85,6 @@ try:
   pose_ready = True
 except:
   pose_ready = False
-
-try:
-  from hdbscan import HDBSCAN
-  cluster_method = 'hdbscan'
-except:
-  from sklearn.cluster import KMeans
-  cluster_method = 'kmeans'
 
 # handle dynamic GPU memory allocation
 tf_config = tf.compat.v1.ConfigProto()
@@ -185,7 +198,7 @@ def filter_images(**kwargs):
     if not os.path.exists(os.path.join(kwargs['out_dir'], 'uncropped')):
       os.makedirs(os.path.join(kwargs['out_dir'], 'uncropped'))
     for i in image_paths:
-      target_path = os.path.join(kwargs['out_dir'], 'uncropped', os.path.basename(i))
+      target_path = os.path.join(kwargs['out_dir'], 'uncropped', clean_filename(i))
       if not os.path.exists(target_path):
         shutil.copy(i, target_path)
     image_paths = subdivide_images_with_openpose(image_paths=image_paths, **kwargs)
@@ -429,7 +442,7 @@ def get_manifest(**kwargs):
     'imagelist': get_path('imagelists', 'imagelist', **kwargs),
     'atlas_dir': kwargs['atlas_dir'],
     'metadata': True if kwargs['metadata'] else False,
-    'default_hotspots': get_hotspots(vecs=read_json(layouts['umap']['variants'][0]['layout'], **kwargs), **kwargs),
+    'default_hotspots': get_hotspots(layouts=layouts, **kwargs),
     'custom_hotspots': get_path('hotspots', 'user_hotspots', add_hash=False, **kwargs),
     'config': {
       'sizes': {
@@ -558,7 +571,7 @@ def get_inception_vectors(**kwargs):
   print(timestamp(), 'Creating image array')
   vecs = []
   for idx, i in enumerate(stream_images(**kwargs)):
-    vector_path = os.path.join(vector_dir, os.path.basename(i.path) + '.npy')
+    vector_path = os.path.join(vector_dir, clean_filename(i.path) + '.npy')
     if os.path.exists(vector_path) and kwargs['use_cache']:
       vec = np.load(vector_path)
     else:
@@ -802,7 +815,7 @@ def get_pose_layout(**kwargs):
   vecs = []
   # images are vectorized during subdivision step
   for i in stream_images(**kwargs):
-    vector_path = os.path.join(vector_dir, os.path.basename(i.path) + '.npy')
+    vector_path = os.path.join(vector_dir, clean_filename(i.path) + '.npy')
     vec = np.load(vector_path)
     vec = vec.reshape(18, 3)
     vec = normalize_2d_vector(vec[:,:2]) # slice out the confidence scores
@@ -880,9 +893,9 @@ def subdivide_images_with_openpose(**kwargs):
     print(timestamp(), 'Processing {}/{} images'.format(idx+1, len(kwargs['image_paths'])))
     # split the file into its basename and extension
     file_extension = i.path.split('.')[-1]
-    file_basename = '.'.join(os.path.basename(i.path).split('.')[:-1])
+    file_basename = '.'.join(clean_filename(i.path).split('.')[:-1])
     # load all relevant daughter image in the parsed dict
-    cache_filename = os.path.basename(i.path)
+    cache_filename = clean_filename(i.path)
     # existential check will return false for true negatives, which have {}
     if parsed_dict.get(cache_filename, 'missing') != 'missing':
       for pose_path, pose_vector in parsed_dict[cache_filename].items():
@@ -1238,11 +1251,6 @@ def process_geojson(geojson_path):
 ##
 
 
-def timestamp():
-  '''Return a string for printing the current time'''
-  return str(datetime.datetime.now()) + ':'
-
-
 def get_path(*args, **kwargs):
   '''Return the path to a JSON file with conditional gz extension'''
   sub_dir, filename = args
@@ -1290,12 +1298,15 @@ def read_json(path, **kwargs):
     return json.load(f)
 
 
-def get_hotspots(**kwargs):
+def get_hotspots(layouts={}, use_high_dimensional_vectors=False, **kwargs):
   '''Return the stable clusters from the condensed tree of connected components from the density graph'''
   print(timestamp(), 'Clustering data with {}'.format(cluster_method))
+  if use_high_dimensional_vectors:
+    vecs = get_inception_vectors(**kwargs)
+  else:
+    vecs = read_json(layouts['umap']['variants'][0]['layout'], **kwargs)
   model = get_cluster_model(**kwargs)
-  v = kwargs['vecs']
-  z = model.fit(v)
+  z = model.fit(vecs)
   # create a map from cluster label to image indices in cluster
   d = defaultdict(lambda: defaultdict(list))
   for idx, i in enumerate(z.labels_):
@@ -1304,17 +1315,17 @@ def get_hotspots(**kwargs):
   # find the centroids for each cluster
   centroids = []
   for i in d:
-    positions = np.array([v[j] for j in d[i]['images']])
+    positions = np.array([vecs[j] for j in d[i]['images']])
     x, y = np.array(positions).T
     d[i]['centroid'] = np.array([np.mean(x), np.mean(y)]).tolist()
     # find the image closest to the centroid
-    closest, _ = pairwise_distances_argmin_min(np.array([d[i]['centroid']]), v)
-    d[i]['img'] = os.path.basename(kwargs['image_paths'][closest[0]])
+    closest, _ = pairwise_distances_argmin_min(np.array([d[i]['centroid']]), vecs)
+    d[i]['img'] = clean_filename(kwargs['image_paths'][closest[0]])
   # remove massive clusters
   deletable = []
   for i in d:
     # find percent of images in cluster
-    image_percent = len(d[i]['images']) / len(v)
+    image_percent = len(d[i]['images']) / len(vecs)
     # determine if image or area percent is too large
     if image_percent > 0.5:
       deletable.append(i)
