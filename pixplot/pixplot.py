@@ -87,13 +87,6 @@ except:
   print(timestamp(), 'Using umap-learn UMAP')
   cuml_ready = False
 
-try:
-  from tf_pose.networks import get_graph_path, model_wh
-  from tf_pose.estimator import TfPoseEstimator
-  from tf_pose import common
-  pose_ready = True
-except:
-  pose_ready = False
 
 # handle dynamic GPU memory allocation
 tf_config = tf.compat.v1.ConfigProto()
