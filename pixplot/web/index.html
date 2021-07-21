@@ -154,7 +154,6 @@
 
     void main() {
 
-      // hide all points when rendering lines for poses
       if (display < 0.5) {
 
         discard;
@@ -378,7 +377,6 @@
             <img class='layout-icon' id='layout-grid' src='assets/images/icons/grid-layout.svg' />
             <img class='layout-icon' id='layout-date' src='assets/images/icons/date-layout.svg' />
             <img class='layout-icon' id='layout-categorical' src='assets/images/icons/categorical-layout.svg' />
-            <img class='layout-icon' id='layout-pose' src='assets/images/icons/pose-layout.svg' />
             <img class='layout-icon' id='layout-geographic' src='assets/images/icons/geographic-layout.svg' />
             <img id='settings-icon' src='assets/images/icons/gear-icon.svg' />
           </div>
@@ -393,13 +391,6 @@
               <div class='settings-label'>Category</div>
               <div id='filters-mobile'></div>
             </div>
-          </div>
-          <div id='pose-display-container'>
-            <div class='settings-label'>Display</div>
-            <select id='pose-display-select'>
-              <option default value='images'>Images</option>
-              <option value='poses'>Poses</option>
-            </select>
           </div>
           <div class='range-slider' id='min-dist-range-input-container'>
             <div class='settings-label'>Minimum Distance</div>
@@ -499,23 +490,7 @@
         <div class='modal-x'>✕</div>
         <div class='modal-top'>
           <div id='selected-image-parent' class='modal-top-content'>
-            <svg id='selected-image-svg' x='0' y='0' preserveAspectRatio='xMidYMid meet'>
-              <defs>
-                <filter id='blur-filter'>
-                  <feGaussianBlur stdDeviation='0.25' />
-                </filter>
-                <mask id='blur-mask'></mask>
-              </defs>
-              <rect x='0' y='0' width='100%' height='100%' fill='#000'></rect>
-              <image id='svg-image-filtered' x='0' y='0' width='100%' height='100%'></image>
-              <image id='svg-image-unfiltered' x='0' y='0' width='100%' height='100%'></image>
-            </svg>
             <div class='icons'>
-              <% if (hasPose) { %>
-                <div id='pose-highlight-icon'>
-                  <img src='assets/images/icons/pose-icon.svg' alt='eye icon' />
-                </div>
-              <% } %>
               <a target='_blank' id='eye-icon' href='<%- meta.permalink || meta.src %>'>
                 <img src='assets/images/icons/eye-icon.png' alt='eye icon' />
               </a>

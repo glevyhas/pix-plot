@@ -537,7 +537,6 @@ Layout.prototype.init = function(options) {
     icons: document.querySelector('#icons'),
     layoutCategorical: document.querySelector('#layout-categorical'),
     layoutDate: document.querySelector('#layout-date'),
-    layoutPose: document.querySelector('#layout-pose'),
     layoutGeographic: document.querySelector('#layout-geographic'),
     minDistInput: document.querySelector('#min-dist-range-input'),
     nNeighborsInput: document.querySelector('#n-neighbors-range-input'),
@@ -572,9 +571,6 @@ Layout.prototype.showHideIcons = function() {
   }
   if (data.layouts.date) {
     this.elems.layoutDate.style.display = display;
-  }
-  if (data.layouts.pose) {
-    this.elems.layoutPose.style.display = display;
   }
   if (data.layouts.geographic) {
     this.elems.layoutGeographic.style.display = display;
@@ -720,19 +716,8 @@ Layout.prototype.set = function(layout, enableDelay) {
         data.cells[i].tz = pos[i][2] || data.cells[i].getZ(pos[i][0], pos[i][1]);
         data.cells[i].setBuffer('targetTranslation');
       }
-      // set the target locations of lines
-      if (lines.mesh) {
-        var lineAttributes = lines.getAttributes('targetPosition');
-        lines.mesh.geometry.attributes.targetPosition.array = lineAttributes.positions.array.slice(0);
-        lines.mesh.geometry.attributes.targetPosition.needsUpdate = true;
-        lines.mesh.geometry.attributes.targetMidpoint.array = lineAttributes.midpoints.array;
-        lines.mesh.geometry.attributes.targetMidpoint.needsUpdate = true;
-        // begin accumulating a list of elements to animate
-        var animatable = [lines.mesh.material.uniforms.transitionPercent];
-      } else {
-        var animatable = [];
-      }
       // update the transition uniforms and targetPosition buffers on each mesh
+      var animatable = [];
       for (var i=0; i<world.group.children.length; i++) {
         world.group.children[i].geometry.attributes.targetTranslation.needsUpdate = true;
         animatable.push(world.group.children[i].material.uniforms.transitionPercent);
@@ -763,7 +748,7 @@ Layout.prototype.getLayoutPath = function() {
 Layout.prototype.setPointScalar = function() {
   var size = false, // size for points
       l = this.selected; // selected layout
-  if (l == 'tsne' || l == 'umap' || l == 'pose') size = config.size.points.scatter;
+  if (l == 'tsne' || l == 'umap') size = config.size.points.scatter;
   if (l == 'alphabetic' || l == 'grid') size = config.size.points.grid;
   if (l == 'categorical') size = config.size.points.categorical;
   if (l == 'geographic') size = config.size.points.geographic;
@@ -772,7 +757,6 @@ Layout.prototype.setPointScalar = function() {
     world.elems.pointSize.value = size;
     var scale = world.getPointScale();
     world.setUniform('targetScale', scale);
-    if (lines.mesh) lines.mesh.material.uniforms.targetScale.value = scale;
   }
 }
 
@@ -827,14 +811,6 @@ Layout.prototype.onTransitionComplete = function() {
     cell.z = cell.tz;
     cell.setBuffer('translation');
   });
-  // update the buffers for the lines
-  if (lines.mesh) {
-    lines.mesh.geometry.attributes.position.array = lines.mesh.geometry.attributes.targetPosition.array.slice(0);
-    lines.mesh.geometry.attributes.midpoint.array = lines.mesh.geometry.attributes.targetMidpoint.array.slice(0);
-    lines.mesh.geometry.attributes.position.needsUpdate = true;
-    lines.mesh.geometry.attributes.midpoint.needsUpdate = true;
-    lines.mesh.material.uniforms.transitionPercent = {type: 'f', value: 0};
-  }
   // pass each updated position buffer to the gpu
   for (var i=0; i<world.group.children.length; i++) {
     world.group.children[i].geometry.attributes.translation.needsUpdate = true;
@@ -1022,7 +998,6 @@ World.prototype.setScaleUniforms = function() {
   if (!this.state.displayed) return;
   var scale = world.getPointScale();
   world.setUniform('scale', scale);
-  if (lines.mesh) lines.mesh.material.uniforms.scale.value = scale;
 }
 
 /**
@@ -1632,8 +1607,6 @@ World.prototype.init = function() {
   this.camera.lookAt(loc.x, loc.y, loc.z);
   // draw points and start the render loop
   this.plotPoints();
-  // draw lines
-  lines.plot();
   //resize the canvas and scale rendered assets
   this.handleResize();
   // initialize the first frame
@@ -2564,159 +2537,6 @@ Text.prototype.formatText = function(json) {
   this.setWords(l);
 }
 
-/**
-* Draw lines to represent poses
-**/
-
-function Lines() {
-  this.elems = {
-    container: document.querySelector('#pose-display-container'),
-    select: document.querySelector('#pose-display-select'),
-  }
-}
-
-Lines.prototype.plot = function() {
-  if (!data.layouts.pose) return;
-  // json is a 3d array [[[x, y, score]]]
-  get(getPath('data/image-vectors/openpose/vectors.json'), function(json) {
-    this.json = json;
-    // draw lines
-    var material = new THREE.RawShaderMaterial({
-      vertexShader: document.querySelector('#line-vertex-shader').textContent,
-      fragmentShader: document.querySelector('#line-fragment-shader').textContent,
-      uniforms: {
-        transitionPercent: {type: 'f', value: 0.0},
-        display: {type: 'f', value: 0.0},
-        scale: {type: 'f', value: 0.0},
-        targetScale: {type: 'f', value: 0.0},
-      },
-    })
-    var geometry = new THREE.BufferGeometry();
-    var attributes = this.getAttributes('position');
-    geometry.setAttribute('position', attributes.positions);
-    geometry.setAttribute('targetPosition', attributes.positions.clone());
-    geometry.setAttribute('midpoint', attributes.midpoints);
-    geometry.setAttribute('targetMidpoint', attributes.midpoints.clone());
-    this.mesh = new THREE.LineSegments(geometry, material);
-    world.scene.add(this.mesh);
-    // make the poses displayable
-    this.elems.container.style.display = 'inline-block';
-    this.elems.select.addEventListener('change', this.toggleLineDisplay.bind(this));
-  }.bind(this))
-}
-
-Lines.prototype.getAttributes = function(vertexType) {
-  var threshold = 0.1, // confidence threshold needed to render vertex
-      positions = [],
-      midpoints = [],
-      positionsIdx = 0,
-      midpointsIdx = 0,
-      pairs = [
-    [10, 9], // right leg
-    [9, 8],
-    [11, 12], // left leg
-    [12, 13],
-    [2, 3], // right arm
-    [3, 4],
-    [5, 6], // left arm
-    [6, 7],
-    [11, 5], // torso
-    [5, 2],
-    [2, 8],
-    [8, 11],
-  ];
-  this.json.forEach(function(body, bodyIdx) {
-    // find the domain of vertices for height normalization
-    var domains = {
-      x: [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY],
-      y: [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY],
-      score: [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY],
-    };
-    // set the domain and sum of x, y, and score for this body
-    body.forEach(function(vert) {
-      if (vert[0] < domains.x[0]) domains.x[0] = vert[0];
-      if (vert[0] > domains.x[1]) domains.x[1] = vert[0];
-      if (vert[1] < domains.y[0]) domains.y[0] = vert[1];
-      if (vert[1] > domains.y[1]) domains.y[1] = vert[1];
-      if (vert[2] < domains.score[0]) domains.score[0] = vert[2];
-      if (vert[2] > domains.score[1]) domains.score[1] = vert[2];
-    });
-    // get midpoint position along each axis
-    var midpoint = {
-      x: (domains.x[0] + domains.x[1])/2,
-      y: 1 - ((domains.y[0] + domains.y[1])/2),
-    };
-    // set the size scalar
-    var scalar = (0.005 / (domains.y[1] - domains.y[0]));
-    // identify the body vertices
-    var vertices = [];
-    body.forEach(function(vert, vertIdx) {
-      var x = vert[0];
-      var y = 1-vert[1];
-      var keys = vertexType == 'position'
-        ? {x: 'x', y: 'y'}
-        : {x: 'tx', y: 'ty'}
-      vertices.push({
-        x: data.cells[bodyIdx][keys.x] + (scalar * (x-midpoint.x)),
-        y: data.cells[bodyIdx][keys.y] + (scalar * (y-midpoint.y)),
-        score: vert[2],
-      })
-    })
-    // find the mean of all vertices in each dimension
-    var sums = {
-      x: 0,
-      y: 0,
-    };
-    vertices.forEach(function(vertex) {
-      if (vertex.score >= threshold) {
-        sums.x += vertex.x;
-        sums.y += vertex.y;
-      }
-    })
-    // determine the number of retained vertices
-    var n = vertices.filter(function(v) { return v.score >= threshold }).length;
-    // add the lines between the vertices
-    for (var i=0; i<pairs.length; i++) {
-      var a = vertices[pairs[i][0]];
-      var b = vertices[pairs[i][1]];
-      if (a.score < threshold || b.score < threshold) continue;
-      positions[positionsIdx++] = a.x;
-      positions[positionsIdx++] = a.y;
-      positions[positionsIdx++] = 0;
-      positions[positionsIdx++] = b.x;
-      positions[positionsIdx++] = b.y;
-      positions[positionsIdx++] = 0;
-      // todo: reconfigure body as instanced buffer geometry
-      midpoints[midpointsIdx++] = sums.x / n;
-      midpoints[midpointsIdx++] = sums.y / n;
-      midpoints[midpointsIdx++] = sums.x / n;
-      midpoints[midpointsIdx++] = sums.y / n;
-    }
-  })
-  return {
-    positions: new THREE.BufferAttribute(new Float32Array(positions), 3),
-    midpoints: new THREE.BufferAttribute(new Float32Array(midpoints), 2),
-  }
-}
-
-Lines.prototype.toggleLineDisplay = function() {
-  this.setDisplay(this.elems.select.value);
-}
-
-// selected must be 'lines' or 'images'
-Lines.prototype.setDisplay = function(selected) {
-  if (selected == 'poses') {
-    for (var i=0; i<world.group.children.length; i++) {
-      world.group.children[i].material.uniforms.display.value = 0.0;
-    }
-    lines.mesh.material.uniforms.display.value = 1.0;
-  } else {
-    for (var i=0; i<world.group.children.length; i++) {
-      world.group.children[i].material.uniforms.display.value = 1.0;
-    }
-    lines.mesh.material.uniforms.display.value = 0.0;
-  }
-}
 
 /**
 * Create a modal for larger image viewing
@@ -2728,7 +2548,6 @@ function Modal() {
   this.addEventListeners();
   this.state = {
     displayed: false,
-    highlightPose: false,
   };
 }
 
@@ -2741,17 +2560,13 @@ Modal.prototype.showCells = function(cellIndices, cellIdx) {
   // parse data attributes
   var filename = data.json.images[self.cellIndices[self.cellIdx]];
   // conditionalize the path to the image
-  var src = data.json.images_cropped
-    ? config.data.dir + '/uncropped/' + trimFilenameSuffix(filename)
-    : config.data.dir + '/originals/' + filename;
+  var src = config.data.dir + '/originals/' + filename;
   // define function to show the modal
   function showModal(json) {
     var json = json || {};
     var template = document.querySelector('#selected-image-template').textContent;
     var target = document.querySelector('#selected-image-modal');
-    var hasPose = 'pose' in data.json.layouts && data.json.layouts['pose'];
     var templateData = {
-      hasPose: hasPose,
       multiImage: self.cellIndices.length > 1,
       meta: Object.assign({}, json || {}, {
         src: src,
@@ -2763,11 +2578,6 @@ Modal.prototype.showCells = function(cellIndices, cellIdx) {
     // add the image to the svg
     document.querySelector('#svg-image-filtered').setAttribute('href', json.image.src);
     document.querySelector('#svg-image-unfiltered').setAttribute('href', json.image.src);
-    // add the click listener to the pose icon if relevant
-    if (hasPose) {
-      document.querySelector('#pose-highlight-icon').addEventListener('click', self.togglePoseHighlight.bind(self))
-      window.addEventListener('resize', self.resizePoseHighlight.bind(self));
-    }
     // inject the loaded image into the DOM
     document.querySelector('#selected-image-parent').appendChild(json.image);
   }
@@ -2786,7 +2596,6 @@ Modal.prototype.showCells = function(cellIndices, cellIdx) {
 Modal.prototype.close = function() {
   window.location.href = '#';
   document.querySelector('#selected-image-modal').style.display = 'none';
-  window.removeEventListener('resize', self.resizePoseHighlight);
   this.cellIndices = [];
   this.cellIdx = null;
   this.state.displayed = false;
@@ -2824,105 +2633,6 @@ Modal.prototype.showNextCell = function() {
     ? this.cellIdx + 1
     : 0;
   this.showCells(this.cellIndices, cellIdx);
-}
-
-Modal.prototype.togglePoseHighlight = function() {
-  var highlightPose = !this.state.highlightPose;
-  if (highlightPose) {
-    document.querySelector('#pose-highlight-icon').classList.add('active');
-    this.applyGaussianFilter();
-  } else {
-    document.querySelector('#pose-highlight-icon').classList.remove('active');
-    this.removeGaussianFilter();
-  }
-  this.state.highlightPose = highlightPose;
-}
-
-Modal.prototype.applyGaussianFilter = function() {
-  // remove the extant ellipse if any
-  var elem = document.querySelector('#blur-ellipse');
-  if (elem) elem.parentNode.removeChild(elem);
-  // identify the svg to which the ellipse will be added
-  var elem = document.querySelector('#selected-image-svg');
-  var box = elem.getBoundingClientRect();
-  // get the padding of the svg / image elements
-  var padding = {};
-  ['top', 'right', 'bottom', 'left'].forEach(function(i) {
-    var s = getComputedStyle(elem, null).getPropertyValue('padding-' + i);
-    padding[i] = parseInt(s.replace('px', ''));
-  })
-  // w,h of the svg / image elements
-  var w = box.width - padding.left - padding.right;
-  var h = box.height - padding.top - padding.bottom;
-  // get the vertex data
-  var threshold = 0.1;
-  var lineData = lines.json[modal.cellIndices[modal.cellIdx]];
-  var vertices = [];
-  for (var i=0; i<lineData.length; i++) {
-    var score = lineData[i][2];
-    if (score >= threshold) {
-      vertices.push({
-        x: lineData[i][0] * w,
-        y: lineData[i][1] * h,
-        score: score,
-      })
-    }
-  }
-  var sums = {
-    x: 0,
-    y: 0,
-  };
-  var domains = {
-    x: [
-      Number.POSITIVE_INFINITY,
-      Number.NEGATIVE_INFINITY,
-    ],
-    y: [
-      Number.POSITIVE_INFINITY,
-      Number.NEGATIVE_INFINITY,
-    ],
-  }
-  vertices.forEach(function(v) {
-    sums.x += v.x;
-    sums.y += v.y;
-    if (v.x < domains.x[0]) domains.x[0] = v.x;
-    if (v.x > domains.x[1]) domains.x[1] = v.x;
-    if (v.y < domains.y[0]) domains.y[0] = v.y;
-    if (v.y > domains.y[1]) domains.y[1] = v.y;
-  })
-  // raw pixel position of ellipse for current screen size
-  var raw = {
-    'cx': sums.x / vertices.length,
-    'cy': (sums.y * 1.1) / vertices.length,
-    'rx': (domains.x[1] - domains.x[0]) * 0.7,
-    'ry': (domains.y[1] - domains.y[0]) * 0.7,
-  }
-  var normalized = {
-    'cx': (raw.cx / w) * 100 + '%',
-    'cy': (raw.cy / h) * 100 + '%',
-    'rx': (raw.rx / w) * 100 + '%',
-    'ry': (raw.ry / h) * 100 + '%',
-  }
-  var ellipse = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
-  ellipse.setAttribute('cx', raw.cx);
-  ellipse.setAttribute('cy', raw.cy);
-  ellipse.setAttribute('rx', raw.rx);
-  ellipse.setAttribute('ry', raw.ry);
-  ellipse.setAttribute('fill', '#ffffff');
-  ellipse.setAttribute('filter', 'url(#blur-filter)');
-  ellipse.setAttribute('id', 'blur-ellipse');
-  document.querySelector('#blur-mask').appendChild(ellipse);
-  // hide the original image
-  document.querySelector('#selected-image').style.opacity = 0;
-  document.querySelector('#svg-image-filtered').style.opacity = 0.25;
-}
-
-Modal.prototype.removeGaussianFilter = function() {
-  document.querySelector('#svg-image-filtered').style.opacity = 1;
-}
-
-Modal.prototype.resizePoseHighlight = function() {
-  if (this.state.highlightPose) this.applyGaussianFilter();
 }
 
 /**
@@ -3322,9 +3032,7 @@ Filter.prototype.filterImages = function() {
         return obj;
       }, {})
       this.imageSelected = function(image) {
-        return data.json.images_cropped
-          ? trimFilenameSuffix(image) in vals
-          : image in vals
+        return image in vals;
       }
       filters.filterImages();
     }.bind(this))
@@ -3800,10 +3508,6 @@ function Tooltip() {
     {
       elem: document.querySelector('#layout-categorical'),
       text: 'Arrange images into metadata groups',
-    },
-    {
-      elem: document.querySelector('#layout-pose'),
-      text: 'Cluster poses via UMAP dimensionality reduction',
     },
     {
       elem: document.querySelector('#layout-geographic'),
@@ -4321,7 +4025,6 @@ var layout = new Layout();
 var world = new World();
 var text = new Text();
 var dates = new Dates();
-var lines = new Lines();
 var lod = new LOD();
 var settings = new Settings();
 var tooltip = new Tooltip();
