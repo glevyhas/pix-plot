@@ -78,14 +78,6 @@ except:
   from sklearn.cluster import KMeans
   cluster_method = 'kmeans'
 
-try:
-  from tf_pose.networks import get_graph_path, model_wh
-  from tf_pose.estimator import TfPoseEstimator
-  from tf_pose import common
-  pose_ready = True
-except:
-  pose_ready = False
-
 # handle dynamic GPU memory allocation
 tf_config = tf.compat.v1.ConfigProto()
 tf_config.gpu_options.allow_growth = True
@@ -118,7 +110,6 @@ config = {
   'pointgrid_fill': 0.05,
   'square_cells': False,
   'gzip': False,
-  'extract_poses': False,
   'min_size': 100,
   'min_score': 0.3,
   'min_vertices': 18,
@@ -192,16 +183,6 @@ def filter_images(**kwargs):
       '''.format('\n'.join(duplicates)))
   if not kwargs.get('shuffle', False):
     image_paths = sorted(image_paths)
-  # if the user requested pose detection, subdivide images
-  if kwargs.get('extract_poses', False):
-    # copy the uncropped input images
-    if not os.path.exists(os.path.join(kwargs['out_dir'], 'uncropped')):
-      os.makedirs(os.path.join(kwargs['out_dir'], 'uncropped'))
-    for i in image_paths:
-      target_path = os.path.join(kwargs['out_dir'], 'uncropped', clean_filename(i))
-      if not os.path.exists(target_path):
-        shutil.copy(i, target_path)
-    image_paths = subdivide_images_with_openpose(image_paths=image_paths, **kwargs)
   # process and filter the images
   filtered_image_paths = []
   for i in stream_images(image_paths=image_paths):
@@ -309,9 +290,6 @@ def clean_filename(s, **kwargs):
   s = unquote(os.path.basename(s))
   invalid_chars = '<>:;,"/\\|?*[]'
   for i in invalid_chars: s = s.replace(i, '')
-  if kwargs.get('extract_poses', False):
-    extension = s.split('.')[-1]
-    s = '-'.join(s.split('-')[:-1]) + '.' + extension
   return s
 
 
@@ -451,7 +429,6 @@ def get_manifest(**kwargs):
         'lod': kwargs['lod_cell_height'],
       },
     },
-    'images_cropped': kwargs.get('extract_poses', False),
     'creation_date': datetime.datetime.today().strftime('%d-%B-%Y-%H:%M:%S'),
   }
   path = get_path('manifests', 'manifest', **kwargs)
@@ -553,7 +530,6 @@ def get_layouts(**kwargs):
     'grid': {
       'layout': get_rasterfairy_layout(umap=umap, **kwargs),
     },
-    'pose': get_pose_layout(**kwargs),
     'categorical': get_categorical_layout(**kwargs),
     'date': get_date_layout(**kwargs),
     'geographic': get_geographic_layout(**kwargs),
@@ -797,174 +773,6 @@ def get_pointgrid_layout(path, label, **kwargs):
   arr = np.array(read_json(path, **kwargs))
   z = align_points_to_grid(arr, fill=0.045)
   return write_layout(out_path, z, **kwargs)
-
-
-##
-# Pose Layout
-##
-
-
-def get_pose_layout(**kwargs):
-  '''Return the path to JSON with openpose embeddings'''
-  if not kwargs.get('extract_poses', False): return False
-  out_path = get_path('layouts', 'pose', **kwargs)
-  if os.path.exists(out_path) and kwargs['use_cache']: return out_path
-  # generate a new pose layout
-  print(timestamp(), 'Generating pose layout')
-  vector_dir = os.path.join(kwargs['out_dir'], 'image-vectors', 'openpose')
-  vecs = []
-  # images are vectorized during subdivision step
-  for i in stream_images(**kwargs):
-    vector_path = os.path.join(vector_dir, clean_filename(i.path) + '.npy')
-    vec = np.load(vector_path)
-    vec = vec.reshape(18, 3)
-    vec = normalize_2d_vector(vec[:,:2]) # slice out the confidence scores
-    vecs.append(vec.flatten())
-  vecs = np.array(vecs)
-  # create lower-dimensional embedding of pose vectors
-  model = get_umap_model(**kwargs)
-  z = model.fit(vecs).embedding_
-  pose_layout_path = write_layout(out_path, z, **kwargs)
-  return {
-    'layout': pose_layout_path,
-    'jittered': get_pointgrid_layout(pose_layout_path, 'pose', **kwargs),
-  }
-
-
-def get_openpose_vector(human):
-  '''Given an OpenPose human object return a vector of that human's keypoints'''
-  human_vec = []
-  # find the mean positions in x, y axes and use that position for missing verts
-  stacked = np.array([[b[1].x, b[1].y] for b in human.body_parts.items()])
-  x_mean, y_mean = np.mean(stacked, axis=(0))
-  BodyPart = namedtuple('BodyPart', ['x', 'y', 'score'])
-  for i in range(18):
-    if i in human.body_parts:
-      pos = human.body_parts[i]
-    else:
-      pos = BodyPart(x=x_mean, y=y_mean, score=0)
-    human_vec.append([pos.x or 0, pos.y or 0, pos.score or 0])
-  return np.array(human_vec)
-
-
-def crop_openpose_figure(im, vec, margin=0.4):
-  '''Given an OpenPose image and pose vector return the cropped figure'''
-  x = vec[:,0]
-  y = vec[:,1]
-  x_min = np.min(x)
-  x_max = np.max(x)
-  y_min = np.min(y)
-  y_max = np.max(y)
-  h, w, _ = im.shape
-  x_margin = (x_max-x_min) * margin
-  y_margin = (y_max-y_min) * margin/2
-  # apply the margins
-  x_min = int(max((x_min - x_margin), 0) * w)
-  x_max = int(min((x_max + x_margin), 1) * w)
-  y_min = int(max((y_min - y_margin), 0) * h)
-  y_max = int(min((y_max + y_margin), 1) * h)
-  return im[y_min:y_max, x_min:x_max, :]
-
-
-def subdivide_images_with_openpose(**kwargs):
-  '''Cut each input image into single-pose subimages and save vectors for each'''
-  if not pose_ready:
-    print(timestamp(), 'To use --extract_poses, please install tf-pose==0.11.0 and build your plot again')
-    sys.exit()
-  print(timestamp(), 'Subdividing images with OpenPose model')
-  download_cmu_model()
-  # determine the subset of input images for which we've already parsed pose vectors
-  parsed_path = os.path.join(kwargs['out_dir'], 'image-vectors', 'openpose', 'parsed.json')
-  vectors_path = os.path.join(kwargs['out_dir'], 'image-vectors', 'openpose', 'vectors.json')
-  # load d[original_image_path] = [{daughter_image_path: [vert confidence array]}]
-  parsed_dict = json.load(open(parsed_path)) if os.path.exists(parsed_path) else None
-  if not parsed_dict: parsed_dict = defaultdict(lambda: defaultdict())
-  # create the directories where output files will be stored
-  vector_dir = os.path.join(kwargs['out_dir'], 'image-vectors', 'openpose')
-  if not os.path.exists(vector_dir): os.makedirs(vector_dir)
-  image_dir = os.path.join(kwargs['out_dir'], 'poses')
-  if not os.path.exists(image_dir): os.makedirs(image_dir)
-  # subdivde images
-  graph_path = get_cmu_graph_path()
-  estimator = TfPoseEstimator(graph_path, target_size=(432, 368))
-  pose_image_paths = []
-  vectors_list = []
-  for idx, i in enumerate(stream_images(image_paths=kwargs['image_paths'])):
-    print(timestamp(), 'Processing {}/{} images'.format(idx+1, len(kwargs['image_paths'])))
-    # split the file into its basename and extension
-    file_extension = i.path.split('.')[-1]
-    file_basename = '.'.join(clean_filename(i.path).split('.')[:-1])
-    # load all relevant daughter image in the parsed dict
-    cache_filename = clean_filename(i.path)
-    # existential check will return false for true negatives, which have {}
-    if parsed_dict.get(cache_filename, 'missing') != 'missing':
-      for pose_path, pose_vector in parsed_dict[cache_filename].items():
-        pose_vector = np.array(pose_vector).reshape(18, 3)
-        if pose_vector_is_valid(pose_vector, **kwargs):
-          pose_image_paths.append(pose_path)
-          vectors_list.append(pose_vector.tolist())
-      continue
-    # parse the new image
-    im = common.read_imgfile(i.path, None, None)
-    im = im[:, :, [2, 1, 0]] # swap color channels to rgb
-    humans = estimator.inference(im, resize_to_default=True, upsample_size=4.0)
-    for hdx, human in enumerate(humans):
-      # add image to cache (loaded json does not autovivify)
-      if file_basename not in parsed_dict: parsed_dict[cache_filename] = {}
-      # vector shape = 18, 3 (n_verts, x, y, confidence)
-      vector = get_openpose_vector(human)
-      # filter if the point with lowest confidence is too low
-      if not pose_vector_is_valid(vector, **kwargs): continue
-      # crop out the image that corresponds to this image
-      cropped_im = crop_openpose_figure(im, vector)
-      w, h, _ = cropped_im.shape
-      if (w < kwargs['min_size']) or (h < kwargs['min_size']): continue
-      vector_path = os.path.join(vector_dir, file_basename + '-' + str(hdx) + '.' + file_extension)
-      np.save(vector_path, vector.flatten())
-      vectors_list.append(vector.tolist())
-      img_path = os.path.join(image_dir, file_basename + '-' + str(hdx) + '.' + file_extension)
-      save_img(img_path, cropped_im)
-      pose_image_paths.append(img_path)
-      # add the new records to the parsed dict
-      parsed_dict[cache_filename][img_path] = vector.tolist()
-  # store the images we processed
-  write_json(parsed_path, parsed_dict)
-  write_json(vectors_path, vectors_list)
-  print(timestamp(), 'Extracted', len(pose_image_paths), 'pose images')
-  return pose_image_paths
-
-
-def pose_vector_is_valid(vector, **kwargs):
-  '''Return a bool indicating whether to retain openpose vector `vector`'''
-  assert vector.shape == (18, 3)
-  confidence_vals = [i for i in vector[:,2] if i > 0]
-  if len(confidence_vals) < kwargs['min_vertices']: return False
-  if min(confidence_vals) < kwargs['min_score']: return False
-  return True
-
-
-def normalize_2d_vector(arr):
-  '''Normalize a 2d vector by subtracting the axis mean from each point'''
-  x, y = arr.T
-  return np.array([
-    x-np.mean(x),
-    y-np.mean(y),
-  ]).T
-
-
-def download_cmu_model():
-  '''Download the pretrained openpose model to be used'''
-  url = 'https://lab-apps.s3-us-west-2.amazonaws.com/pixplot-assets/tf-pose/graph_opt.pb'
-  out_path = get_cmu_graph_path()
-  print(timestamp(), 'Downoading cmu model to ' + out_path)
-  out_dir = os.path.split(out_path)[0]
-  if not exists(out_dir): os.makedirs(out_dir)
-  if not exists(out_path): download_function(url, out_path)
-
-
-def get_cmu_graph_path():
-  '''Return the path to the location where the CMU graph will be stored'''
-  return os.path.join(dirname(realpath(__file__)), 'models', 'cmu', 'graph_opt.pb')
 
 
 ##
@@ -1467,10 +1275,7 @@ def parse():
   parser.add_argument('--metric', type=str, default=config['metric'], help='the metric argument for umap')
   parser.add_argument('--pointgrid_fill', type=float, default=config['pointgrid_fill'], help='float 0:1 that determines sparsity of jittered distributions (lower means more sparse)')
   parser.add_argument('--copy_web_only', action='store_true', help='update ./output/assets without reprocessing data')
-  parser.add_argument('--extract_poses', action='store_true', help='create pose-based embeddings of input images')
   parser.add_argument('--min_size', type=float, default=config['min_size'], help='min size of cropped images')
-  parser.add_argument('--min_score', type=float, default=config['min_score'], help='min vertex score in a pose-based embedding')
-  parser.add_argument('--min_vertices', type=int, default=config['min_vertices'], help='min number of discovered vertices in a pose-based embedding 0:18')
   parser.add_argument('--gzip', action='store_true', help='save outputs with gzip compression')
   parser.add_argument('--shuffle', action='store_true', help='shuffle the input images before data processing begins')
   parser.add_argument('--plot_id', type=str, default=config['plot_id'], help='unique id for a plot; useful for resuming processing on a started plot')
