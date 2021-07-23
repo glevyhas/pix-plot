@@ -570,7 +570,7 @@ Layout.prototype.showHideIcons = function() {
   for (var i=0; i<icons.length; i++) {
     var layout = icons[i].getAttribute('id').replace('layout-', '');
     if (icons[i].classList.contains('conditional')) {
-      if (!layout in data.layouts) {
+      if (!layout in data.layouts || !data.layouts[layout]) {
         icons[i].style.display = 'none';
       }
     } else {
