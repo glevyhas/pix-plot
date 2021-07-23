@@ -586,10 +586,10 @@ def get_umap_layout(**kwargs):
 def process_single_layout_umap(vecs, **kwargs):
   '''Create a single layout UMAP projection'''
   model = get_umap_model(**kwargs)
+  out_path = get_path('layouts', 'umap', **kwargs)
   if cuml_ready:
     z = model.fit(vecs).embedding_
   else:
-    out_path = get_path('layouts', 'umap', **kwargs)
     if os.path.exists(out_path) and kwargs['use_cache']: return out_path
     y = []
     if kwargs.get('metadata', False):
