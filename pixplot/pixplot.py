@@ -1170,6 +1170,7 @@ def get_hotspots(layouts={}, use_high_dimensional_vectors=True, **kwargs):
     if i != -1:
       d[i]['images'].append(idx)
       d[i]['img'] = clean_filename(kwargs['image_paths'][idx])
+      d[i]['layout'] = 'inception_vectors'
   # remove massive clusters
   deletable = []
   for i in d:

@@ -3140,6 +3140,7 @@ Hotspots.prototype.addEventListeners = function() {
       label: data.hotspots.getUserClusterName(),
       img: data.json.images[choose(indices)],
       images: indices,
+      layout: layout.selected,
     })
     this.setCreateHotspotVisibility(false);
     this.setEdited(true);
