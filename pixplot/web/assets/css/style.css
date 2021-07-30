@@ -1361,7 +1361,8 @@ noscript {
   margin: 0 -2px 10px;
 }
 
-.meta-category {
+.meta-category,
+.meta-tag {
   display: inline-block;
   padding: 4px 6px;
   margin: 2px;
