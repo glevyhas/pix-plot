@@ -67,14 +67,14 @@ def timestamp():
 try:
   from MulticoreTSNE import MulticoreTSNE as TSNE
 except:
-  print(timestamp(), 'MulticoreTSNE not available; falling back to sklearns')
+  print(timestamp(), 'MulticoreTSNE not available; using sklearn')
   from sklearn.manifold import TSNE
 
 try:
   from hdbscan import HDBSCAN
   cluster_method = 'hdbscan'
 except:
-  print(timestamp(), 'Could not import hdbscan; falling back to kmeans')
+  print(timestamp(), 'Could not import hdbscan; using KMeans')
   from sklearn.cluster import KMeans
   cluster_method = 'kmeans'
 
@@ -550,7 +550,7 @@ def get_layouts(**kwargs):
 
 def get_inception_vectors(**kwargs):
   '''Create and return Inception vector representation of Image() instances'''
-  print(timestamp(), 'Generating Inception vectors for {} images'.format(len(kwargs['image_paths'])))
+  print(timestamp(), 'Creating Inception vectors for {} images'.format(len(kwargs['image_paths'])))
   vector_dir = os.path.join(kwargs['out_dir'], 'image-vectors', 'inception')
   if not os.path.exists(vector_dir): os.makedirs(vector_dir)
   base = InceptionV3(include_top=True, weights='imagenet',)
@@ -1155,7 +1155,7 @@ def read_json(path, **kwargs):
     return json.load(f)
 
 
-def get_hotspots(layouts={}, use_high_dimensional_vectors=False, **kwargs):
+def get_hotspots(layouts={}, use_high_dimensional_vectors=True, **kwargs):
   '''Return the stable clusters from the condensed tree of connected components from the density graph'''
   print(timestamp(), 'Clustering data with {}'.format(cluster_method))
   if use_high_dimensional_vectors:
@@ -1169,15 +1169,8 @@ def get_hotspots(layouts={}, use_high_dimensional_vectors=False, **kwargs):
   for idx, i in enumerate(z.labels_):
     if i != -1:
       d[i]['images'].append(idx)
-  # find the centroids for each cluster
-  centroids = []
-  for i in d:
-    positions = np.array([vecs[j] for j in d[i]['images']])
-    x, y = np.array(positions).T
-    d[i]['centroid'] = np.array([np.mean(x), np.mean(y)]).tolist()
-    # find the image closest to the centroid
-    closest, _ = pairwise_distances_argmin_min(np.array([d[i]['centroid']]), vecs)
-    d[i]['img'] = clean_filename(kwargs['image_paths'][closest[0]])
+      d[i]['img'] = clean_filename(kwargs['image_paths'][idx])
+      d[i]['layout'] = 'inception_vectors'
   # remove massive clusters
   deletable = []
   for i in d:
@@ -1308,7 +1301,7 @@ class Image:
 
 def parse():
   '''Read command line args and begin data processing'''
-  description = 'Generate the data required to create a PixPlot viewer'
+  description = 'Create the data required to create a PixPlot viewer'
   parser = argparse.ArgumentParser(description=description, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   parser.add_argument('--images', '-i', type=str, default=config['images'], help='path to a glob of images to process', required=False)
   parser.add_argument('--metadata', '-m', type=str, default=config['metadata'], help='path to a csv or glob of JSON files with image metadata (see readme for format)', required=False)

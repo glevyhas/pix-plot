@@ -119,7 +119,6 @@ function Data() {
     y: { min: Number.POSITIVE_INFINITY, max: Number.NEGATIVE_INFINITY, },
   };
   world.getHeightMap(this.load.bind(this));
-  globe.load();
 }
 
 // Load json data with chart element positions
@@ -162,6 +161,8 @@ Data.prototype.parseManifest = function(json) {
   layout.init(Object.keys(this.layouts));
   // load the filter options if metadata present
   if (json.metadata) filters.loadFilters();
+  // load the geographic features if geographic layout present
+  if (json.layouts.geographic) globe.load();
   // load each texture for this data set
   for (var i=0; i<this.textureCount; i++) {
     this.textures.push(new Texture({
@@ -2584,9 +2585,6 @@ Modal.prototype.showCells = function(cellIndices, cellIdx) {
     }
     target.innerHTML = _.template(template)(templateData);
     target.style.display = 'block';
-    // add the image to the svg
-    document.querySelector('#svg-image-filtered').setAttribute('href', json.image.src);
-    document.querySelector('#svg-image-unfiltered').setAttribute('href', json.image.src);
     // inject the loaded image into the DOM
     document.querySelector('#selected-image-parent').appendChild(json.image);
   }
@@ -3140,6 +3138,7 @@ Hotspots.prototype.addEventListeners = function() {
       label: data.hotspots.getUserClusterName(),
       img: data.json.images[choose(indices)],
       images: indices,
+      layout: layout.selected,
     })
     this.setCreateHotspotVisibility(false);
     this.setEdited(true);
