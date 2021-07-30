@@ -78,7 +78,7 @@ pixplot --images "path/to/images/*.jpg" --cell_size 10
 The [UMAP algorithm](https://github.com/lmcinnes/umap) is particularly sensitive to three hyperparemeters:
 
 ```
---min_distance: determines the minimum distance between points in the embedding
+--min_dist: determines the minimum distance between points in the embedding
 --n_neighbors: determines the tradeoff between local and global clusters
 --metric: determines the distance metric to use when positioning points
 ```
