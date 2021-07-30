@@ -544,13 +544,6 @@ input[type=range]::-ms-thumb {
   opacity: 1;
 }
 
-#layout-date,
-#layout-categorical,
-#layout-pose,
-#layout-geographic {
-  display: none;
-}
-
 #layout-icons #layout-geographic {
   height: 32px;
   position: relative;
