@@ -67,14 +67,14 @@ def timestamp():
 try:
   from MulticoreTSNE import MulticoreTSNE as TSNE
 except:
-  print(timestamp(), 'MulticoreTSNE not available; using sklearn')
+  print(timestamp(), 'MulticoreTSNE not available; using sklearn TSNE')
   from sklearn.manifold import TSNE
 
 try:
   from hdbscan import HDBSCAN
   cluster_method = 'hdbscan'
 except:
-  print(timestamp(), 'Could not import hdbscan; using KMeans')
+  print(timestamp(), 'HDBSCAN not available; using sklearn KMeans')
   from sklearn.cluster import KMeans
   cluster_method = 'kmeans'
 
@@ -85,7 +85,7 @@ try:
   from umap import AlignedUMAP
 except:
   from umap import UMAP, AlignedUMAP
-  print(timestamp(), 'Using umap-learn UMAP')
+  print(timestamp(), 'CUML not available; using umap-learn UMAP')
   cuml_ready = False
 
 
@@ -576,7 +576,7 @@ def get_umap_layout(**kwargs):
   '''Get the x,y positions of images passed through a umap projection'''
   vecs = get_inception_vectors(**kwargs)
   w = PCA(n_components=min(100, len(vecs))).fit_transform(vecs)
-  print(timestamp(), 'Creating UMAP layout')
+  print(timestamp(), 'Creating umap layout')
   # single model umap
   if len(kwargs['n_neighbors']) == 1 and len(kwargs['min_dist']) == 1:
     return process_single_layout_umap(w, **kwargs)
@@ -1078,6 +1078,7 @@ def get_geographic_layout(**kwargs):
     if lat or lng: coords = True
     l.append([lng, lat])
   if coords:
+    print(timestamp(), 'Creating geographic layout')
     if kwargs['geojson']:
       process_geojson(kwargs['geojson'])
     return {
