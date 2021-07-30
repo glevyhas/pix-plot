@@ -77,6 +77,7 @@
     varying float vSelected;          // 1 if this cell is selected else 0
     varying float vTextureIndex;      // cell texture idx (varyings can't be int)
     varying float vClusterSelected;   // 1 if this cell is cluster selected else 0
+    varying vec2 vBorderPercent;      // the percent of the cell width, height comprised of border
 
     void main() {
       // pass varyings to fragment shader
@@ -94,16 +95,43 @@
       // determine the interpolation point in the current transition
       float percent = clamp(transitionPercent, 0.0, 1.0);
 
-      // scale the blueprint unit vectors by this image's size
+      // determine if this cell is bordered
       bool bordered = selected > 0.5 || clusterSelected > 0.5;
-      vec3 p = position - 0.5;
-      p.x *= bordered ? (width  + (2.0 * borderWidth * width )) : width;
-      p.y *= bordered ? (height + (2.0 * borderWidth * height)) : height;
 
-      p = p * mix(scale, targetScale, percent) * 0.00001;
-      vec3 p0 = p + translation; // current position
-      vec3 p1 = p + targetTranslation; // target position
+      // get the border width and height
+      float borderW = 2.0 * borderWidth * width;
+      float borderH = 2.0 * borderWidth * height;
+
+      // get the total cell width and height
+      float w = bordered ? width  + borderW : width;
+      float h = bordered ? height + borderH : height;
+
+      // pass the border width/height as a percent of cell width/height to the fragment shader
+      vBorderPercent = vec2(borderW / w / 2.0, borderH / h / 2.0);
+
+      // create a variable to store the vertex positions
+      vec3 p = position;
+
+      // scale the blueprint by the target dimensions
+      p.x *= w;
+      p.y *= h;
+
+      // make the cell's position the center of the cell
+      p.x -= w/2.0;
+      p.y -= h/2.0;
+
+      // determine the scale to apply to the cell
+      float s = mix(scale, targetScale, percent) * 0.00001;
+
+      // scale the cell
+      p = p * s;
+
+      // translate the cell; translation = current; targetTranslation = destination
+      vec3 p0 = p + translation;
+      vec3 p1 = p + targetTranslation;
       vec3 pos = mix(p0, p1, percent);
+
+      // get the ultimate cell position
       vec4 world = modelViewMatrix * vec4(pos, 1.0);
       gl_Position = projectionMatrix * world;
     }
@@ -147,6 +175,7 @@
     varying float vSelected;        // cell is selected if > 0.5
     varying float vTextureIndex;    // cell's texture index
     varying float vClusterSelected; // cell is cluster selected if > 0.5
+    varying vec2 vBorderPercent;
 
     #ifndef SELECTING
       uniform sampler2D textures[N_TEXTURES]; // array of sampler2Ds
@@ -174,10 +203,10 @@
           bool isClusterSelected = vClusterSelected > 0.5;
           float borderW = borderWidth / 2.0;
           bool isInBorder =
-            vPosition.x > 1.0 - borderW ||
-            vPosition.x < borderW ||
-            vPosition.y > 1.0 - borderW ||
-            vPosition.y < borderW;
+            vPosition.x > 1.0 - vBorderPercent.x ||
+            vPosition.x < vBorderPercent.x ||
+            vPosition.y > 1.0 - vBorderPercent.y ||
+            vPosition.y < vBorderPercent.y;
 
           // check if the current pointcoord position is within the border
           if ((isSelected || isClusterSelected) && isInBorder) {
@@ -190,20 +219,27 @@
           // pixel is outside the border; paint with the provided texture
           } else {
 
+            // vUv == blueprint uvs, which are scaled 0:1 in each axis
+            vec2 uv = vUv;
+
+            // flip the texture right side up
+            uv.y = 1.0 - uv.y;
+
             // find the width and height of this cell in its texture (in px)
             bool isLod = vTextureIndex < -0.5;
             float w = isLod ? vWidth : vWidth/vHeight*cellPxHeight;
             float h = isLod ? vHeight : cellPxHeight;
 
-            // get the texture uv offsets
-            vec2 uv = vUv; // uv is unit uvs 0:1 in each axis
-            uv.y = 1.0 - uv.y; // flip the texture right side up
-            uv.x *= w; // scale the unit uvs to the size of this cell in px
+            // scale the unit uvs to the size of this cell in px
+            uv.x *= w;
             uv.y *= h;
 
-            uv = vOffset + uv; // vOffset is a translation of the cell in px
+            // vOffset is a translation of the cell in px
+            uv = vOffset + uv;
+
+            // scale the uvs from px coords to 0:1
             float denom = isLod ? lodAtlasPxPerSide : cellAtlasPxPerSide;
-            vec2 scaledUv = uv / denom; // scale the uvs from px coords to 0:1
+            vec2 scaledUv = uv / denom;
 
             // get the index for the selected texture
             int textureIndex = isLod ? -1 : int(vTextureIndex);
@@ -214,12 +250,12 @@
             gl_FragColor = mix(gl_FragColor, vec4(0.0), 1.0-vOpacity);
             gl_FragColor.a = 1.0;
 
-            // add a yellow wash if the cell is selected
+            // add a wash if the cell is selected
             if (vSelected > 0.5) {
               gl_FragColor = mix(gl_FragColor, vec4(selectedBorderColor, 1.0), 0.15);
             }
 
-            // add a white wash if the cell is cluster selected
+            // add a wash if the cell is cluster selected
             if (vClusterSelected > 0.5) {
               gl_FragColor = mix(gl_FragColor, vec4(clusterBorderColor, 1.0), 0.30);
             }
@@ -479,7 +515,7 @@
                   <% if (meta.tags) { %>
                     <% _.forEach(meta.tags, function(tag) { %>
                       <% if (tag != meta.category) { %>
-                        <div class='meta-tag'><%- meta.tag %></div>
+                        <div class='meta-tag'><%- tag %></div>
                       <% } %>
                     <% }) %>
                   <% } %>
