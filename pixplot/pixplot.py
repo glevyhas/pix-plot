@@ -82,6 +82,7 @@ try:
   from cuml.manifold.umap import UMAP
   print(timestamp(), 'Using cuml UMAP')
   cuml_ready = True
+  from umap import AlignedUMAP
 except:
   from umap import UMAP, AlignedUMAP
   print(timestamp(), 'Using umap-learn UMAP')
