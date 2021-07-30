@@ -67,14 +67,14 @@ def timestamp():
 try:
   from MulticoreTSNE import MulticoreTSNE as TSNE
 except:
-  print(timestamp(), 'MulticoreTSNE not available; using sklearn')
+  print(timestamp(), 'MulticoreTSNE not available; using sklearn TSNE')
   from sklearn.manifold import TSNE
 
 try:
   from hdbscan import HDBSCAN
   cluster_method = 'hdbscan'
 except:
-  print(timestamp(), 'Could not import hdbscan; using KMeans')
+  print(timestamp(), 'HDBSCAN not available; using sklearn KMeans')
   from sklearn.cluster import KMeans
   cluster_method = 'kmeans'
 
@@ -84,7 +84,7 @@ try:
   cuml_ready = True
 except:
   from umap import UMAP, AlignedUMAP
-  print(timestamp(), 'Using umap-learn UMAP')
+  print(timestamp(), 'CUML not available; using umap-learn UMAP')
   cuml_ready = False
 
 
