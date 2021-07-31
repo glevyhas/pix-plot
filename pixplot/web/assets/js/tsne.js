@@ -683,6 +683,8 @@ Layout.prototype.addEventListeners = function() {
 
 // Transition to a new layout; layout must be an attr on Cell.layouts
 Layout.prototype.set = function(layout, enableDelay) {
+  // bail if the user clicked the settings icon
+  if (layout === 'settings-icon') return;
   // disallow new transitions when we're transitioning
   if (world.state.transitioning) return;
   if (!(layout in data.json.layouts) || !(data.json.layouts[layout])) {
@@ -1299,6 +1301,8 @@ World.prototype.getTexture = function(canvas) {
   tex.generateMipmaps = false;
   tex.magFilter = THREE.LinearFilter;
   tex.minFilter = THREE.LinearFilter;
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
   return tex;
 }
 
@@ -1475,7 +1479,7 @@ World.prototype.getFragmentShader = function(obj) {
 
 World.prototype.getFragLeaf = function(texIdx, tex) {
   return 'if (textureIndex == ' + texIdx + ') {\n          ' +
-    'gl_FragColor = texture2D(' + tex + ', scaledUv);\n        }';
+    'gl_FragColor = texture2D(' + tex + ', uv);\n        }';
 }
 
 /**
