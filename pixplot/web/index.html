@@ -68,7 +68,6 @@
     attribute float textureIndex;     // index of instance's texture among all textures
 
     varying vec2 vUv;                 // u v blueprint 0:1 in each axis
-    varying vec3 vPosition;           // x y z blueprint 0:1 in x, y axes
     varying vec3 vColor;              // cell color
     varying vec2 vOffset;             // px of cell offset left, top in texture
     varying float vWidth;             // px width of cell in lod texture
@@ -88,7 +87,6 @@
       vOffset = offset;
       vOpacity = opacity;
       vSelected = selected;
-      vPosition = position;
       vTextureIndex = textureIndex;
       vClusterSelected = clusterSelected;
 
@@ -99,15 +97,15 @@
       bool bordered = selected > 0.5 || clusterSelected > 0.5;
 
       // get the border width and height
-      float borderW = 2.0 * borderWidth * width;
-      float borderH = 2.0 * borderWidth * height;
+      float borderW = borderWidth * width;
+      float borderH = borderWidth * height;
 
       // get the total cell width and height
-      float w = bordered ? width  + borderW : width;
-      float h = bordered ? height + borderH : height;
+      float w = bordered ? width  + (borderW * 2.0) : width;
+      float h = bordered ? height + (borderH * 2.0) : height;
 
       // pass the border width/height as a percent of cell width/height to the fragment shader
-      vBorderPercent = vec2(borderW / w / 2.0, borderH / h / 2.0);
+      vBorderPercent = vec2(borderW / w, borderH / h);
 
       // create a variable to store the vertex positions
       vec3 p = position;
@@ -166,7 +164,6 @@
     uniform float display;
 
     varying vec2 vUv;               // u v texture blueprint scaled 0:1 in each axis
-    varying vec3 vPosition;         // x y z blueprint scaled 0:1 in x, y axes
     varying vec3 vColor;            // cell's color (for gpu picking)
     varying vec2 vOffset;           // cell's offset in px from left, top of tex
     varying float vWidth;           // cell's width in lod tex in px
@@ -200,16 +197,19 @@
 
           // determine if pixel is selected, cluster selected, & inside border
           bool isSelected = vSelected > 0.5;
+
           bool isClusterSelected = vClusterSelected > 0.5;
-          float borderW = borderWidth / 2.0;
+
+          bool hasBorder = isSelected || isClusterSelected;
+
           bool isInBorder =
-            vPosition.x > 1.0 - vBorderPercent.x ||
-            vPosition.x < vBorderPercent.x ||
-            vPosition.y > 1.0 - vBorderPercent.y ||
-            vPosition.y < vBorderPercent.y;
+            vUv.x > 1.0 - vBorderPercent.x ||
+            vUv.x < vBorderPercent.x ||
+            vUv.y > 1.0 - vBorderPercent.y ||
+            vUv.y < vBorderPercent.y;
 
           // check if the current pointcoord position is within the border
-          if ((isSelected || isClusterSelected) && isInBorder) {
+          if (hasBorder && isInBorder) {
 
             // draw a border around lasso'd cells
             if (isSelected) gl_FragColor = vec4(selectedBorderColor, 1.0);
@@ -219,27 +219,40 @@
           // pixel is outside the border; paint with the provided texture
           } else {
 
-            // vUv == blueprint uvs, which are scaled 0:1 in each axis
+            // determine if this cell needs a LOD texture or standard atlas texture
+            bool isLod = vTextureIndex < -0.5;
+
+            // start with blueprint uvs scaled 0:1 in each axis
             vec2 uv = vUv;
 
             // flip the texture right side up
             uv.y = 1.0 - uv.y;
 
-            // find the width and height of this cell in its texture (in px)
-            bool isLod = vTextureIndex < -0.5;
-            float w = isLod ? vWidth : vWidth/vHeight*cellPxHeight;
-            float h = isLod ? vHeight : cellPxHeight;
+            // if this cell has a border make the image constant size regardless of border size
+            if (hasBorder) {
+
+              // the percent of the cell in the y/x axis to be textured (in decimal form)
+              float texturedPercentY = vBorderPercent.y * 2.0;
+              float texturedPercentX = vBorderPercent.x * 2.0;
+
+              // slide the region of the cell to be textured up & right one border width
+              uv.y = uv.y - (texturedPercentY / 2.0);
+              uv.x = uv.x - (texturedPercentX / 2.0);
+
+              // make the texture to be used a fraction as tall
+              uv.y = uv.y / (1.0 - texturedPercentY);
+              uv.x = uv.x / (1.0 - texturedPercentX);
+            }
 
             // scale the unit uvs to the size of this cell in px
-            uv.x *= w;
-            uv.y *= h;
+            uv.x *= isLod ? vWidth : vWidth / vHeight * cellPxHeight;
+            uv.y *= isLod ? vHeight : cellPxHeight;
 
             // vOffset is a translation of the cell in px
-            uv = vOffset + uv;
+            uv += vOffset;
 
-            // scale the uvs from px coords to 0:1
-            float denom = isLod ? lodAtlasPxPerSide : cellAtlasPxPerSide;
-            vec2 scaledUv = uv / denom;
+            // scale the uvs from px coords to 0:1 for shading
+            uv = uv / (isLod ? lodAtlasPxPerSide : cellAtlasPxPerSide);
 
             // get the index for the selected texture
             int textureIndex = isLod ? -1 : int(vTextureIndex);
