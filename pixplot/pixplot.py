@@ -67,7 +67,6 @@ def timestamp():
 try:
   from MulticoreTSNE import MulticoreTSNE as TSNE
 except:
-  print(timestamp(), 'MulticoreTSNE not available; using sklearn TSNE')
   from sklearn.manifold import TSNE
 
 try:
@@ -145,6 +144,7 @@ def process_images(**kwargs):
   kwargs['out_dir'] = join(kwargs['out_dir'], 'data')
   kwargs['image_paths'], kwargs['metadata'] = filter_images(**kwargs)
   kwargs['atlas_dir'] = get_atlas_data(**kwargs)
+  kwargs['vecs'] = get_inception_vectors(**kwargs)
   get_manifest(**kwargs)
   write_images(**kwargs)
   print(timestamp(), 'Done!')
@@ -410,7 +410,7 @@ def get_manifest(**kwargs):
   # specify point size scalars
   point_sizes = {}
   point_sizes['min'] = 0
-  point_sizes['grid'] = 1 / math.ceil(len(kwargs['image_paths'])**(1/2))
+  point_sizes['grid'] = 0.5 / math.ceil(len(kwargs['image_paths'])**(1/2))
   point_sizes['max'] = point_sizes['grid'] * 1.2
   point_sizes['scatter'] = point_sizes['grid'] * .2
   point_sizes['initial'] = point_sizes['scatter']
@@ -419,7 +419,7 @@ def get_manifest(**kwargs):
   # fetch the date distribution data for point sizing
   if 'date' in layouts and layouts['date']:
     date_layout = read_json(layouts['date']['labels'], **kwargs)
-    point_sizes['date'] = 1 / ((date_layout['cols']+1) * len(date_layout['labels']))
+    point_sizes['date'] = 0.5 / ((date_layout['cols']+1) * len(date_layout['labels']))
   # create manifest json
   manifest = {
     'version': get_version(),
@@ -574,7 +574,7 @@ def get_inception_vectors(**kwargs):
 
 def get_umap_layout(**kwargs):
   '''Get the x,y positions of images passed through a umap projection'''
-  vecs = get_inception_vectors(**kwargs)
+  vecs = kwargs['vecs']
   w = PCA(n_components=min(100, len(vecs))).fit_transform(vecs)
   print(timestamp(), 'Creating umap layout')
   # single model umap
@@ -584,12 +584,12 @@ def get_umap_layout(**kwargs):
     return process_multi_layout_umap(w, **kwargs)
 
 
-def process_single_layout_umap(vecs, **kwargs):
+def process_single_layout_umap(v, **kwargs):
   '''Create a single layout UMAP projection'''
   model = get_umap_model(**kwargs)
   out_path = get_path('layouts', 'umap', **kwargs)
   if cuml_ready:
-    z = model.fit(vecs).embedding_
+    z = model.fit(v).embedding_
   else:
     if os.path.exists(out_path) and kwargs['use_cache']: return out_path
     y = []
@@ -603,7 +603,7 @@ def process_single_layout_umap(vecs, **kwargs):
           else: y.append(d[i])
         y = np.array(y)
     # project the PCA space down to 2d for visualization
-    z = model.fit(vecs, y=y if np.any(y) else None).embedding_
+    z = model.fit(v, y=y if np.any(y) else None).embedding_
   return {
     'variants': [
       {
@@ -615,7 +615,7 @@ def process_single_layout_umap(vecs, **kwargs):
     ]
   }
 
-def process_multi_layout_umap(vecs, **kwargs):
+def process_multi_layout_umap(v, **kwargs):
   '''Create a multi-layout UMAP projection'''
   params = []
   for n_neighbors, min_dist in itertools.product(kwargs['n_neighbors'], kwargs['min_dist']):
@@ -628,7 +628,7 @@ def process_multi_layout_umap(vecs, **kwargs):
       'out_path': out_path,
     })
   # map each image's index to itself and create one copy of that map for each layout
-  relations_dict = {idx: idx for idx, _ in enumerate(vecs)}
+  relations_dict = {idx: idx for idx, _ in enumerate(v)}
   # determine the subset of params that have already been computed
   uncomputed_params = [i for i in params if not os.path.exists(i['out_path'])]
   # determine the filepath where this model will be saved
@@ -641,7 +641,7 @@ def process_multi_layout_umap(vecs, **kwargs):
   if os.path.exists(model_path):
     model = load_model(model_path)
     for i in uncomputed_params:
-      model.update(vecs, relations_dict.copy())
+      model.update(v, relations_dict.copy())
     # after updating, we can read the results from the end of the updated model
     for idx, i in enumerate(uncomputed_params):
       embedding = z.embeddings_[len(uncomputed_params)-idx]
@@ -655,7 +655,7 @@ def process_multi_layout_umap(vecs, **kwargs):
     )
     # fit the model on the data
     z = model.fit(
-      [vecs for _ in params],
+      [v for _ in params],
       relations=[relations_dict.copy() for _ in params[:-1]]
     )
     for idx, i in enumerate(params):
@@ -1161,7 +1161,7 @@ def get_hotspots(layouts={}, use_high_dimensional_vectors=True, **kwargs):
   '''Return the stable clusters from the condensed tree of connected components from the density graph'''
   print(timestamp(), 'Clustering data with {}'.format(cluster_method))
   if use_high_dimensional_vectors:
-    vecs = get_inception_vectors(**kwargs)
+    vecs = kwargs['vecs']
   else:
     vecs = read_json(layouts['umap']['variants'][0]['layout'], **kwargs)
   model = get_cluster_model(**kwargs)
@@ -1241,7 +1241,9 @@ def write_images(**kwargs):
     if not exists(out_dir): os.makedirs(out_dir)
     out_path = join(out_dir, filename)
     if not os.path.exists(out_path):
-      shutil.copy(i.path, out_path)
+      resized = i.resize_to_height(600)
+      resized = array_to_img(resized)
+      save_img(out_path, resized)
     # copy thumb for lod texture
     out_dir = join(kwargs['out_dir'], 'thumbs')
     if not exists(out_dir): os.makedirs(out_dir)
