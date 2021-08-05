@@ -410,7 +410,7 @@ def get_manifest(**kwargs):
   # specify point size scalars
   point_sizes = {}
   point_sizes['min'] = 0
-  point_sizes['grid'] = 0.5 / math.ceil(len(kwargs['image_paths'])**(1/2))
+  point_sizes['grid'] = 1 / math.ceil(len(kwargs['image_paths'])**(1/2))
   point_sizes['max'] = point_sizes['grid'] * 1.2
   point_sizes['scatter'] = point_sizes['grid'] * .2
   point_sizes['initial'] = point_sizes['scatter']
@@ -419,7 +419,7 @@ def get_manifest(**kwargs):
   # fetch the date distribution data for point sizing
   if 'date' in layouts and layouts['date']:
     date_layout = read_json(layouts['date']['labels'], **kwargs)
-    point_sizes['date'] = 0.5 / ((date_layout['cols']+1) * len(date_layout['labels']))
+    point_sizes['date'] = 1 / ((date_layout['cols']+1) * len(date_layout['labels']))
   # create manifest json
   manifest = {
     'version': get_version(),
