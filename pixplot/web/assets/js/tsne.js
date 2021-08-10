@@ -3759,6 +3759,77 @@ function imageToDataUrl(src, callback, mimetype) {
 }
 
 /**
+ * Attract Mode
+ **/
+
+ function AttractMode() {
+  this.delays = {
+    start: 20000, // ms of inactivity until we start the attract mode
+    nextView: 19000, // ms between hotspot visitations
+    clusterZoom: 4000, // ms between hotspot selection and zoom to images
+    showImage: 4000, // ms between arriving at a cluster and showing the first image
+    nextImage: 4000, // ms between showing the cluster's first image and showing the next
+  }
+  this.attractMode = false;
+  this.viewIndex = -1;
+  this.attractModeTimer = setTimeout(this.setAttractMode.bind(this, true), this.delays.start);
+  this.nextViewTimer = null;
+  ['click', 'mousemove', 'keydown', 'visibilitychange'].forEach(function(e) {
+    window.addEventListener(e, this.resetAttractModeTimer.bind(this));
+  }.bind(this))
+}
+
+AttractMode.prototype.resetAttractModeTimer = function() {
+  this.setAttractMode(false);
+  clearTimeout(this.attractModeTimer);
+  this.attractModeTimer = setTimeout(function() {
+    this.setAttractMode(true);
+  }.bind(this), this.delays.start);
+}
+
+AttractMode.prototype.setAttractMode = function(bool) {
+  if (bool == false) {
+    this.attractMode = false;
+    clearTimeout(this.nextViewTimer);
+  } else {
+    this.attractMode = true;
+    this.nextView();
+  }
+}
+
+AttractMode.prototype.nextView = function() {
+  modal.close();
+  this.viewIndex++;
+  if (this.viewIndex == data.hotspots.json.length) this.viewIndex = 0;
+  this.setView(this.viewIndex);
+  this.nextViewTimer = setTimeout(this.nextView.bind(this), this.delays.nextView);
+}
+
+AttractMode.prototype.setView = function(viewIndex) {
+  if (!this.attractMode) return;
+  world.flyTo(world.getInitialLocation());
+  setTimeout(function() {
+    if (!this.attractMode) return;
+    var hotspot = data.hotspots.json[this.viewIndex];
+    var imageIndex = 0;
+    data.json.images.forEach(function(i, idx) {
+      if (i === hotspot.img) imageIndex = idx;
+    })
+    // fly to the cluster
+    world.flyToCellIdx(imageIndex);
+    // show some images from this cluster
+    setTimeout(function() {
+      if (!this.attractMode) return;
+      modal.showCells(hotspot.images);
+      setTimeout(function() {
+        if (!this.attractMode) return;
+        modal.showNextCell();
+      }.bind(this), this.delays.nextImage)
+    }.bind(this), this.delays.showImage)
+  }.bind(this), this.delays.clusterZoom)
+}
+
+/**
 * Find the smallest z value among all cells
 **/
 
@@ -4024,7 +4095,6 @@ function worldToScreenCoords(pos) {
 **/
 
 window.location.href = '#';
-window.devicePixelRatio = window.devicePixelRatio || 1;
 var welcome = new Welcome();
 var webgl = new Webgl();
 var config = new Config();
@@ -4042,4 +4112,5 @@ var settings = new Settings();
 var tooltip = new Tooltip();
 var globe = new Globe();
 var data = new Data();
+var attractmode = new AttractMode();
 // vim: ts=2 sw=2 et
