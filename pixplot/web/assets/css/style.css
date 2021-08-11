@@ -1190,6 +1190,17 @@ noscript {
   background: rgba(17, 17, 17, 0.98);
   z-index: 11;
   display: none;
+  transition: opacity 0.3s;
+  animation: fade-in 0.3s forwards;
+}
+
+@keyframes fade-in {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
 }
 
 #selected-image,
@@ -1211,6 +1222,10 @@ noscript {
 
 #selected-image-modal .modal-content {
   justify-content: center;
+}
+
+#selected-image-modal .modal-top {
+  transition: opacity 0.2s;
 }
 
 #selected-image-modal .modal-top-content {
