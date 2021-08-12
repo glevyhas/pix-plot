@@ -184,7 +184,6 @@ select:disabled {
   position: absolute;
   top: 0;
   left: 0;
-  display: inline-block;
   z-index: 10;
   height: inherit;
   overflow: hidden;
@@ -193,19 +192,21 @@ select:disabled {
 
 #logo {
   width: 33px;
-  padding: 10px;
+  padding: 0 10px;
   position: relative;
-  top: 2px;
+}
+
+#app-name-container {
+  background: #444;
+  height: 100%;
 }
 
 #app-name {
   display: inline-block;
-  height: 100%;
   vertical-align: top;
-  padding: 11px 34px;
+  padding: 0 34px;
   box-sizing: border-box;
   font-weight: 300;
-  background: #444;
   color: #fff;
   font-size: 21px;
   letter-spacing: 0.1em;
@@ -216,7 +217,7 @@ select:disabled {
 .tagline {
   color: #999;
   font-size: 16px;
-  padding: 12px 25px 20px 25px;
+  padding: 0 25px;
   font-weight: 400;
   letter-spacing: .025em;
   display: inline-block;
