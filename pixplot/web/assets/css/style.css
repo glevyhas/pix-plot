@@ -216,7 +216,7 @@ select:disabled {
 .tagline {
   color: #999;
   font-size: 16px;
-  padding: 20px 25px;
+  padding: 12px 25px 20px 25px;
   font-weight: 400;
   letter-spacing: .025em;
   display: inline-block;
@@ -226,7 +226,6 @@ select:disabled {
   background: inherit;
   position: relative;
   z-index: 1;
-  display: none;
 }
 
 @media(max-width: 335px) {
