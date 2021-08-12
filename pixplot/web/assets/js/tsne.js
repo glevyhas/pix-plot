@@ -2605,7 +2605,6 @@ Modal.prototype.showCells = function(cellIndices, cellIdx) {
 }
 
 Modal.prototype.close = function() {
-  window.location.href = '#';
   var elem = document.querySelector('#selected-image-modal .modal-top');
   if (!elem) return;
   elem.style.opacity = 0;
@@ -4168,7 +4167,6 @@ function worldToScreenCoords(pos) {
 * Main
 **/
 
-window.location.href = '#';
 var welcome = new Welcome();
 var webgl = new Webgl();
 var config = new Config();
