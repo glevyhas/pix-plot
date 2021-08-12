@@ -3786,7 +3786,7 @@ function imageToDataUrl(src, callback, mimetype) {
     betweenLightbox: 3000, // ms between images in the lightbox
     afterLightbox: 2000, // ms after closing lightbox until next view
   }
-  this.disabled = true; // if true disables attract mode
+  this.disabled = !window.location.href.includes('#demo'); // if true disables attract mode
   this.active = false; // true if we're actively in attract mode
   this.hotspot = null; // element in data.hotspots.json we're showing
   this.viewIndex = -1; // index of hotspot we're currently showing
