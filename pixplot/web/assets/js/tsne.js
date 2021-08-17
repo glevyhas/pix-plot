@@ -2591,6 +2591,8 @@ Modal.prototype.showCells = function(cellIndices, cellIdx) {
     target.style.display = 'block';
     // inject the loaded image into the DOM
     document.querySelector('#selected-image-target').appendChild(json.image);
+    var elem = document.querySelector('#selected-image-modal .modal-top');
+    elem.style.opacity = 1;
   }
   // prepare the modal
   var image = new Image();
@@ -2608,13 +2610,18 @@ Modal.prototype.close = function() {
   window.location.href = '#';
   var elem = document.querySelector('#selected-image-modal .modal-top');
   if (!elem) return;
-  elem.style.opacity = 0;
+  this.fadeOutContent();
   setTimeout(function() {
     document.querySelector('#selected-image-modal').style.display = 'none';
     this.cellIndices = [];
     this.cellIdx = null;
     this.state.displayed = false;
   }.bind(this), 230)
+}
+
+Modal.prototype.fadeOutContent = function() {
+  var elem = document.querySelector('#selected-image-modal .modal-top');
+  elem.style.opacity = 0;
 }
 
 Modal.prototype.addEventListeners = function() {
@@ -2640,11 +2647,9 @@ Modal.prototype.showPreviousCell = function() {
   var cellIdx = this.cellIdx > 0
     ? this.cellIdx - 1
     : this.cellIndices.length-1;
-  var elem = document.querySelector('#selected-image-modal .modal-top');
-  elem.style.opacity = 0;
+  this.fadeOutContent();
   setTimeout(function() {
     this.showCells(this.cellIndices, cellIdx);
-    elem.style.opacity = 1;
   }.bind(this), 250)
 }
 
@@ -2653,10 +2658,8 @@ Modal.prototype.showNextCell = function() {
   var cellIdx = this.cellIdx < this.cellIndices.length-1
     ? this.cellIdx + 1
     : 0;
-  var elem = document.querySelector('#selected-image-modal .modal-top');
-  elem.style.opacity = 0;
+  this.fadeOutContent();
   setTimeout(function() {
-    elem.style.opacity = 1;
     this.showCells(this.cellIndices, cellIdx);
   }.bind(this), 250)
 }
