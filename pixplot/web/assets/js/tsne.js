@@ -2590,7 +2590,7 @@ Modal.prototype.showCells = function(cellIndices, cellIdx) {
     target.innerHTML = _.template(template)(templateData);
     target.style.display = 'block';
     // inject the loaded image into the DOM
-    document.querySelector('#selected-image-parent').appendChild(json.image);
+    document.querySelector('#selected-image-target').appendChild(json.image);
   }
   // prepare the modal
   var image = new Image();
@@ -2605,6 +2605,7 @@ Modal.prototype.showCells = function(cellIndices, cellIdx) {
 }
 
 Modal.prototype.close = function() {
+  window.location.href = '#';
   var elem = document.querySelector('#selected-image-modal .modal-top');
   if (!elem) return;
   elem.style.opacity = 0;
@@ -3785,7 +3786,7 @@ function imageToDataUrl(src, callback, mimetype) {
     betweenLightbox: 3000, // ms between images in the lightbox
     afterLightbox: 2000, // ms after closing lightbox until next view
   }
-  this.disabled = !window.location.href.includes('#demo'); // if true disables attract mode
+  this.disabled = true; // if true disables attract mode
   this.active = false; // true if we're actively in attract mode
   this.hotspot = null; // element in data.hotspots.json we're showing
   this.viewIndex = -1; // index of hotspot we're currently showing
@@ -4167,6 +4168,7 @@ function worldToScreenCoords(pos) {
 * Main
 **/
 
+window.location.href = '#';
 var welcome = new Welcome();
 var webgl = new Webgl();
 var config = new Config();

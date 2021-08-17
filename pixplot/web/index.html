@@ -502,13 +502,16 @@
         <div class='modal-x'>✕</div>
         <div class='modal-top'>
           <div id='selected-image-parent' class='modal-top-content'>
-            <div class='icons'>
-              <a target='_blank' id='eye-icon' href='<%- meta.permalink || meta.src %>'>
-                <img src='assets/images/icons/eye-icon.png' alt='eye icon' />
-              </a>
-              <a id='download-icon' href='<%- meta.src || "#" %>' download>
-                <img src='assets/images/icons/download-icon.png' alt='download icon' />
-              </a>
+            <div id='selected-image-target'>
+
+              <div class='icons'>
+                <a target='_blank' id='eye-icon' href='<%- meta.permalink || meta.src %>'>
+                  <img src='assets/images/icons/eye-icon.png' alt='eye icon' />
+                </a>
+                <a id='download-icon' href='<%- meta.src || "#" %>' download>
+                  <img src='assets/images/icons/download-icon.png' alt='download icon' />
+                </a>
+              </div>
             </div>
             <% if (multiImage) { %>
               <img id='caret-left' class='image-caret' src='assets/images/icons/chevron.png' onclick='modal.showPreviousCell()'>

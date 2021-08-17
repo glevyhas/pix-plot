@@ -217,14 +217,14 @@ select:disabled {
 .tagline {
   color: #999;
   font-size: 16px;
-  padding: 0 25px;
+  padding: 5px 25px;
   font-weight: 400;
   letter-spacing: .025em;
   display: inline-block;
   vertical-align: top;
   height: 100%;
   box-sizing: border-box;
-  background: inherit;
+  background: #333333;
   position: relative;
   z-index: 1;
 }
@@ -1216,6 +1216,10 @@ noscript {
   z-index: 100;
 }
 
+#selected-image-target {
+  height: 100%;
+}
+
 #previous-image {
   display: none;
 }
@@ -1230,12 +1234,11 @@ noscript {
 
 #selected-image-modal .modal-top-content {
   background: transparent;
-  height: 100%;
   position: relative;
   padding: 0;
   text-align: center;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   justify-content: center;
   align-items: center;
 }
@@ -1256,11 +1259,11 @@ noscript {
 }
 
 #caret-left {
-  left: -150px;
+  left: -100px;
 }
 
 #caret-right {
-  right: -150px;
+  right: -100px;
   transform: rotate(180deg);
 }
 
@@ -1271,10 +1274,10 @@ noscript {
 .icons {
   display: inline-block;
   width: 40px;
-  position: absolute;
-  bottom: 25px;
-  right: -50px;
   white-space: initial;
+  position: absolute;
+  bottom: 0px;
+  right: -55px;
 }
 
 .icons a,
