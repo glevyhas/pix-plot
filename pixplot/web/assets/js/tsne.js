@@ -48,7 +48,7 @@ function Config() {
     gzipped: false,
   }
   this.mobileBreakpoint = 600;
-  this.isSmallDevice = 'ontouchstart' in document.documentElement;
+  this.isTouchDevice = 'ontouchstart' in document.documentElement;
   // texture buffer pixel *limits* are independent of memory *size*
   var smallTexSize = Math.min(2048, webgl.limits.textureSize) // a small, safe size
   // Try for max (8192/128)^2 = (2^6)^2 = 4096 LOD images (or smaller safe size)
@@ -58,8 +58,8 @@ function Config() {
     cell: 32, // height of each cell in atlas
     lodCell: 128, // height of each cell in LOD
     atlas: smallTexSize, // height of each atlas
-    texture: this.isSmallDevice ? smallTexSize : webgl.limits.textureSize,
-    lodTexture: this.isSmallDevice ? smallTexSize : bigTexSize, // one detail texture buffer
+    texture: this.isTouchDevice ? smallTexSize : webgl.limits.textureSize,
+    lodTexture: this.isTouchDevice ? smallTexSize : bigTexSize, // one detail texture buffer
     points: { // the follow values are set by Data()
       min: 0, // min point size
       max: 0, // max point size
@@ -158,7 +158,9 @@ Data.prototype.parseManifest = function(json) {
   this.textureCount = Math.ceil(json.atlas.count / config.atlasesPerTex);
   this.layouts = json.layouts;
   this.hotspots = new Hotspots();
-  layout.init(Object.keys(this.layouts));
+  layout.init(Object.keys(this.layouts).filter(function(i) {
+    return this.layouts[i];
+  }.bind(this)));
   // load the filter options if metadata present
   if (json.metadata) filters.loadFilters();
   // load the geographic features if geographic layout present
@@ -566,7 +568,7 @@ Layout.prototype.initializeMobileLayoutOptions = function() {
 }
 
 Layout.prototype.showHideIcons = function() {
-  var display = config.isSmallDevice || config.isNarrowDevice ? 'none' : 'inline-block';
+  var display = config.isTouchDevice || config.isNarrowDevice ? 'none' : 'inline-block';
   var icons = this.elems.icons.querySelectorAll('img');
   for (var i=0; i<icons.length; i++) {
     var layout = icons[i].getAttribute('id').replace('layout-', '');
@@ -1717,7 +1719,7 @@ World.prototype.setMode = function(mode) {
 **/
 
 World.prototype.addDeviceInteractionGuide = function() {
-  if (!config.isSmallDevice) return;
+  if (!config.isTouchDevice) return;
   var elem = this.elems.mobileInteractions;
   var button = elem.querySelector('button');
   button.addEventListener('click', function() {
@@ -1782,7 +1784,7 @@ Lasso.prototype.handleMouseDown = function(e) {
   if (!keyboard.shiftPressed() && !keyboard.commandPressed()) {
     this.points = [];
   }
-  this.mousedownCoords = {x: (e.clientX || e.pageX), y: (e.clientY || e.pageY)};
+  this.mousedownCoords = getEventClientCoords(e);
   this.setCapturing(true);
   this.setFrozen(false);
 }
@@ -1799,8 +1801,9 @@ Lasso.prototype.handleMouseUp = function(e) {
   // prevent the lasso points from changing
   this.setFrozen(true);
   // if the user registered a click, clear the lasso
-  if ((e.clientX || e.pageX) == this.mousedownCoords.x &&
-      (e.clientY || e.pageY) == this.mousedownCoords.y &&
+  var coords = getEventClientCoords(e);
+  if (coords.x == this.mousedownCoords.x &&
+      coords.y == this.mousedownCoords.y &&
       !keyboard.shiftPressed() &&
       !keyboard.commandPressed()) {
     this.clear();
@@ -2232,21 +2235,6 @@ Picker.prototype.onMouseDown = function(e) {
   this.mouseDown.y = click.y;
 }
 
-// get the x, y offsets of a click within the canvas
-Picker.prototype.getClickOffsets = function(e) {
-  var elem = e.target;
-  var position = {
-    x: e.clientX ? e.clientX : e.pageX,
-    y: e.clientY ? e.clientY : e.pageY,
-  };
-  while (elem.offsetParent) {
-    position.x -= elem.offsetLeft - elem.scrollLeft;
-    position.y -= elem.offsetTop - elem.scrollTop;
-    elem = elem.offsetParent;
-  }
-  return position;
-}
-
 // on canvas click, show detailed modal with clicked image
 Picker.prototype.onMouseUp = function(e) {
   // if click hit background, close the modal
@@ -2263,7 +2251,7 @@ Picker.prototype.onMouseUp = function(e) {
   var cellIdx = this.select({x: click.x, y: click.y});
   if (cellIdx === -1) return; // cellIdx == -1 means the user didn't click on a cell
   if (e.target.id !== 'pixplot-canvas') return; // whether the click hit the gl canvas
-  var allowedDelta = config.isSmallDevice ? 10 : 0;
+  var allowedDelta = config.isTouchDevice ? 10 : 0;
   if (Math.abs(click.x - this.mouseDown.x) > allowedDelta ||
       Math.abs(click.y - this.mouseDown.y) > allowedDelta) return;
   // if we're in select mode, conditionally un/select the clicked cell
@@ -2277,6 +2265,18 @@ Picker.prototype.onMouseUp = function(e) {
   return world.camera.position.z > config.pickerMaxZ
     ? world.flyToCellIdx(cellIdx)
     : modal.showCells([cellIdx]);
+}
+
+// get the x, y offsets of a click within the canvas
+Picker.prototype.getClickOffsets = function(e) {
+  var elem = e.target;
+  var position = getEventClientCoords(e);
+  while (elem.offsetParent) {
+    position.x -= elem.offsetLeft - elem.scrollLeft;
+    position.y -= elem.offsetTop - elem.scrollTop;
+    elem = elem.offsetParent;
+  }
+  return position;
 }
 
 // get the mesh in which to render picking elements
@@ -2590,7 +2590,9 @@ Modal.prototype.showCells = function(cellIndices, cellIdx) {
     target.innerHTML = _.template(template)(templateData);
     target.style.display = 'block';
     // inject the loaded image into the DOM
-    document.querySelector('#selected-image-parent').appendChild(json.image);
+    document.querySelector('#selected-image-target').appendChild(json.image);
+    var elem = document.querySelector('#selected-image-modal .modal-top');
+    elem.style.opacity = 1;
   }
   // prepare the modal
   var image = new Image();
@@ -2606,10 +2608,20 @@ Modal.prototype.showCells = function(cellIndices, cellIdx) {
 
 Modal.prototype.close = function() {
   window.location.href = '#';
-  document.querySelector('#selected-image-modal').style.display = 'none';
-  this.cellIndices = [];
-  this.cellIdx = null;
-  this.state.displayed = false;
+  var elem = document.querySelector('#selected-image-modal .modal-top');
+  if (!elem) return;
+  this.fadeOutContent();
+  setTimeout(function() {
+    document.querySelector('#selected-image-modal').style.display = 'none';
+    this.cellIndices = [];
+    this.cellIdx = null;
+    this.state.displayed = false;
+  }.bind(this), 230)
+}
+
+Modal.prototype.fadeOutContent = function() {
+  var elem = document.querySelector('#selected-image-modal .modal-top');
+  elem.style.opacity = 0;
 }
 
 Modal.prototype.addEventListeners = function() {
@@ -2635,7 +2647,10 @@ Modal.prototype.showPreviousCell = function() {
   var cellIdx = this.cellIdx > 0
     ? this.cellIdx - 1
     : this.cellIndices.length-1;
-  this.showCells(this.cellIndices, cellIdx);
+  this.fadeOutContent();
+  setTimeout(function() {
+    this.showCells(this.cellIndices, cellIdx);
+  }.bind(this), 250)
 }
 
 Modal.prototype.showNextCell = function() {
@@ -2643,7 +2658,10 @@ Modal.prototype.showNextCell = function() {
   var cellIdx = this.cellIdx < this.cellIndices.length-1
     ? this.cellIdx + 1
     : 0;
-  this.showCells(this.cellIndices, cellIdx);
+  this.fadeOutContent();
+  setTimeout(function() {
+    this.showCells(this.cellIndices, cellIdx);
+  }.bind(this), 250)
 }
 
 /**
@@ -3759,6 +3777,116 @@ function imageToDataUrl(src, callback, mimetype) {
 }
 
 /**
+ * Attract Mode
+ **/
+
+ function AttractMode() {
+  this.delays = {
+    initialize: 60000, // ms of inactivity required to start attract mode
+    layoutChange: 4000, // ms of inactivity between zooming out and changing layout
+    clusterZoom: 4000, // ms between changing layout and flying to a cluster
+    beforeLightbox: 4000, // ms after zoom until we show the lightbox
+    betweenLightbox: 3000, // ms between images in the lightbox
+    afterLightbox: 2000, // ms after closing lightbox until next view
+  }
+  this.disabled = true; // if true disables attract mode
+  this.active = false; // true if we're actively in attract mode
+  this.hotspot = null; // element in data.hotspots.json we're showing
+  this.viewIndex = -1; // index of hotspot we're currently showing
+  this.eventIndex = -1; // index of the hotspot image we're currently showing
+  this.nImages = 4; // total number of images from hotspot to show
+  this.timeout = null; // current timeout
+  this.activeTimer = this.disabled
+    ? null
+    : setTimeout(this.setActive.bind(this, true), this.delays.initialize);
+  // reset the active timer on the following events
+  ['click', 'mousemove', 'keydown', 'visibilitychange'].forEach(function(e) {
+    window.addEventListener(e, this.resetActiveTimer.bind(this));
+  }.bind(this))
+}
+
+AttractMode.prototype.resetActiveTimer = function() {
+  this.setActive(false);
+  clearTimeout(this.timeout);
+  clearTimeout(this.activeTimer);
+  if (this.disabled) return;
+  modal.close();
+  this.activeTimer = setTimeout(function() {
+    this.setActive(true);
+  }.bind(this), this.delays.initialize);
+}
+
+AttractMode.prototype.setActive = function(bool) {
+  if (bool == false) {
+    this.active = false;
+  } else {
+    this.active = true;
+    this.eventIndex = -3;
+    this.nextEvent();
+  }
+}
+
+AttractMode.prototype.nextEvent = function() {
+  if (!this.active || this.disabled) return;
+  // layout change
+  if (this.eventIndex === -3) {
+    this.viewIndex = this.viewIndex+1 < data.hotspots.json.length-1 ? this.viewIndex+1 : 0;
+    this.hotspot = data.hotspots.json[this.viewIndex];
+    var coords = world.getInitialLocation();
+    world.flyTo({x: coords.x, y: coords.y, z: coords.z-0.35});
+    this.timeout = setTimeout(function() {
+      var layoutIndex = layout.options.indexOf(layout.selected);
+      var nextLayoutIndex = layoutIndex+1 < layout.options.length ? layoutIndex+1 : 0;
+      layout.set(layout.options[nextLayoutIndex]);
+      this.eventIndex++;
+      this.nextEvent();
+    }.bind(this), this.delays.layoutChange)
+  // first image in sequence
+  } else if (this.eventIndex === -2) {
+    this.timeout = setTimeout(function() {
+      if (!this.active || this.disabled) return;
+      // find the index of the hotspot image
+      var index = 0;
+      data.json.images.forEach(function(i, idx) {
+        if (i === this.hotspot.img) index = idx;
+      }.bind(this));
+      // fly to the cluster
+      world.flyToCellIdx(index);
+      this.eventIndex++;
+      this.nextEvent();
+    }.bind(this), this.delays.clusterZoom);
+  } else if (this.eventIndex === -1) {
+    this.timeout = setTimeout(function() {
+      if (!this.active || this.disabled) return;
+      modal.showCells(this.hotspot.images);
+      this.eventIndex++;
+      this.nextEvent();
+    }.bind(this), this.delays.beforeLightbox)
+  // between first and last image in sequence
+  } else if (this.eventIndex < this.nImages) {
+    this.timeout = setTimeout(function() {
+      if (!this.active || this.disabled) return;
+      modal.showNextCell();
+      this.eventIndex++;
+      this.nextEvent();
+    }.bind(this), this.delays.betweenLightbox)
+  // images are now finished, close the lightbox and wait
+  } else if (this.eventIndex === this.nImages) {
+    modal.close();
+    this.timeout = setTimeout(function() {
+      if (!this.active || this.disabled) return;
+      modal.close();
+      this.eventIndex++;
+      this.nextEvent();
+    }.bind(this), this.delays.betweenLightbox)
+  // we've waited after closing the lightbox; go to the next view/hotspot
+  } else if (this.eventIndex > this.nImages) {
+    this.eventIndex = -3;
+    this.nextEvent();
+  }
+}
+
+/**
 * Find the smallest z value among all cells
 **/
 
@@ -3976,10 +4104,30 @@ function pointInPolygon(point, polygon) {
 * Coordinate conversions
 **/
 
+function getEventClientCoords(e) {
+  return {
+    x: e.touches && e.touches[0] && 'clientX' in e.touches[0]
+      ? e.touches[0].clientX
+      : e.changedTouches && e.changedTouches[0] && 'clientX' in e.changedTouches[0]
+      ? e.changedTouches[0].clientX
+      : e.clientX
+      ? e.clientX
+      : e.pageX,
+    y: e.touches && e.touches[0] && 'clientY' in e.touches[0]
+      ? e.touches[0].clientY
+      : e.changedTouches && e.changedTouches[0] && 'clientY' in e.changedTouches[0]
+      ? e.changedTouches[0].clientY
+      : e.clientY
+      ? e.clientY
+      : e.pageY,
+  }
+}
+
 function getEventWorldCoords(e) {
   var rect = e.target.getBoundingClientRect(),
-      dx = (e.clientX || e.pageX) - rect.left,
-      dy = (e.clientY || e.pageY) - rect.top,
+      coords = getEventClientCoords(e),
+      dx = coords.x - rect.left,
+      dy = coords.y - rect.top,
       offsets = {x: dx, y: dy};
   return screenToWorldCoords(offsets);
 }
@@ -4024,7 +4172,6 @@ function worldToScreenCoords(pos) {
 **/
 
 window.location.href = '#';
-window.devicePixelRatio = window.devicePixelRatio || 1;
 var welcome = new Welcome();
 var webgl = new Webgl();
 var config = new Config();
@@ -4042,4 +4189,5 @@ var settings = new Settings();
 var tooltip = new Tooltip();
 var globe = new Globe();
 var data = new Data();
+var attractmode = new AttractMode();
 // vim: ts=2 sw=2 et

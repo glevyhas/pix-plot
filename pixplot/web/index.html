@@ -359,12 +359,16 @@
     <!-- Header -->
     <div id='header-container'>
       <header id='header' class='no-highlight'></header>
-      <div id='header-brand'>
+      <div id='header-brand' class='row align-center'>
         <a href='https://dhlab.yale.edu' target='_blank'>
           <img id='logo' src='assets/images/dhlab-logo.svg' alt='DHLab logo' />
         </a>
-        <div id='app-name'>PixPlot</div>
-        <div class='tagline'>Image Fields in a Local Collection</div>
+        <a id='app-name-container' class='row align-center' href='https://github.com/YaleDHLab/pix-plot'>
+          <div id='app-name'>PixPlot</div>
+        </a>
+        <div class='row align-center'>
+          <div class='tagline'>Image Fields in a Local Collection</div>
+        </div>
       </div>
       <div id='header-controls'>
         <div id='header-controls-top' class='no-highlight'>
@@ -497,7 +501,8 @@
       <div class='modal-content'>
         <div class='modal-x'>✕</div>
         <div class='modal-top'>
-          <div id='selected-image-parent' class='modal-top-content'>
+          <div id='selected-image-container'>
+            <div id='selected-image-target'></div>
             <div class='icons'>
               <a target='_blank' id='eye-icon' href='<%- meta.permalink || meta.src %>'>
                 <img src='assets/images/icons/eye-icon.png' alt='eye icon' />
