@@ -152,7 +152,7 @@ Data.prototype.parseManifest = function(json) {
   // update the point size DOM element
   world.elems.pointSize.min = 0;
   world.elems.pointSize.max = config.size.points.max;
-  world.elems.pointSize.value = config.size.points.initial;
+  world.elems.pointSize.value = config.size.points.initial / window.devicePixelRatio;
   // set number of atlases and textures
   this.atlasCount = json.atlas.count;
   this.textureCount = Math.ceil(json.atlas.count / config.atlasesPerTex);
@@ -762,7 +762,7 @@ Layout.prototype.setPointScalar = function() {
   if (l == 'geographic') size = config.size.points.geographic;
   if (l == 'date') size = config.size.points.date;
   if (size) {
-    world.elems.pointSize.value = size;
+    world.elems.pointSize.value = size / window.devicePixelRatio;
     var scale = world.getPointScale();
     world.setUniform('targetScale', scale);
   }
@@ -4024,7 +4024,7 @@ function worldToScreenCoords(pos) {
 **/
 
 window.location.href = '#';
-window.devicePixelRatio = Math.min(window.devicePixelRatio, 2);
+window.devicePixelRatio = window.devicePixelRatio || 1;
 var welcome = new Welcome();
 var webgl = new Webgl();
 var config = new Config();
