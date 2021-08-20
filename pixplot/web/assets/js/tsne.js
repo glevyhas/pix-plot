@@ -2607,7 +2607,6 @@ Modal.prototype.showCells = function(cellIndices, cellIdx) {
 }
 
 Modal.prototype.close = function() {
-  window.location.href = '#';
   var elem = document.querySelector('#selected-image-modal .modal-top');
   if (!elem) return;
   this.fadeOutContent();
@@ -3789,7 +3788,7 @@ function imageToDataUrl(src, callback, mimetype) {
     betweenLightbox: 3000, // ms between images in the lightbox
     afterLightbox: 2000, // ms after closing lightbox until next view
   }
-  this.disabled = true; // if true disables attract mode
+  this.disabled = !window.location.href.includes('demo'); // if true disables attract mode
   this.active = false; // true if we're actively in attract mode
   this.hotspot = null; // element in data.hotspots.json we're showing
   this.viewIndex = -1; // index of hotspot we're currently showing
@@ -3810,7 +3809,6 @@ AttractMode.prototype.resetActiveTimer = function() {
   clearTimeout(this.timeout);
   clearTimeout(this.activeTimer);
   if (this.disabled) return;
-  modal.close();
   this.activeTimer = setTimeout(function() {
     this.setActive(true);
   }.bind(this), this.delays.initialize);
@@ -4171,7 +4169,6 @@ function worldToScreenCoords(pos) {
 * Main
 **/
 
-window.location.href = '#';
 var welcome = new Welcome();
 var webgl = new Webgl();
 var config = new Config();
