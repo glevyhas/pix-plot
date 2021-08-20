@@ -1006,21 +1006,26 @@ def get_categorical_boxes(group_counts, margin=2):
   @kwarg int margin: space between boxes in the 2D layout
   @returns [Box] an array of Box() objects; one per level in `group_counts`
   '''
+  group_counts = sorted(group_counts, reverse=True)
   boxes = []
   for i in group_counts:
-    x = y = math.ceil(i**(1/2))
-    boxes.append(Box(i, x, y, None, None))
+    w = h = math.ceil(i**(1/2))
+    boxes.append(Box(i, w, h, None, None))
   # find the position along x axis where we want to create a break
-  wrap = sum([i.cells for i in boxes])**(1/2)
-  # find the valid positions on the y axis
+  wrap = math.floor(sum([i.cells for i in boxes])**(1/2)) - (2 * margin)
+    # find the valid positions on the y axis
   y = margin
   y_spots = []
-  for idx, i in enumerate(boxes):
-    if (y + i.h) <= wrap:
+  for i in boxes:
+    if (y + i.h + margin) <= wrap:
       y_spots.append(y)
-      y += i.h+margin
+      y += i.h + margin
+    else:
+      y_spots.append(y)
+      break
+  # get a list of lists where sublists contain elements at the same y position
   y_spot_index = 0
-  for idx, i in enumerate(boxes):
+  for i in boxes:
     # find the y position
     y = y_spots[y_spot_index]
     # find members with this y position
