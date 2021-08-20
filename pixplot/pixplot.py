@@ -1013,7 +1013,7 @@ def get_categorical_boxes(group_counts, margin=2):
     boxes.append(Box(i, w, h, None, None))
   # find the position along x axis where we want to create a break
   wrap = math.floor(sum([i.cells for i in boxes])**(1/2)) - (2 * margin)
-    # find the valid positions on the y axis
+  # find the valid positions on the y axis
   y = margin
   y_spots = []
   for i in boxes:
