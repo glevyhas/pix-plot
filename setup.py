@@ -41,7 +41,7 @@ setup(
     'python-dateutil>=2.8.0',
     'scikit-learn==0.24.2',
     'scipy==1.4.0',
-    'tensorflow==2.5.0',
+    'tensorflow==2.5.1',
     'tqdm==4.61.1',
     'umap-learn==0.5.1',
     'yale-dhlab-rasterfairy>=1.0.3',
