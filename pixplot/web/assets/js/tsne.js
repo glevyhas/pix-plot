@@ -4152,8 +4152,7 @@ function worldToScreenCoords(pos) {
   var s = getCanvasSize(),
       w = s.w / 2,
       h = s.h / 2,
-      vec = new THREE.Vector3(pos.x, pos.y, pos.z || 0),
-      canvas = document.querySelector('#pixplot-canvas');
+      vec = new THREE.Vector3(pos.x, pos.y, pos.z || 0);
   vec.project(world.camera);
   vec.x =  (vec.x * w) + w;
   vec.y = -(vec.y * h) + h;
