@@ -1,101 +1,112 @@
 from __future__ import division
 import warnings; warnings.filterwarnings('ignore')
-from tensorflow.keras.preprocessing.image import save_img, img_to_array, array_to_img
-from tensorflow.keras.applications.inception_v3 import preprocess_input
-from tensorflow.keras.applications import InceptionV3, imagenet_utils
+
+##
+# Unconditional imports
+##
+
 from os.path import basename, join, exists, dirname, realpath
-from tensorflow.keras.preprocessing.image import load_img
-from sklearn.metrics import pairwise_distances_argmin_min
-from collections import defaultdict, namedtuple
-from dateutil.parser import parse as parse_date
-from sklearn.preprocessing import minmax_scale
-from pointgrid import align_points_to_grid
-from tensorflow.keras.models import Model
-from scipy.spatial.distance import cdist
 from distutils.dir_util import copy_tree
-from sklearn.decomposition import PCA
-from iiif_downloader import Manifest
-import tensorflow.keras.backend as K
-from rasterfairy import coonswarp
-from scipy.stats import kde
-from PIL import ImageFile
-import tensorflow as tf
-import multiprocessing
-from tqdm import tqdm
 import pkg_resources
-import rasterfairy
-import numpy as np
-import itertools
 import datetime
-import operator
 import argparse
-import pickle
-import random
 import shutil
 import glob2
-import copy
 import uuid
-import math
-import gzip
-import json
 import sys
-import csv
 import os
-
-##
-# Python 2 vs 3 imports
-##
-
-try:
-  from urllib.parse import unquote # python 3
-except:
-  from urllib import unquote # python 2
-
-try:
-  from urllib.request import retrieve as download_function # python 3
-except:
-  from urllib.request import urlretrieve as download_function # python 2
-
-##
-# Conditional imports
-##
 
 def timestamp():
   '''Return a string for printing the current time'''
   return str(datetime.datetime.now()) + ':'
 
-try:
-  from MulticoreTSNE import MulticoreTSNE as TSNE
-except:
-  from sklearn.manifold import TSNE
+##
+# Image processing imports
+##
 
-try:
-  from hdbscan import HDBSCAN
-  cluster_method = 'hdbscan'
-except:
-  print(timestamp(), 'HDBSCAN not available; using sklearn KMeans')
-  from sklearn.cluster import KMeans
-  cluster_method = 'kmeans'
+if '--copy_web_only' not in sys.argv:
 
-try:
-  from cuml.manifold.umap import UMAP
-  print(timestamp(), 'Using cuml UMAP')
-  cuml_ready = True
-  from umap import AlignedUMAP
-except:
-  from umap import UMAP, AlignedUMAP
-  print(timestamp(), 'CUML not available; using umap-learn UMAP')
-  cuml_ready = False
+  from tensorflow.keras.preprocessing.image import save_img, img_to_array, array_to_img
+  from tensorflow.keras.applications.inception_v3 import preprocess_input
+  from tensorflow.keras.applications import InceptionV3, imagenet_utils
+  from sklearn.metrics import pairwise_distances_argmin_min
+  from tensorflow.keras.preprocessing.image import load_img
+  from collections import defaultdict, namedtuple
+  from dateutil.parser import parse as parse_date
+  from sklearn.preprocessing import minmax_scale
+  from pointgrid import align_points_to_grid
+  from tensorflow.keras.models import Model
+  from scipy.spatial.distance import cdist
+  from sklearn.decomposition import PCA
+  import tensorflow.keras.backend as K
+  from iiif_downloader import Manifest
+  from rasterfairy import coonswarp
+  from tensorflow import compat
+  from scipy.stats import kde
+  from PIL import ImageFile
+  import multiprocessing
+  from tqdm import tqdm
+  import rasterfairy
+  import numpy as np
+  import itertools
+  import operator
+  import pickle
+  import random
+  import copy
+  import math
+  import gzip
+  import json
+  import csv
 
+  ##
+  # Python 2 vs 3 imports
+  ##
 
-# handle dynamic GPU memory allocation
-tf_config = tf.compat.v1.ConfigProto()
-tf_config.gpu_options.allow_growth = True
-tf_config.log_device_placement = True
-sess = tf.compat.v1.Session(config=tf_config)
+  try:
+    from urllib.parse import unquote # python 3
+  except:
+    from urllib import unquote # python 2
 
-# handle truncated images in PIL (managed by Pillow)
-ImageFile.LOAD_TRUNCATED_IMAGES = True
+  try:
+    from urllib.request import retrieve as download_function # python 3
+  except:
+    from urllib.request import urlretrieve as download_function # python 2
+
+  ##
+  # Optional install imports
+  ##
+
+  try:
+    from MulticoreTSNE import MulticoreTSNE as TSNE
+  except:
+    from sklearn.manifold import TSNE
+
+  try:
+    from hdbscan import HDBSCAN
+    cluster_method = 'hdbscan'
+  except:
+    print(timestamp(), 'HDBSCAN not available; using sklearn KMeans')
+    from sklearn.cluster import KMeans
+    cluster_method = 'kmeans'
+
+  try:
+    from cuml.manifold.umap import UMAP
+    print(timestamp(), 'Using cuml UMAP')
+    cuml_ready = True
+    from umap import AlignedUMAP
+  except:
+    from umap import UMAP, AlignedUMAP
+    print(timestamp(), 'CUML not available; using umap-learn UMAP')
+    cuml_ready = False
+
+  # handle dynamic GPU memory allocation
+  tf_config = compat.v1.ConfigProto()
+  tf_config.gpu_options.allow_growth = True
+  tf_config.log_device_placement = True
+  sess = compat.v1.Session(config=tf_config)
+
+  # handle truncated images in PIL (managed by Pillow)
+  ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 '''
 NB: Keras Image class objects return image.size as w,h
@@ -138,9 +149,9 @@ config = {
 def process_images(**kwargs):
   '''Main method for processing user images and metadata'''
   kwargs = preprocess_kwargs(**kwargs)
-  np.random.seed(kwargs['seed'])
-  tf.compat.v1.set_random_seed(kwargs['seed'])
   copy_web_assets(**kwargs)
+  np.random.seed(kwargs['seed'])
+  compat.v1.set_random_seed(kwargs['seed'])
   kwargs['out_dir'] = join(kwargs['out_dir'], 'data')
   kwargs['image_paths'], kwargs['metadata'] = filter_images(**kwargs)
   kwargs['atlas_dir'] = get_atlas_data(**kwargs)
@@ -165,12 +176,14 @@ def copy_web_assets(**kwargs):
   copy_tree(src, dest)
   # write version numbers into output
   for i in ['index.html', os.path.join('assets', 'js', 'tsne.js')]:
-    path = os.path.join(dest, i)
+    path = join(dest, i)
     with open(path, 'r') as f:
       f = f.read().replace('VERSION_NUMBER', get_version())
       with open(path, 'w') as out:
         out.write(f)
-  if kwargs['copy_web_only']: sys.exit()
+  if kwargs['copy_web_only']:
+    print(timestamp(), 'Done!')
+    sys.exit()
 
 
 ##
