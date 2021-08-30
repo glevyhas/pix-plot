@@ -857,7 +857,6 @@ function World() {
   this.stats = this.getStats();
   this.color = new THREE.Color();
   this.clock = new THREE.Clock();
-  this.time = 0;
   this.center = {};
   this.group = {};
   this.state = {
@@ -1606,9 +1605,6 @@ World.prototype.render = function() {
   lod.update();
   // update the dragged lasso
   lasso.update();
-  // update the time uniform
-  this.time += this.clock.getDelta() / 10;
-  this.setUniform('time', this.time);
 }
 
 /**

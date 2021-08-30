@@ -433,6 +433,7 @@ def get_manifest(**kwargs):
     'metadata': True if kwargs['metadata'] else False,
     'default_hotspots': get_hotspots(layouts=layouts, **kwargs),
     'custom_hotspots': get_path('hotspots', 'user_hotspots', add_hash=False, **kwargs),
+    'gzipped': kwargs['gzip'],
     'config': {
       'sizes': {
         'atlas': kwargs['atlas_size'],
@@ -442,10 +443,13 @@ def get_manifest(**kwargs):
     },
     'creation_date': datetime.datetime.today().strftime('%d-%B-%Y-%H:%M:%S'),
   }
-  path = get_path('manifests', 'manifest', **kwargs)
-  write_json(path, manifest, **kwargs)
-  path = get_path(None, 'manifest', add_hash=False, **kwargs)
-  write_json(path, manifest, **kwargs)
+  # write the manifest without gzipping
+  no_gzip_kwargs = copy.deepcopy(kwargs)
+  no_gzip_kwargs['gzip'] = False
+  path = get_path('manifests', 'manifest', **no_gzip_kwargs)
+  write_json(path, manifest, **no_gzip_kwargs)
+  path = get_path(None, 'manifest', add_hash=False, **no_gzip_kwargs)
+  write_json(path, manifest, **no_gzip_kwargs)
   # create images json
   imagelist = {
     'cell_sizes': sizes,
@@ -455,7 +459,7 @@ def get_manifest(**kwargs):
       'positions': pos,
     },
   }
-  write_json(manifest['imagelist'], imagelist)
+  write_json(manifest['imagelist'], imagelist, **kwargs)
 
 
 ##
