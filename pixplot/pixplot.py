@@ -458,8 +458,11 @@ def get_manifest(**kwargs):
     'creation_date': datetime.datetime.today().strftime('%d-%B-%Y-%H:%M:%S'),
   }
   # write the manifest without gzipping
-  no_gzip_kwargs = copy.deepcopy(kwargs)
-  no_gzip_kwargs['gzip'] = False
+  no_gzip_kwargs = {
+    'out_dir': kwargs['out_dir'],
+    'gzip': False,
+    'plot_id': kwargs['plot_id']
+  }
   path = get_path('manifests', 'manifest', **no_gzip_kwargs)
   write_json(path, manifest, **no_gzip_kwargs)
   path = get_path(None, 'manifest', add_hash=False, **no_gzip_kwargs)
