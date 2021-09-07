@@ -1533,12 +1533,10 @@ World.prototype.flyTo = function(obj) {
   var camera = this.getCamera(),
       controls = new THREE.TrackballControls(camera, this.canvas);
   camera.position.set(obj.x, obj.y, obj.z);
-
-  if (controls.type === 'trackball') {
-    controls.target.set(obj.x, obj.y, obj.z);
+  if (this.controls.type === 'trackball') {
+    controls.target.set(obj.x, obj.y, obj.z - 0.000001);
     controls.update();
   }
-
   // prepare scope globals to transition camera
   var time = 0,
       q0 = this.camera.quaternion.clone();
