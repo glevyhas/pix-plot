@@ -130,7 +130,6 @@ config = {
   'n_components': 2,
   'metric': 'correlation',
   'pointgrid_fill': 0.05,
-  'square_cells': False,
   'gzip': False,
   'min_size': 100,
   'min_score': 0.3,
@@ -504,10 +503,7 @@ def get_atlas_data(**kwargs):
   positions = [] # l[cell_idx] = atlas data
   atlas = np.zeros((kwargs['atlas_size'], kwargs['atlas_size'], 3))
   for idx, i in enumerate(stream_images(**kwargs)):
-    if kwargs['square_cells']:
-      cell_data = i.resize_to_square(kwargs['cell_size'])
-    else:
-      cell_data = i.resize_to_height(kwargs['cell_size'])
+    cell_data = i.resize_to_height(kwargs['cell_size'])
     _, v, _ = cell_data.shape
     appendable = False
     if (x + v) <= kwargs['atlas_size']:
