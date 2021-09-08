@@ -32,7 +32,7 @@ setup(
     'cmake>=3.15.3',
     'Cython>=0.29.21',
     'glob2>=0.6',
-    'h5py~=2.10.0',
+    'h5py~=3.1.0',
     'iiif-downloader>=0.0.6',
     'numba==0.53',
     'numpy==1.19.5',
