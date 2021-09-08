@@ -1,101 +1,112 @@
 from __future__ import division
 import warnings; warnings.filterwarnings('ignore')
-from tensorflow.keras.preprocessing.image import save_img, img_to_array, array_to_img
-from tensorflow.keras.applications.inception_v3 import preprocess_input
-from tensorflow.keras.applications import InceptionV3, imagenet_utils
+
+##
+# Unconditional imports
+##
+
 from os.path import basename, join, exists, dirname, realpath
-from tensorflow.keras.preprocessing.image import load_img
-from sklearn.metrics import pairwise_distances_argmin_min
-from collections import defaultdict, namedtuple
-from dateutil.parser import parse as parse_date
-from sklearn.preprocessing import minmax_scale
-from pointgrid import align_points_to_grid
-from tensorflow.keras.models import Model
-from scipy.spatial.distance import cdist
 from distutils.dir_util import copy_tree
-from sklearn.decomposition import PCA
-from iiif_downloader import Manifest
-import tensorflow.keras.backend as K
-from rasterfairy import coonswarp
-from scipy.stats import kde
-from PIL import ImageFile
-import tensorflow as tf
-import multiprocessing
-from tqdm import tqdm
 import pkg_resources
-import rasterfairy
-import numpy as np
-import itertools
 import datetime
-import operator
 import argparse
-import pickle
-import random
 import shutil
 import glob2
-import copy
 import uuid
-import math
-import gzip
-import json
 import sys
-import csv
 import os
-
-##
-# Python 2 vs 3 imports
-##
-
-try:
-  from urllib.parse import unquote # python 3
-except:
-  from urllib import unquote # python 2
-
-try:
-  from urllib.request import retrieve as download_function # python 3
-except:
-  from urllib.request import urlretrieve as download_function # python 2
-
-##
-# Conditional imports
-##
 
 def timestamp():
   '''Return a string for printing the current time'''
   return str(datetime.datetime.now()) + ':'
 
-try:
-  from MulticoreTSNE import MulticoreTSNE as TSNE
-except:
-  from sklearn.manifold import TSNE
+##
+# Image processing imports
+##
 
-try:
-  from hdbscan import HDBSCAN
-  cluster_method = 'hdbscan'
-except:
-  print(timestamp(), 'HDBSCAN not available; using sklearn KMeans')
-  from sklearn.cluster import KMeans
-  cluster_method = 'kmeans'
+if '--copy_web_only' not in sys.argv:
 
-try:
-  from cuml.manifold.umap import UMAP
-  print(timestamp(), 'Using cuml UMAP')
-  cuml_ready = True
-  from umap import AlignedUMAP
-except:
-  from umap import UMAP, AlignedUMAP
-  print(timestamp(), 'CUML not available; using umap-learn UMAP')
-  cuml_ready = False
+  from tensorflow.keras.preprocessing.image import save_img, img_to_array, array_to_img
+  from tensorflow.keras.applications.inception_v3 import preprocess_input
+  from tensorflow.keras.applications import InceptionV3, imagenet_utils
+  from sklearn.metrics import pairwise_distances_argmin_min
+  from tensorflow.keras.preprocessing.image import load_img
+  from collections import defaultdict, namedtuple
+  from dateutil.parser import parse as parse_date
+  from sklearn.preprocessing import minmax_scale
+  from pointgrid import align_points_to_grid
+  from tensorflow.keras.models import Model
+  from scipy.spatial.distance import cdist
+  from sklearn.decomposition import PCA
+  import tensorflow.keras.backend as K
+  from iiif_downloader import Manifest
+  from rasterfairy import coonswarp
+  from tensorflow import compat
+  from scipy.stats import kde
+  from PIL import ImageFile
+  import multiprocessing
+  from tqdm import tqdm
+  import rasterfairy
+  import numpy as np
+  import itertools
+  import operator
+  import pickle
+  import random
+  import copy
+  import math
+  import gzip
+  import json
+  import csv
 
+  ##
+  # Python 2 vs 3 imports
+  ##
 
-# handle dynamic GPU memory allocation
-tf_config = tf.compat.v1.ConfigProto()
-tf_config.gpu_options.allow_growth = True
-tf_config.log_device_placement = True
-sess = tf.compat.v1.Session(config=tf_config)
+  try:
+    from urllib.parse import unquote # python 3
+  except:
+    from urllib import unquote # python 2
 
-# handle truncated images in PIL (managed by Pillow)
-ImageFile.LOAD_TRUNCATED_IMAGES = True
+  try:
+    from urllib.request import retrieve as download_function # python 3
+  except:
+    from urllib.request import urlretrieve as download_function # python 2
+
+  ##
+  # Optional install imports
+  ##
+
+  try:
+    from MulticoreTSNE import MulticoreTSNE as TSNE
+  except:
+    from sklearn.manifold import TSNE
+
+  try:
+    from hdbscan import HDBSCAN
+    cluster_method = 'hdbscan'
+  except:
+    print(timestamp(), 'HDBSCAN not available; using sklearn KMeans')
+    from sklearn.cluster import KMeans
+    cluster_method = 'kmeans'
+
+  try:
+    from cuml.manifold.umap import UMAP
+    print(timestamp(), 'Using cuml UMAP')
+    cuml_ready = True
+    from umap import AlignedUMAP
+  except:
+    from umap import UMAP, AlignedUMAP
+    print(timestamp(), 'CUML not available; using umap-learn UMAP')
+    cuml_ready = False
+
+  # handle dynamic GPU memory allocation
+  tf_config = compat.v1.ConfigProto()
+  tf_config.gpu_options.allow_growth = True
+  tf_config.log_device_placement = True
+  sess = compat.v1.Session(config=tf_config)
+
+  # handle truncated images in PIL (managed by Pillow)
+  ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 '''
 NB: Keras Image class objects return image.size as w,h
@@ -116,6 +127,7 @@ config = {
   'lod_cell_height': 128,
   'n_neighbors': [15],
   'min_dist': [0.01],
+  'n_components': 2,
   'metric': 'correlation',
   'pointgrid_fill': 0.05,
   'square_cells': False,
@@ -138,9 +150,9 @@ config = {
 def process_images(**kwargs):
   '''Main method for processing user images and metadata'''
   kwargs = preprocess_kwargs(**kwargs)
-  np.random.seed(kwargs['seed'])
-  tf.compat.v1.set_random_seed(kwargs['seed'])
   copy_web_assets(**kwargs)
+  np.random.seed(kwargs['seed'])
+  compat.v1.set_random_seed(kwargs['seed'])
   kwargs['out_dir'] = join(kwargs['out_dir'], 'data')
   kwargs['image_paths'], kwargs['metadata'] = filter_images(**kwargs)
   kwargs['atlas_dir'] = get_atlas_data(**kwargs)
@@ -165,12 +177,14 @@ def copy_web_assets(**kwargs):
   copy_tree(src, dest)
   # write version numbers into output
   for i in ['index.html', os.path.join('assets', 'js', 'tsne.js')]:
-    path = os.path.join(dest, i)
+    path = join(dest, i)
     with open(path, 'r') as f:
       f = f.read().replace('VERSION_NUMBER', get_version())
       with open(path, 'w') as out:
         out.write(f)
-  if kwargs['copy_web_only']: sys.exit()
+  if kwargs['copy_web_only']:
+    print(timestamp(), 'Done!')
+    sys.exit()
 
 
 ##
@@ -444,8 +458,11 @@ def get_manifest(**kwargs):
     'creation_date': datetime.datetime.today().strftime('%d-%B-%Y-%H:%M:%S'),
   }
   # write the manifest without gzipping
-  no_gzip_kwargs = copy.deepcopy(kwargs)
-  no_gzip_kwargs['gzip'] = False
+  no_gzip_kwargs = {
+    'out_dir': kwargs['out_dir'],
+    'gzip': False,
+    'plot_id': kwargs['plot_id']
+  }
   path = get_path('manifests', 'manifest', **no_gzip_kwargs)
   write_json(path, manifest, **no_gzip_kwargs)
   path = get_path(None, 'manifest', add_hash=False, **no_gzip_kwargs)
@@ -711,12 +728,14 @@ def get_umap_model(**kwargs):
     return UMAP(
       n_neighbors=kwargs['n_neighbors'][0],
       min_dist=kwargs['min_dist'][0],
+      n_components=kwargs['n_components'],
       random_state=kwargs['seed'],
       verbose=5)
   else:
     return UMAP(
       n_neighbors=kwargs['n_neighbors'][0],
       min_dist=kwargs['min_dist'][0],
+      n_components=kwargs['n_components'],
       metric=kwargs['metric'],
       random_state=kwargs['seed'],
       transform_seed=kwargs['seed'])
@@ -727,7 +746,9 @@ def get_tsne_layout(**kwargs):
   print(timestamp(), 'Creating TSNE layout with ' + str(multiprocessing.cpu_count()) + ' cores...')
   out_path = get_path('layouts', 'tsne', **kwargs)
   if os.path.exists(out_path) and kwargs['use_cache']: return out_path
-  model = TSNE(perplexity=kwargs.get('perplexity', 2),n_jobs=multiprocessing.cpu_count())
+  model = TSNE(
+    perplexity=kwargs.get('perplexity', 2),
+    n_jobs=multiprocessing.cpu_count())
   z = model.fit_transform(kwargs['vecs'])
   return write_layout(out_path, z, **kwargs)
 
@@ -738,6 +759,9 @@ def get_rasterfairy_layout(**kwargs):
   out_path = get_path('layouts', 'rasterfairy', **kwargs)
   if os.path.exists(out_path) and kwargs['use_cache']: return out_path
   umap = np.array(read_json(kwargs['umap']['variants'][0]['layout'], **kwargs))
+  if umap.shape[-1] != 2:
+    print(timestamp(), 'Could not create rasterfairy layout because data is not 2D')
+    return None
   umap = (umap + 1)/2 # scale 0:1
   try:
     umap = coonswarp.rectifyCloud(umap, # stretch the distribution
@@ -799,7 +823,10 @@ def get_pointgrid_layout(path, label, **kwargs):
   out_path = get_path('layouts', label + '-jittered', **kwargs)
   if os.path.exists(out_path) and kwargs['use_cache']: return out_path
   arr = np.array(read_json(path, **kwargs))
-  z = align_points_to_grid(arr, fill=0.045)
+  if arr.shape[-1] != 2:
+    print(timestamp(), 'Could not create pointgrid layout because data is not 2D')
+    return None
+  z = align_points_to_grid(arr, fill=0.01)
   return write_layout(out_path, z, **kwargs)
 
 
@@ -1224,6 +1251,9 @@ def get_heightmap(path, label, **kwargs):
   X = read_json(path, **kwargs)
   if 'positions' in X: X = X['positions']
   X = np.array(X)
+  if X.shape[-1] != 2:
+    print(timestamp(), 'Could not create heightmap because data is not 2D')
+    return
   # create kernel density estimate of distribution X
   nbins = 200
   x, y = X.T
@@ -1327,6 +1357,7 @@ def parse():
   parser.add_argument('--cell_size', type=int, default=config['cell_size'], help='the size of atlas cells in px', required=False)
   parser.add_argument('--n_neighbors', nargs='+', type=int, default=config['n_neighbors'], help='the n_neighbors arguments for UMAP')
   parser.add_argument('--min_dist', nargs='+', type=float, default=config['min_dist'], help='the min_dist arguments for UMAP')
+  parser.add_argument('--n_components', type=int, default=config['n_components'], help='the n_components argument for UMAP')
   parser.add_argument('--metric', type=str, default=config['metric'], help='the metric argument for umap')
   parser.add_argument('--pointgrid_fill', type=float, default=config['pointgrid_fill'], help='float 0:1 that determines sparsity of jittered distributions (lower means more sparse)')
   parser.add_argument('--copy_web_only', action='store_true', help='update ./output/assets without reprocessing data')

@@ -925,13 +925,22 @@ World.prototype.getRenderer = function() {
 **/
 
 World.prototype.getControls = function() {
+  if (window.location.href.includes('fly=true')) {
+    var controls = new THREE.FlyControls(this.camera, this.canvas);
+    controls.type = 'fly';
+    controls.movementSpeed = 0.2;
+    controls.rollSpeed = Math.PI / 20;
+    return controls;
+  }
   var controls = new THREE.TrackballControls(this.camera, this.canvas);
-  controls.zoomSpeed = 0.4;
+  controls.zoomSpeed = 0.2;
   controls.panSpeed = 0.4;
   controls.noRotate = true;
   controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
   controls.mouseButtons.MIDDLE = THREE.MOUSE.ZOOM;
   controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
+  controls.maxDistance = 3.0;
+  controls.type = 'trackball';
   return controls;
 }
 
@@ -995,7 +1004,9 @@ World.prototype.handleResize = function() {
   this.camera.aspect = w / h;
   this.camera.updateProjectionMatrix();
   this.renderer.setSize(w, h, false);
-  this.controls.handleResize();
+  if (this.controls.type === 'trackball') {
+    this.controls.handleResize();
+  }
   picker.tex.setSize(w, h);
   this.setScaleUniforms();
   config.setIsNarrowDevice();
@@ -1522,8 +1533,10 @@ World.prototype.flyTo = function(obj) {
   var camera = this.getCamera(),
       controls = new THREE.TrackballControls(camera, this.canvas);
   camera.position.set(obj.x, obj.y, obj.z);
-  controls.target.set(obj.x, obj.y, obj.z);
-  controls.update();
+  if (this.controls.type === 'trackball') {
+    controls.target.set(obj.x, obj.y, obj.z - 0.000001);
+    controls.update();
+  }
   // prepare scope globals to transition camera
   var time = 0,
       q0 = this.camera.quaternion.clone();
@@ -1545,8 +1558,10 @@ World.prototype.flyTo = function(obj) {
       this.camera.position.set(p.x, p.y, p.z);
       this.camera.up.set(u.x, u.y, u.z);
       this.camera.quaternion.set(q.x, q.y, q.z, q.w);
-      this.controls.target = new THREE.Vector3(c.x, c.y, zMin);
-      this.controls.update();
+      if (this.controls.type == 'trackball') {
+        this.controls.target = new THREE.Vector3(c.x, c.y, zMin);
+        this.controls.update();
+      }
       this.state.flying = false;
     }.bind(this),
     ease: obj.ease || Power4.easeInOut,
@@ -1583,8 +1598,8 @@ World.prototype.flyToCellImage = function(img) {
 
 World.prototype.getInitialLocation = function() {
   return {
-    x: 0, //this.center.x,
-    y: 0, //this.center.y,
+    x: 0,
+    y: 0,
     z: 2.0,
   }
 }
@@ -1598,7 +1613,11 @@ World.prototype.render = function() {
   if (!this.state.displayed) return;
   this.renderer.render(this.scene, this.camera);
   // update the controls
-  this.controls.update();
+  if (this.controls.type === 'trackball') {
+    this.controls.update();
+  } else if (this.controls.type === 'fly') {
+    this.controls.update(this.clock.getDelta());
+  }
   // update the stats
   if (this.stats) this.stats.update();
   // update the level of detail mechanism
@@ -1617,6 +1636,11 @@ World.prototype.init = function() {
   var loc = this.getInitialLocation();
   this.camera.position.set(loc.x, loc.y, loc.z);
   this.camera.lookAt(loc.x, loc.y, loc.z);
+  // set the control zoom depth
+  if (this.controls.type === 'trackball') {
+    this.controls.target.z = getMinCellZ();
+    this.controls.update();
+  }
   // draw points and start the render loop
   this.plotPoints();
   //resize the canvas and scale rendered assets
