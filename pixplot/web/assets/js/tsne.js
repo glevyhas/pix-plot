@@ -1936,26 +1936,10 @@ Lasso.prototype.draw = function() {
   this.points = this.getHull();
   // remove the old mesh
   this.removeMesh();
-  // get the indices of images that are inside the polygon
+  // store the indices of images that are inside the polygon
   this.selected = this.getSelectedMap();
-  var indices = [],
-      keys = Object.keys(this.selected);
-  for (var i=0; i<keys.length; i++) {
-    if (this.selected[keys[i]]) indices.push(i)
-  }
-  if (indices.length) {
-    // hide the modal describing the lasso behavior
-    world.hideSelectTooltip();
-    // allow users to see the selected images if desired
-    this.elems.viewSelectedContainer.style.display = 'block';
-    this.elems.countTarget.textContent = indices.length;
-    // allow cluster persistence
-    data.hotspots.setCreateHotspotVisibility(true);
-  }
-  // indicate the number of cells that are selected
-  this.setNSelected(indices.length);
-  // illuminate the points that are inside the polyline
-  world.setBorderedImages(indices);
+  // highlight the selected images
+  this.highlightSelected();
   // obtain and store a mesh, then add the mesh to the scene
   this.mesh = this.getMesh();
   world.scene.add(this.mesh);
@@ -2083,10 +2067,32 @@ Lasso.prototype.getSelectedMap = function() {
   return selected;
 }
 
+Lasso.prototype.highlightSelected = function() {
+  // get the indices of selected cells
+  var indices = [],
+      keys = Object.keys(this.selected);
+  for (var i=0; i<keys.length; i++) {
+    if (this.selected[keys[i]]) indices.push(i)
+  }
+  if (indices.length) {
+    // hide the modal describing the lasso behavior
+    world.hideSelectTooltip();
+    // allow users to see the selected images if desired
+    this.elems.viewSelectedContainer.style.display = 'block';
+    this.elems.countTarget.textContent = indices.length;
+    // allow cluster persistence
+    data.hotspots.setCreateHotspotVisibility(true);
+  }
+  // indicate the number of cells that are selected
+  this.setNSelected(indices.length);
+  // illuminate the points that are inside the polyline
+  world.setBorderedImages(indices);
+}
+
 Lasso.prototype.toggleSelection = function(idx) {
   var image = data.json.images[idx];
   this.selected[image] = !this.selected[image];
-  this.setNSelected();
+  this.highlightSelected();
 }
 
 Lasso.prototype.setNSelected = function(n) {
