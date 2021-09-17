@@ -593,7 +593,6 @@ def get_umap_layout(**kwargs):
   '''Get the x,y positions of images passed through a umap projection'''
   vecs = kwargs['vecs']
   w = PCA(n_components=min(100, len(vecs))).fit_transform(vecs)
-  print(timestamp(), 'Creating umap layout')
   # single model umap
   if len(kwargs['n_neighbors']) == 1 and len(kwargs['min_dist']) == 1:
     return process_single_layout_umap(w, **kwargs)
@@ -603,6 +602,7 @@ def get_umap_layout(**kwargs):
 
 def process_single_layout_umap(v, **kwargs):
   '''Create a single layout UMAP projection'''
+  print(timestamp(), 'Creating single umap layout')
   model = get_umap_model(**kwargs)
   out_path = get_path('layouts', 'umap', **kwargs)
   if cuml_ready:
@@ -634,6 +634,7 @@ def process_single_layout_umap(v, **kwargs):
 
 def process_multi_layout_umap(v, **kwargs):
   '''Create a multi-layout UMAP projection'''
+  print(timestamp(), 'Creating multi-umap layout')
   params = []
   for n_neighbors, min_dist in itertools.product(kwargs['n_neighbors'], kwargs['min_dist']):
     filename = 'umap-n_neighbors_{}-min_dist_{}'.format(n_neighbors, min_dist)
@@ -667,13 +668,11 @@ def process_multi_layout_umap(v, **kwargs):
     model = AlignedUMAP(
       n_neighbors=[i['n_neighbors'] for i in uncomputed_params],
       min_dist=[i['min_dist'] for i in uncomputed_params],
-      alignment_window_size=2,
-      alignment_regularisation=1e-3,
     )
     # fit the model on the data
     z = model.fit(
       [v for _ in params],
-      relations=[relations_dict.copy() for _ in params[:-1]]
+      relations=[relations_dict for _ in params[1:]]
     )
     for idx, i in enumerate(params):
       write_layout(i['out_path'], z.embeddings_[idx], **kwargs)
