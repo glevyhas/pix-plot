@@ -1,19 +1,22 @@
-from os.path import join, exists, dirname, realpath
+from os.path import join
 from setuptools import setup
-import os, sys
+import os
+import sys
 
 # validate python version
-if sys.version_info < (3,6):
-  sys.exit('Sorry, PixPlot requires Python 3.6 or later')
+if sys.version_info < (3, 6):
+    sys.exit('Sorry, PixPlot requires Python 3.6 or later')
 
 # populate list of all paths in `./pixplot/web`
 web = []
 dirs = [join('pixplot', 'web'), join('pixplot', 'models')]
 for i in dirs:
-  for root, subdirs, files in os.walk(i):
-    if not files: continue
+    for root, subdirs, files in os.walk(i):
+        if not files:
+            continue
     for file in files:
-      web.append(join(root.replace('pixplot/', '').replace('pixplot\\',''), file))
+        web.append(join(root.replace('pixplot/', '')
+                            .replace('pixplot\\', ''), file))
 
 setup(
   name='pixplot',
@@ -22,7 +25,11 @@ setup(
   package_data={
     'pixplot': web,
   },
-  keywords = ['computer-vision', 'webgl', 'three.js', 'tensorflow', 'machine-learning'],
+  keywords=['computer-vision',
+            'webgl',
+            'three.js',
+            'tensorflow',
+            'machine-learning'],
   description='Visualize large image collections with WebGL',
   url='https://github.com/yaledhlab/pix-plot',
   author='Douglas Duhaime',
