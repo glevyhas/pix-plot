@@ -5,18 +5,18 @@ import sys
 
 # validate python version
 if sys.version_info < (3, 6):
-    sys.exit('Sorry, PixPlot requires Python 3.6 or later')
+  sys.exit('Sorry, PixPlot requires Python 3.6 or later')
 
 # populate list of all paths in `./pixplot/web`
 web = []
 dirs = [join('pixplot', 'web'), join('pixplot', 'models')]
 for i in dirs:
-    for root, subdirs, files in os.walk(i):
-        if not files:
-            continue
+  for root, subdirs, files in os.walk(i):
+    if not files:
+      continue
     for file in files:
-        web.append(join(root.replace('pixplot/', '')
-                            .replace('pixplot\\', ''), file))
+      web.append(join(root.replace('pixplot/', '')
+                          .replace('pixplot\\', ''), file))
 
 setup(
   name='pixplot',
