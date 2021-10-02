@@ -580,18 +580,26 @@ def get_inception_vectors(**kwargs):
       vector_path = os.path.join(vector_dir, clean_filename(i.path) + '.npy')
       if os.path.exists(vector_path) and kwargs['use_cache']:
         vec = np.load(vector_path)
+        if len(vec) < 2:
+          vec = np.expand_dims(vec, 0)
       else:
         im = preprocess_input( img_to_array( i.original.resize((299,299)) ) )
         vec = model.predict(np.expand_dims(im, 0)).squeeze()
         np.save(vector_path, vec)
       vecs.append(vec)
       progress_bar.update(1)
-  return np.array(vecs)
+
+  if os.path.exists(vector_path) and kwargs['use_cache']:
+      vecs = np.stack(vecs, 0).squeeze()
+      return vecs
+  else:
+      return np.array(vecs)
 
 
 def get_umap_layout(**kwargs):
   '''Get the x,y positions of images passed through a umap projection'''
   vecs = kwargs['vecs']
+  print("VECTOR SHAPE", vecs.shape)
   w = PCA(n_components=min(100, len(vecs))).fit_transform(vecs)
   # single model umap
   if len(kwargs['n_neighbors']) == 1 and len(kwargs['min_dist']) == 1:
