@@ -599,7 +599,6 @@ def get_inception_vectors(**kwargs):
 def get_umap_layout(**kwargs):
   '''Get the x,y positions of images passed through a umap projection'''
   vecs = kwargs['vecs']
-  print("VECTOR SHAPE", vecs.shape)
   w = PCA(n_components=min(100, len(vecs))).fit_transform(vecs)
   # single model umap
   if len(kwargs['n_neighbors']) == 1 and len(kwargs['min_dist']) == 1:
