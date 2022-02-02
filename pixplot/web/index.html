@@ -125,12 +125,11 @@
       p = p * s;
 
       // translate the cell; translation = current; targetTranslation = destination
-      vec3 p0 = p + translation;
-      vec3 p1 = p + targetTranslation;
-      vec3 pos = mix(p0, p1, percent);
-
+      vec3 pos = mix(translation, targetTranslation, percent);
+      //pos += p;
       // get the ultimate cell position
       vec4 world = modelViewMatrix * vec4(pos, 1.0);
+      world += vec4(p, 1.0);
       gl_Position = projectionMatrix * world;
     }
     </script>
