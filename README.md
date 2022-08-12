@@ -22,7 +22,7 @@ $ pip uninstall pixplot
 $ pip install https://github.com/yaledhlab/pix-plot/archive/master.zip
 ```
 
-Please note that you will need to use Python 3.6 or Python 3.7 to install and use this package. The HTML viewer also _**requires a WebGL-enabled browser**_.
+Please note that you will need to use Python 3.6 or Python 3.7 to install and use this package. The HTML viewer also _**requires a WebGL-enabled browser**_ (most modern browsers updated to the latest version has this enabled to default but no guarantees).
 
 ## Quickstart
 
