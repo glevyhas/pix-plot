@@ -6,9 +6,11 @@ See the [change log](https://github.com/YaleDHLab/pix-plot/wiki/Change-Log) for 
 
 ![App preview](./pixplot/web/assets/images/preview.png?raw=true)
 
-## Dependencies
+## Installation & Dependencies
 
-To install the Python dependencies, we recommend you [install Anaconda](https://www.anaconda.com/products/individual#Downloads) and then create a conda environment with a Python 3.7 runtime:
+We maintain several platform-specific [installation cookbooks](https://github.com/YaleDHLab/pix-plot/wiki) online.
+
+Broadly speaking, to install the Python dependencies, we recommend you [install Anaconda](https://www.anaconda.com/products/individual#Downloads) and then create a conda environment with a Python 3.7 runtime:
 
 ```bash
 conda create --name=3.7 python=3.7
@@ -17,12 +19,12 @@ source activate 3.7
 
 Then you can install the dependencies by running:
 
-```bash
-pip uninstall pixplot
+```
+bash
 pip install https://github.com/yaledhlab/pix-plot/archive/master.zip
 ```
 
-Please note that you will need to use Python 3.6 or Python 3.7 to install and use this package. The HTML viewer also requires a WebGL-enabled browser.
+The website that PixPlot eventually creates requires a WebGL-enabled browser.
 
 ## Quickstart
 
