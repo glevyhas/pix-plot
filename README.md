@@ -91,7 +91,12 @@ pixplot --images "path/to/images/*.jpg" --n_neighbors 2
 
 ## Curating Automatic Hotspots
 
-PixPlot uses [Hierarchical density-based spatial clustering of applications with noise](https://hdbscan.readthedocs.io/en/latest/index.html), a refinement of the earlier [DBSCAN](https://en.wikipedia.org/wiki/DBSCAN) algorithm, to find hotspots in the visualization. You may be interested in consulting this [explanation of how HDBSCAN works](https://hdbscan.readthedocs.io/en/latest/how_hdbscan_works.html).
+If installed and available, PixPlot uses [Hierarchical density-based spatial clustering of applications with noise](https://hdbscan.readthedocs.io/en/latest/index.html), a refinement of the earlier [DBSCAN](https://en.wikipedia.org/wiki/DBSCAN) algorithm, to find hotspots in the visualization. You may be interested in consulting this [explanation of how HDBSCAN works](https://hdbscan.readthedocs.io/en/latest/how_hdbscan_works.html).
+
+Tip: If you are using HDBSCAN and find that PixPlot creates too few (or only one) 'automatic hotspots', try lowering the `--min_cluster_size` from its default of 20. This often happens with smaller datasets (less than a few thousand.)
+
+If HDBSCAN is not available, PixPlot will fall back to [scikit-learn](https://scikit-learn.org/)'s  implementation of [KMeans](https://scikit-learn.org/stable/modules/clustering.html#k-means).
+
 
 ## Adding Metadata
 
