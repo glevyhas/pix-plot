@@ -608,7 +608,7 @@ def process_single_layout_umap(v, **kwargs):
   if cuml_ready:
     z = model.fit(v).embedding_
   else:
-    if os.path.exists(out_path) and kwargs['use_cache']: return out_path
+    if os.path.exists(out_path) and kwargs['use_cache']: return {'variants': [{'layout': out_path}]}
     y = []
     if kwargs.get('metadata', False):
       labels = [i.get('label', None) for i in kwargs['metadata']]
