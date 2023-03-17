@@ -608,7 +608,17 @@ def process_single_layout_umap(v, **kwargs):
   if cuml_ready:
     z = model.fit(v).embedding_
   else:
-    if os.path.exists(out_path) and kwargs['use_cache']: return out_path
+    if os.path.exists(out_path) and kwargs['use_cache']: 
+      return {
+        'variants': [
+          {
+            'n_neighbors': kwargs['n_neighbors'][0],
+            'min_dist': kwargs['min_dist'][0],
+            'jittered': get_pointgrid_layout(out_path, 'umap', **kwargs),
+            'layout': out_path
+          }
+        ]
+      }
     y = []
     if kwargs.get('metadata', False):
       labels = [i.get('label', None) for i in kwargs['metadata']]
