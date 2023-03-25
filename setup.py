@@ -49,7 +49,7 @@ setup(
     'scikit-learn==0.24.2',
     'scipy==1.4.0',
     'six==1.15.0',
-    'tensorflow==2.5.0',
+    'tensorflow==2.11.1',
     'tqdm==4.61.1',
     'umap-learn==0.5.1',
     'yale-dhlab-rasterfairy>=1.0.3',
