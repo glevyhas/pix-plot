@@ -197,9 +197,10 @@ def filter_images(**kwargs):
   image_paths = set()
   duplicates = set()
   for i in stream_images(image_paths=get_image_paths(**kwargs)):
-    if i.path in image_paths:
-      duplicates.add(i.path)
-    image_paths.add(i.path)
+    filename = clean_filename(i.path)
+    if filename in image_paths:
+      duplicates.add(filename)
+    image_paths.add(filename)
   if duplicates:
     raise Exception('''
       Image filenames should be unique, but the following filenames are duplicated\n
