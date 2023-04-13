@@ -194,13 +194,10 @@ def copy_web_assets(**kwargs):
 def filter_images(**kwargs):
   '''Main method for filtering images given user metadata (if provided)'''
   # validate that input image names are unique
-  image_paths = set()
-  duplicates = set()
-  for i in stream_images(image_paths=get_image_paths(**kwargs)):
-    filename = clean_filename(i.path)
-    if filename in image_paths:
-      duplicates.add(filename)
-    image_paths.add(i.path)
+  image_paths = set(get_image_paths(images=kwargs["images"], out_dir=kwargs["out_dir"]))
+  image_names = list(map(clean_filename,image_paths))
+  duplicates = set([x for x in image_names if image_names.count(x) > 1])
+
   if duplicates:
     raise Exception('''
       Image filenames should be unique, but the following filenames are duplicated\n
