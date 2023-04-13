@@ -200,7 +200,7 @@ def filter_images(**kwargs):
     filename = clean_filename(i.path)
     if filename in image_paths:
       duplicates.add(filename)
-    image_paths.add(filename)
+    image_paths.add(i.path)
   if duplicates:
     raise Exception('''
       Image filenames should be unique, but the following filenames are duplicated\n
